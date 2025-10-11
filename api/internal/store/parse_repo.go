@@ -24,7 +24,6 @@ type ParsedRow struct {
 	MediaGroupID       string
 	ImageHash          string
 	Engine             string
-	Model              string
 	Parse              ocr.ParseResult
 	Accepted           bool
 	AcceptReason       string
@@ -32,23 +31,23 @@ type ParsedRow struct {
 	Confidence         float64
 }
 
-// FindByHash достаёт самую свежую запись по ключу (image_hash + engine + model).
+// FindByHash достаёт самую свежую запись по ключу (image_hash + engine).
 // Если maxAge > 0 — проверяет "свежесть", иначе игнорирует возраст.
-func (r *ParseRepo) FindByHash(ctx context.Context, imageHash, engine, model string, maxAge time.Duration) (*ParsedRow, error) {
+func (r *ParseRepo) FindByHash(ctx context.Context, imageHash, engine string, maxAge time.Duration) (*ParsedRow, error) {
 	const q = `
 select id, created_at,
        coalesce(chat_id,0) as chat_id,
        coalesce(media_group_id,'') as media_group_id,
-       image_hash, engine, model,
+       image_hash, engine,
        result_json,
        accepted, coalesce(accept_reason,'') as accept_reason,
        confirmation_needed,
        coalesce(confidence,0) as confidence
 from parsed_tasks
-where image_hash = $1 and engine = $2 and model = $3
+where image_hash = $1 and engine = $2
 order by created_at desc
 limit 1`
-	row := r.DB.QueryRowContext(ctx, q, imageHash, engine, model)
+	row := r.DB.QueryRowContext(ctx, q, imageHash, engine)
 
 	var (
 		id                 int64
@@ -57,14 +56,13 @@ limit 1`
 		mediaGroupID       string
 		imgHash            string
 		engName            string
-		modelName          string
 		js                 []byte
 		accepted           bool
 		acceptReason       string
 		confirmationNeeded bool
 		confidence         float64
 	)
-	if err := row.Scan(&id, &ts, &chatID, &mediaGroupID, &imgHash, &engName, &modelName,
+	if err := row.Scan(&id, &ts, &chatID, &mediaGroupID, &imgHash, &engName,
 		&js, &accepted, &acceptReason, &confirmationNeeded, &confidence); err != nil {
 		return nil, err
 	}
@@ -83,7 +81,6 @@ limit 1`
 		MediaGroupID:       mediaGroupID,
 		ImageHash:          imgHash,
 		Engine:             engName,
-		Model:              modelName,
 		Parse:              pr,
 		Accepted:           accepted,
 		AcceptReason:       acceptReason,
@@ -92,12 +89,12 @@ limit 1`
 	}, nil
 }
 
-// Upsert сохраняет PARSE (черновик или принятый). Если запись по (image_hash, engine, model)
+// Upsert сохраняет PARSE (черновик или принятый). Если запись по (image_hash, engine)
 // существует — обновит все поля.
 func (r *ParseRepo) Upsert(
 	ctx context.Context,
 	chatID int64,
-	mediaGroupID, imageHash, engine, model string,
+	mediaGroupID, imageHash, engine string,
 	pr ocr.ParseResult,
 	accepted bool,
 	reason string,
@@ -105,11 +102,11 @@ func (r *ParseRepo) Upsert(
 	js, _ := json.Marshal(pr)
 	const q = `
 insert into parsed_tasks (
-  chat_id, media_group_id, image_hash, engine, model,
+  chat_id, media_group_id, image_hash, engine,
   raw_text, question, result_json, confidence, confirmation_needed,
   accepted, accept_reason
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-on conflict (image_hash, engine, model) do update
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+on conflict (image_hash, engine) do update
 set chat_id = excluded.chat_id,
     media_group_id = excluded.media_group_id,
     raw_text = excluded.raw_text,
@@ -120,7 +117,7 @@ set chat_id = excluded.chat_id,
     accepted = excluded.accepted,
     accept_reason = excluded.accept_reason`
 	_, err := r.DB.ExecContext(ctx, q,
-		chatID, mediaGroupID, imageHash, engine, model,
+		chatID, mediaGroupID, imageHash, engine,
 		pr.RawText, pr.Question, js, pr.Confidence, pr.ConfirmationNeeded,
 		accepted, reason,
 	)
@@ -128,9 +125,9 @@ set chat_id = excluded.chat_id,
 }
 
 // MarkAccepted помечает существующую запись как принятую (без изменения JSON).
-func (r *ParseRepo) MarkAccepted(ctx context.Context, imageHash, engine, model, reason string) error {
-	const q = `update parsed_tasks set accepted=true, accept_reason=$4 where image_hash=$1 and engine=$2 and model=$3`
-	res, err := r.DB.ExecContext(ctx, q, imageHash, engine, model, reason)
+func (r *ParseRepo) MarkAccepted(ctx context.Context, imageHash, engine, reason string) error {
+	const q = `update parsed_tasks set accepted=true, accept_reason=$3 where image_hash=$1 and engine=$2`
+	res, err := r.DB.ExecContext(ctx, q, imageHash, engine, reason)
 	if err != nil {
 		return err
 	}
@@ -146,18 +143,18 @@ func (r *ParseRepo) MarkAccepted(ctx context.Context, imageHash, engine, model, 
 func (r *ParseRepo) AcceptWithOverwrite(
 	ctx context.Context,
 	chatID int64,
-	mediaGroupID, imageHash, engine, model string,
+	mediaGroupID, imageHash, engine string,
 	pr ocr.ParseResult,
 	reason string,
 ) error {
 	js, _ := json.Marshal(pr)
 	const q = `
 insert into parsed_tasks (
-  chat_id, media_group_id, image_hash, engine, model,
+  chat_id, media_group_id, image_hash, engine,
   raw_text, question, result_json, confidence, confirmation_needed,
   accepted, accept_reason
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,true,$11)
-on conflict (image_hash, engine, model) do update
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10)
+on conflict (image_hash, engine) do update
 set chat_id = excluded.chat_id,
     media_group_id = excluded.media_group_id,
     raw_text = excluded.raw_text,
@@ -168,7 +165,7 @@ set chat_id = excluded.chat_id,
     accepted = true,
     accept_reason = excluded.accept_reason`
 	_, err := r.DB.ExecContext(ctx, q,
-		chatID, mediaGroupID, imageHash, engine, model,
+		chatID, mediaGroupID, imageHash, engine,
 		pr.RawText, pr.Question, js, pr.Confidence, pr.ConfirmationNeeded,
 		reason,
 	)

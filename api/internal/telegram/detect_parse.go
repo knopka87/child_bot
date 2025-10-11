@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -26,19 +27,19 @@ type parsePending struct {
 func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Load(chatID); return ok }
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
 
-func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, merged []byte, mediaGroupID string, engines Engines) {
+func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, merged []byte, mediaGroupID string) {
 	mime := util.SniffMimeHTTP(merged)
+	llmName := r.EngManager.Get(chatID)
 
-	// DETECT (Gemini → OpenAI)
+	// DETECT через llmproxy
 	var dres ocr.DetectResult
-	if engines.Gemini != nil {
-		if dr, err := engines.Gemini.Detect(ctx, merged, mime, 0); err == nil {
-			dres = dr
-		}
-	} else if engines.OpenAI != nil {
-		if dr, err := engines.OpenAI.Detect(ctx, merged, mime, 0); err == nil {
-			dres = dr
-		}
+	if dr, err := r.LLM.Detect(ctx, llmName, merged, mime, 0); err == nil {
+		dres = dr
+	} else {
+		// Мягкий фолбэк: продолжаем без детекта (используем значения по умолчанию),
+		// просто логируем ошибку и сообщаем пользователю, что попробуем распознать весь снимок.
+		log.Printf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err)
+		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.")
 	}
 
 	// базовая политика
@@ -80,26 +81,21 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, merged []
 
 	// без выбора — сразу PARSE
 	sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
-	r.runParseAndMaybeConfirm(ctx, chatID, sc, engines, -1, "")
+	r.runParseAndMaybeConfirm(ctx, chatID, sc, -1, "")
 }
 
-func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, sc *selectionContext, engines Engines, selectedIdx int, selectedBrief string) {
-	llm := r.pickLLMEngine(chatID, engines)
-	if llm == nil {
-		r.send(chatID, "⚠️ Нет LLM-движка (gemini/gpt) для подсказок.")
-		return
-	}
-
+func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
 	imgHash := util.SHA256Hex(sc.Image)
+	llmName := r.EngManager.Get(chatID)
 
 	// 1) кэш из БД: принят ли PARSE
-	if prRow, err := r.ParseRepo.FindByHash(ctx, imgHash, llm.Name(), llm.GetModel(), 30*24*time.Hour); err == nil && prRow.Accepted {
-		r.showTaskAndPrepareHints(chatID, sc, prRow.Parse, llm)
+	if prRow, err := r.ParseRepo.FindByHash(ctx, imgHash, llmName, 30*24*time.Hour); err == nil && prRow.Accepted {
+		r.showTaskAndPrepareHints(chatID, sc, prRow.Parse, llmName)
 		return
 	}
 
 	// 2) LLM.Parse
-	pr, err := llm.Parse(ctx, sc.Image, ocr.ParseOptions{
+	pr, err := r.LLM.Parse(ctx, llmName, sc.Image, ocr.ParseOptions{
 		SubjectHint:       sc.Detect.SubjectGuess,
 		ChatID:            chatID,
 		MediaGroupID:      sc.MediaGroupID,
@@ -113,16 +109,16 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, sc *
 	}
 
 	// сохранить черновик
-	_ = r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llm.Name(), llm.GetModel(), pr, false, "")
+	_ = r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llmName, pr, false, "")
 
 	// 3) подтверждение, если нужно
 	if pr.ConfirmationNeeded {
 		r.askParseConfirmation(chatID, pr)
-		parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llm.Name()})
+		parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
 		return
 	}
 
 	// 4) автоподтверждение
-	_ = r.ParseRepo.MarkAccepted(ctx, imgHash, llm.Name(), llm.GetModel(), "auto")
-	r.showTaskAndPrepareHints(chatID, sc, pr, llm)
+	_ = r.ParseRepo.MarkAccepted(ctx, imgHash, llmName, "auto")
+	r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
 }

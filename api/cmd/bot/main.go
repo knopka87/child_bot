@@ -19,11 +19,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // pgx driver
 
 	"child-bot/api/internal/config"
+	"child-bot/api/internal/llmclient"
 	"child-bot/api/internal/ocr"
-	"child-bot/api/internal/ocr/deepseek"
-	"child-bot/api/internal/ocr/gemini"
-	"child-bot/api/internal/ocr/openai"
-	"child-bot/api/internal/ocr/yandex"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/telegram"
 )
@@ -74,24 +71,16 @@ func main() {
 	bot.Debug = false
 
 	// Engines
-	engines := telegram.Engines{
-		Yandex:   yandex.New(cfg.YCOAuthToken, cfg.YCFolderID),
-		Gemini:   gemini.New(cfg.GeminiAPIKey, cfg.GeminiModel),
-		OpenAI:   openai.New(cfg.OpenAIAPIKey, cfg.OpenAIModel),
-		Deepseek: deepseek.New(cfg.DeepseekAPIKey, cfg.DeepseekModel),
-	}
 
 	// Менеджер движков (дефолт — Gemini; тип должен удовлетворять объединённому интерфейсу EngineFull/ocr.Engine)
-	manager := ocr.NewManager(engines.Gemini)
+	manager := ocr.NewManager(cfg.DefaultLLM)
+	llm := llmclient.New(cfg.LLMServerURL)
 
 	r := &telegram.Router{
-		Bot:           bot,
-		EngManager:    manager,
-		GeminiModel:   cfg.GeminiModel,
-		OpenAIModel:   cfg.OpenAIModel,
-		DeepseekModel: cfg.DeepseekModel,
-
-		// репозитории для кэша PARSE/подсказок
+		Bot:        bot,
+		EngManager: manager,
+		LLM:        llm,
+		// репозитории для кэша парсинга/подсказок
 		ParseRepo: parseRepo,
 		HintRepo:  hintRepo,
 	}
@@ -116,7 +105,7 @@ func main() {
 	// --- Choose mode: Webhook vs Polling ---
 	webhookURL := strings.TrimSpace(cfg.WebhookURL)
 	if webhookURL != "" {
-		startWebhookMode(addr, bot, r, webhookURL, engines)
+		startWebhookMode(addr, bot, r, webhookURL)
 	} else {
 		startPollingMode(addr, bot, r)
 	}
@@ -124,7 +113,7 @@ func main() {
 
 // ---------------- Modes -----------------
 
-func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router, baseURL string, engines telegram.Engines) {
+func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router, baseURL string) {
 	// секретный путь вебхука
 	path := "/webhook/" + shortHash(r.Bot.Token)
 	public := strings.TrimRight(baseURL, "/") + path
@@ -143,7 +132,7 @@ func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router, bas
 
 	go func() {
 		for upd := range updates {
-			r.HandleUpdate(upd, engines)
+			r.HandleUpdate(upd)
 		}
 		log.Printf("webhook updates channel closed")
 	}()
@@ -167,7 +156,7 @@ func startPollingMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router) {
 	// Устойчивый поллинг с backoff без log.Fatal/os.Exit
 	ctx := context.Background()
 	runPolling(ctx, bot, func(upd tgbotapi.Update) {
-		r.HandleUpdate(upd, telegram.Engines{}) // engines менеджер внутри роутера
+		r.HandleUpdate(upd) // engines менеджер внутри роутера
 	})
 }
 
