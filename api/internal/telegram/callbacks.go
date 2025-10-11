@@ -11,16 +11,16 @@ import (
 	"child-bot/api/internal/util"
 )
 
-func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, engines Engines) {
+func (r *Router) handleCallback(cb tgbotapi.CallbackQuery) {
 	cid := cb.Message.Chat.ID
 	data := cb.Data
 	_, _ = r.Bot.Request(tgbotapi.NewCallback(cb.ID, "")) // ack
 
 	switch data {
 	case "hint_next":
-		r.onHintNext(cid, cb.Message.MessageID, engines)
+		r.onHintNext(cid, cb.Message.MessageID)
 	case "parse_yes":
-		r.onParseYes(cid, engines, cb.Message.MessageID)
+		r.onParseYes(cid, cb.Message.MessageID)
 	case "parse_no":
 		r.onParseNo(cid, cb.Message.MessageID)
 	case "ready_solution":
@@ -40,7 +40,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, engines Engines) {
 	}
 }
 
-func (r *Router) onParseYes(chatID int64, engines Engines, msgID int) {
+func (r *Router) onParseYes(chatID int64, msgID int) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
 		r.send(chatID, "Контекст подтверждения не найден.")
@@ -49,19 +49,15 @@ func (r *Router) onParseYes(chatID int64, engines Engines, msgID int) {
 	parseWait.Delete(chatID)
 	p := v.(*parsePending)
 
-	llm := r.resolveEngineByName(p.LLM, engines)
-	if llm == nil {
-		r.send(chatID, "LLM-движок недоступен.")
-		return
-	}
 	imgHash := util.SHA256Hex(p.Sc.Image)
+	llmName := r.EngManager.Get(chatID)
 
-	_ = r.ParseRepo.MarkAccepted(context.Background(), imgHash, llm.Name(), llm.GetModel(), "user_yes")
+	_ = r.ParseRepo.MarkAccepted(context.Background(), imgHash, llmName, "user_yes")
 	// убрать клавиатуру
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, _ = r.Bot.Send(edit)
 	// продолжить
-	r.showTaskAndPrepareHints(chatID, p.Sc, p.PR, llm)
+	r.showTaskAndPrepareHints(chatID, p.Sc, p.PR, llmName)
 }
 
 func (r *Router) onParseNo(chatID int64, msgID int) {
@@ -71,7 +67,7 @@ func (r *Router) onParseNo(chatID int64, msgID int) {
 	// остаёмся в состоянии parseWait — следующий текст примем как корректировку
 }
 
-func (r *Router) onHintNext(chatID int64, msgID int, engines Engines) {
+func (r *Router) onHintNext(chatID int64, msgID int) {
 	v, ok := hintState.Load(chatID)
 	if !ok {
 		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.")
@@ -84,11 +80,6 @@ func (r *Router) onHintNext(chatID int64, msgID int, engines Engines) {
 		r.send(chatID, "Все подсказки уже показаны.")
 		return
 	}
-	llm := r.resolveEngineByName(hs.EngineName, engines)
-	if llm == nil {
-		r.send(chatID, "LLM-движок недоступен.")
-		return
-	}
 
 	_ = hideKeyboard(chatID, msgID, r)
 
@@ -96,7 +87,7 @@ func (r *Router) onHintNext(chatID int64, msgID int, engines Engines) {
 	level := hs.NextLevel
 
 	// кэш подсказок
-	if hr, err := r.HintRepo.Find(context.Background(), imgHash, hs.EngineName, hs.Model, level, 90*24*time.Hour); err == nil {
+	if hr, err := r.HintRepo.Find(context.Background(), imgHash, hs.EngineName, level, 90*24*time.Hour); err == nil {
 		r.send(chatID, formatHint(level, hr))
 	} else {
 		in := ocr.HintInput{
@@ -109,12 +100,12 @@ func (r *Router) onHintNext(chatID int64, msgID int, engines Engines) {
 			TerminologyLevel:  levelTerminology(level),
 			SubjectConfidence: hs.Detect.SubjectConfidence,
 		}
-		hrNew, err := llm.Hint(context.Background(), in)
+		hrNew, err := r.LLM.Hint(context.Background(), in)
 		if err != nil {
 			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %v", level, err))
 			return
 		}
-		_ = r.HintRepo.Upsert(context.Background(), imgHash, hs.EngineName, hs.Model, level, hrNew)
+		_ = r.HintRepo.Upsert(context.Background(), imgHash, hs.EngineName, level, hrNew)
 		r.send(chatID, formatHint(level, hrNew))
 	}
 

@@ -18,11 +18,10 @@ type hintSession struct {
 	Parse        ocr.ParseResult
 	Detect       ocr.DetectResult
 	EngineName   string
-	Model        string
 	NextLevel    int
 }
 
-func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr ocr.ParseResult, llm ocr.Engine) {
+func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr ocr.ParseResult, llmName string) {
 	var b strings.Builder
 	b.WriteString("📄 *Текст задания:*\n```\n")
 	if strings.TrimSpace(pr.RawText) != "" {
@@ -45,12 +44,12 @@ func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr 
 
 	hs := &hintSession{
 		Image: sc.Image, Mime: sc.Mime, MediaGroupID: sc.MediaGroupID,
-		Parse: pr, Detect: sc.Detect, EngineName: llm.Name(), Model: llm.GetModel(), NextLevel: 1,
+		Parse: pr, Detect: sc.Detect, EngineName: llmName, NextLevel: 1,
 	}
 	hintState.Store(chatID, hs)
 }
 
-func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string, engines Engines) {
+func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
 		return
@@ -58,11 +57,7 @@ func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string
 	p := v.(*parsePending)
 	parseWait.Delete(chatID)
 
-	llm := r.resolveEngineByName(p.LLM, engines)
-	if llm == nil {
-		r.send(chatID, "LLM-движок недоступен.")
-		return
-	}
+	llmName := r.EngManager.Get(chatID)
 	imgHash := util.SHA256Hex(p.Sc.Image)
 
 	pr := p.PR
@@ -70,10 +65,10 @@ func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string
 	pr.ConfirmationNeeded = false
 	pr.ConfirmationReason = "user_fix"
 
-	_ = r.ParseRepo.Upsert(context.Background(), chatID, p.Sc.MediaGroupID, imgHash, llm.Name(), llm.GetModel(), pr, true, "user_fix")
+	_ = r.ParseRepo.Upsert(context.Background(), chatID, p.Sc.MediaGroupID, imgHash, llmName, pr, true, "user_fix")
 	r.showTaskAndPrepareHints(chatID, &selectionContext{
 		Image: p.Sc.Image, Mime: p.Sc.Mime, MediaGroupID: p.Sc.MediaGroupID, Detect: p.Sc.Detect,
-	}, pr, llm)
+	}, pr, llmName)
 }
 
 func formatHint(level int, hr ocr.HintResult) string {

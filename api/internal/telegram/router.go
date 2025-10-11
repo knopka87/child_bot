@@ -5,51 +5,65 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
+	"child-bot/api/internal/llmclient"
 	"child-bot/api/internal/ocr"
 	"child-bot/api/internal/store"
 )
+
+// per-chat предпочтение провайдера LLM: "gemini" или "gpt"
+var providerByChat sync.Map
+
+func getProvider(cid int64) string {
+	if v, ok := providerByChat.Load(cid); ok {
+		if s, ok2 := v.(string); ok2 && s != "" {
+			return s
+		}
+	}
+	return "gemini" // значение по умолчанию
+}
+func setProvider(cid int64, p string) {
+	providerByChat.Store(cid, strings.ToLower(strings.TrimSpace(p)))
+}
 
 type Router struct {
 	Bot        *tgbotapi.BotAPI
 	EngManager *ocr.Manager
 	ParseRepo  *store.ParseRepo
 	HintRepo   *store.HintRepo
-
-	// Defaults / display models
-	GeminiModel   string
-	OpenAIModel   string
-	DeepseekModel string
+	LLM        *llmclient.Client
 }
 
 func (r *Router) HandleCommand(upd tgbotapi.Update) {
 	cid := upd.Message.Chat.ID
 	switch upd.Message.Command() {
 	case "start":
-		r.send(cid, "Пришли фото задачи — верну распознанный текст и подскажу, с чего начать.\nКоманды: /health, /engine")
+		r.send(cid, "Пришли фото задачи — верну распознанный текст и подскажу, с чего начать.\nКоманды: /health, /engine (gemini|gpt)")
 	case "health":
 		r.send(cid, "✅ OK")
 	case "engine":
-		// До сюда обычно не дойдём — /engine обрабатывается раньше в HandleUpdate.
 		args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/engine")))
+		cur := getProvider(cid)
 		if len(args) == 0 {
-			cur := r.EngManager.Get(cid).Name()
-			r.send(cid, "Текущий движок: "+cur+
-				"\nИспользование:\n/engine yandex\n/engine gemini [model]\n/engine gpt [model]\n/engine deepseek")
+			r.send(cid, "Текущий LLM-провайдер: "+cur+
+				"\nИспользование:\n/engine gemini\n/engine gpt")
 			return
 		}
-		r.send(cid, "Ок, переключаю…")
+		// применим через общий обработчик ниже
+		r.handleEngineCommand(cid, upd.Message.Text)
+		return
 	default:
 		r.send(cid, "Неизвестная команда")
 	}
 }
 
-func (r *Router) HandleUpdate(upd tgbotapi.Update, engines Engines) {
+func (r *Router) HandleUpdate(upd tgbotapi.Update) {
 	// 1) Callback-кнопки
 	if upd.CallbackQuery != nil {
-		r.handleCallback(*upd.CallbackQuery, engines)
+		r.handleCallback(*upd.CallbackQuery)
 		return
 	}
 
@@ -61,7 +75,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, engines Engines) {
 
 	// 3) Если ждём текстовую правку после «Нет» — приоритетно принимаем её
 	if r.hasPendingCorrection(cid) && upd.Message.Text != "" {
-		r.applyTextCorrectionThenShowHints(cid, upd.Message.Text, engines)
+		r.applyTextCorrectionThenShowHints(cid, upd.Message.Text)
 		return
 	}
 
@@ -87,7 +101,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, engines Engines) {
 				pendingCtx.Delete(cid)
 				sc := ctxv.(*selectionContext)
 				r.send(cid, fmt.Sprintf("Ок, беру задание: %s — обрабатываю.", briefs[n-1]))
-				r.runParseAndMaybeConfirm(context.Background(), cid, sc, engines, n-1, briefs[n-1])
+				r.runParseAndMaybeConfirm(context.Background(), cid, sc, n-1, briefs[n-1])
 				return
 			}
 			pendingChoice.Delete(cid)
@@ -99,7 +113,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, engines Engines) {
 
 	// 6) Команды (в т.ч. /engine)
 	if upd.Message.IsCommand() && strings.HasPrefix(upd.Message.Text, "/engine") {
-		r.handleEngineCommand(cid, upd.Message.Text, engines)
+		r.handleEngineCommand(cid, upd.Message.Text)
 		return
 	}
 	if upd.Message.IsCommand() {
@@ -110,7 +124,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, engines Engines) {
 	// 7) Фото/альбом — это снимает «режим ожидания фото»
 	if len(upd.Message.Photo) > 0 {
 		clearMode(cid) // получили фото — разблокируем пайплайн
-		r.acceptPhoto(*upd.Message, engines)
+		r.acceptPhoto(*upd.Message)
 		return
 	}
 
@@ -133,71 +147,24 @@ func (r *Router) SendError(chatID int64, err error) {
 	r.send(chatID, fmt.Sprintf("Ошибка OCR: %v", err))
 }
 
-// handleEngineCommand парсит команду /engine и переключает движок для чата.
-// Форматы:
-//
-//	/engine yandex
-//	/engine gemini [model]
-//	/engine gpt [model]
-//	/engine deepseek
-func (r *Router) handleEngineCommand(chatID int64, cmd string, engines Engines) {
+// handleEngineCommand парсит команду /engine и переключает провайдера LLM для чата.
+// Поддерживаются только gemini и gpt.
+func (r *Router) handleEngineCommand(chatID int64, cmd string) {
 	args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(cmd, "/engine")))
 	if len(args) == 0 {
-		r.send(chatID, "Использование: /engine {yandex|gemini|gpt|deepseek} [model]")
+		r.send(chatID, "Использование: /engine {gemini|gpt}")
 		return
 	}
 	name := strings.ToLower(args[0])
-	var modelArg string
-	if len(args) > 1 {
-		modelArg = strings.TrimSpace(args[1])
-	}
-
-	// Некоторым движкам можно менять модель «на лету»
-	type modelSetter interface{ SetModel(string) }
-
 	switch name {
-	case "yandex":
-		// OCR-только; для подсказок всё равно будет выбран LLM (gemini/gpt) при нажатии кнопки
-		r.EngManager.Set(chatID, engines.Yandex)
-		r.send(chatID, "✅ Движок: yandex (OCR). Подсказки будут через выбранный LLM при необходимости.")
-
-	case "gemini":
-		eng := engines.Gemini
-		if eng == nil {
-			r.send(chatID, "❌ Gemini не настроен.")
-			return
-		}
-		// Опционально переключим модель, если движок это поддерживает
-		if modelArg != "" {
-			if ms, ok := any(eng).(modelSetter); ok {
-				ms.SetModel(modelArg)
-			}
-		}
-		r.EngManager.Set(chatID, eng)
-
-		r.send(chatID, "✅ Движок: gemini ("+eng.GetModel()+").")
-
+	case "gemini", "google":
+		setProvider(chatID, "gemini")
+		r.send(chatID, "✅ Провайдер LLM: gemini")
 	case "gpt", "openai":
-		eng := engines.OpenAI
-		if eng == nil {
-			r.send(chatID, "❌ OpenAI GPT не настроен.")
-			return
-		}
-		if modelArg != "" {
-			if ms, ok := any(eng).(modelSetter); ok {
-				ms.SetModel(modelArg)
-			}
-		}
-		r.EngManager.Set(chatID, eng)
-
-		r.send(chatID, "✅ Движок: gpt ("+eng.GetModel()+").")
-
-	case "deepseek":
-		r.EngManager.Set(chatID, engines.Deepseek)
-		r.send(chatID, "⚠️ DeepSeek не анализирует изображения. Для подсказок используйте /engine gemini или /engine gpt.")
-
+		setProvider(chatID, "gpt")
+		r.send(chatID, "✅ Провайдер LLM: gpt")
 	default:
-		r.send(chatID, "Неизвестный движок. Доступны: yandex | gemini | gpt | deepseek")
+		r.send(chatID, "Неизвестный провайдер. Доступны: gemini | gpt")
 	}
 }
 
@@ -226,3 +193,6 @@ func (r *Router) askParseConfirmation(chatID int64, pr ocr.ParseResult) {
 func (r *Router) PhotoAcceptedText() string {
 	return "Фото принято. Если задание на нескольких фото — просто пришлите их подряд, я склею страницы перед обработкой."
 }
+
+// CurrentProvider returns per-chat preferred LLM provider ("gemini"|"gpt").
+func (r *Router) CurrentProvider(chatID int64) string { return getProvider(chatID) }

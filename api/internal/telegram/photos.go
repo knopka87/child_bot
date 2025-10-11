@@ -17,7 +17,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func (r *Router) acceptPhoto(msg tgbotapi.Message, engines Engines) {
+func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	cid := msg.Chat.ID
 	ph := msg.Photo[len(msg.Photo)-1]
 	file, err := r.Bot.GetFile(tgbotapi.FileConfig{FileID: ph.FileID})
@@ -47,7 +47,7 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message, engines Engines) {
 	if b.timer != nil {
 		b.timer.Stop()
 	}
-	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, engines) })
+	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key) })
 	b.mu.Unlock()
 
 	if len(b.images) == 1 {
@@ -55,7 +55,7 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message, engines Engines) {
 	}
 }
 
-func (r *Router) processBatch(key string, engines Engines) {
+func (r *Router) processBatch(key string) {
 	ctx := context.Background()
 	bi, ok := batches.Load(key)
 	if !ok {
@@ -80,7 +80,7 @@ func (r *Router) processBatch(key string, engines Engines) {
 		return
 	}
 
-	r.runDetectThenParse(ctx, chatID, merged, mediaGroupID, engines)
+	r.runDetectThenParse(ctx, chatID, merged, mediaGroupID)
 }
 
 func combineAsOne(images [][]byte) ([]byte, error) {
