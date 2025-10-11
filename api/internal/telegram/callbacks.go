@@ -100,7 +100,8 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 			TerminologyLevel:  levelTerminology(level),
 			SubjectConfidence: hs.Detect.SubjectConfidence,
 		}
-		hrNew, err := r.LLM.Hint(context.Background(), in)
+		llmName := r.EngManager.Get(chatID)
+		hrNew, err := r.LLM.Hint(context.Background(), llmName, in)
 		if err != nil {
 			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %v", level, err))
 			return
@@ -109,7 +110,7 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		r.send(chatID, formatHint(level, hrNew))
 	}
 
-	// После того, как отправили подсказку текстом:
+	// После того как отправили подсказку текстом:
 	// Отправляем новую клавиатуру с тремя кнопками под НОВЫМ сообщением
 	reply := tgbotapi.NewMessage(chatID, "Выберите дальнейшее действие:")
 	reply.ReplyMarkup = makeActionsKeyboard()

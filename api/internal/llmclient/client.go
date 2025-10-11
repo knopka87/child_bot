@@ -31,10 +31,12 @@ func New(base string) *Client {
 // и возвращает структуру DetectResult, которую должен вернуть LLM-сервис.
 func (c *Client) Detect(ctx context.Context, llmName string, img []byte, mime string, gradeHint int) (ocr.DetectResult, error) {
 	in := detectRequest{
-		LLMName:   llmName,
-		ImageB64:  base64.StdEncoding.EncodeToString(img),
-		Mime:      mime,
-		GradeHint: gradeHint,
+		LLMName: llmName,
+		DetectInput: ocr.DetectInput{
+			ImageB64:  base64.StdEncoding.EncodeToString(img),
+			Mime:      mime,
+			GradeHint: gradeHint,
+		},
 	}
 	var out ocr.DetectResult
 	if err := c.post(ctx, "/v1/detect", in, &out); err != nil {
@@ -47,9 +49,11 @@ func (c *Client) Detect(ctx context.Context, llmName string, img []byte, mime st
 // image передаётся как base64, остальные параметры — внутри options.
 func (c *Client) Parse(ctx context.Context, llmName string, image []byte, options ocr.ParseOptions) (ocr.ParseResult, error) {
 	in := parseRequest{
-		LLMName:  llmName,
-		ImageB64: base64.StdEncoding.EncodeToString(image),
-		Options:  options,
+		LLMName: llmName,
+		ParseInput: ocr.ParseInput{
+			ImageB64: base64.StdEncoding.EncodeToString(image),
+			Options:  options,
+		},
 	}
 	var out ocr.ParseResult
 	if err := c.post(ctx, "/v1/parse", in, &out); err != nil {
@@ -59,7 +63,11 @@ func (c *Client) Parse(ctx context.Context, llmName string, image []byte, option
 }
 
 // Hint отправляет СЫРЫЙ ocr.HintInput и ожидает ocr.HintResult.
-func (c *Client) Hint(ctx context.Context, in ocr.HintInput) (ocr.HintResult, error) {
+func (c *Client) Hint(ctx context.Context, llmName string, hin ocr.HintInput) (ocr.HintResult, error) {
+	in := hintRequest{
+		LLMName:   llmName,
+		HintInput: hin,
+	}
 	var out ocr.HintResult
 	if err := c.post(ctx, "/v1/hint", in, &out); err != nil {
 		return ocr.HintResult{}, err
@@ -67,19 +75,38 @@ func (c *Client) Hint(ctx context.Context, in ocr.HintInput) (ocr.HintResult, er
 	return out, nil
 }
 
+func (c *Client) Normalize(ctx context.Context, llmName string, nin ocr.NormalizeInput) (ocr.NormalizeResult, error) {
+	in := normalizeRequest{
+		LLMName:        llmName,
+		NormalizeInput: nin,
+	}
+	var out ocr.NormalizeResult
+	if err := c.post(ctx, "/v1/normalize", in, &out); err != nil {
+		return ocr.NormalizeResult{}, err
+	}
+	return out, nil
+}
+
 // --- внутренности ------------------------------------------------------------
 
 type detectRequest struct {
-	LLMName   string `json:"llm_name"`
-	ImageB64  string `json:"image_b64"`
-	Mime      string `json:"mime,omitempty"`
-	GradeHint int    `json:"grade_hint,omitempty"`
+	LLMName string `json:"llm_name"`
+	ocr.DetectInput
 }
 
 type parseRequest struct {
-	LLMName  string           `json:"llm_name"`
-	ImageB64 string           `json:"image_b64"`
-	Options  ocr.ParseOptions `json:"options"`
+	LLMName string `json:"llm_name"`
+	ocr.ParseInput
+}
+
+type hintRequest struct {
+	LLMName string `json:"llm_name"`
+	ocr.HintInput
+}
+
+type normalizeRequest struct {
+	LLMName string `json:"llm_name"`
+	ocr.NormalizeInput
 }
 
 func (c *Client) post(ctx context.Context, path string, body interface{}, out interface{}) error {

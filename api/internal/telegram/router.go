@@ -3,9 +3,10 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -13,21 +14,6 @@ import (
 	"child-bot/api/internal/ocr"
 	"child-bot/api/internal/store"
 )
-
-// per-chat предпочтение провайдера LLM: "gemini" или "gpt"
-var providerByChat sync.Map
-
-func getProvider(cid int64) string {
-	if v, ok := providerByChat.Load(cid); ok {
-		if s, ok2 := v.(string); ok2 && s != "" {
-			return s
-		}
-	}
-	return "gemini" // значение по умолчанию
-}
-func setProvider(cid int64, p string) {
-	providerByChat.Store(cid, strings.ToLower(strings.TrimSpace(p)))
-}
 
 type Router struct {
 	Bot        *tgbotapi.BotAPI
@@ -46,7 +32,7 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 		r.send(cid, "✅ OK")
 	case "engine":
 		args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/engine")))
-		cur := getProvider(cid)
+		cur := r.EngManager.Get(cid)
 		if len(args) == 0 {
 			r.send(cid, "Текущий LLM-провайдер: "+cur+
 				"\nИспользование:\n/engine gemini\n/engine gpt")
@@ -79,12 +65,13 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update) {
 		return
 	}
 
-	// 4) «Жёсткий» режим: если ждём фото (решение/новая задача) и пришёл произвольный ТЕКСТ — мягко игнорируем.
-	// Команды разрешаем, чтобы можно было переключать движки/проверять health.
+	// 4) «Жёсткий» режим ввода: если ждём решение — принимаем и текст, и фото;
+	//    если ждём новую задачу — просим фото задачи; в остальных случаях — как раньше.
 	if upd.Message.Text != "" && !upd.Message.IsCommand() {
 		switch getMode(cid) {
 		case "await_solution":
-			r.send(cid, "Я жду фото с вашим решением. Пожалуйста, пришлите фото.")
+			// Нормализуем текстовый ответ ученика
+			r.normalizeText(context.Background(), cid, upd.Message.Text)
 			return
 		case "await_new_task":
 			r.send(cid, "Я жду фото новой задачи. Пожалуйста, пришлите фото.")
@@ -121,9 +108,16 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update) {
 		return
 	}
 
-	// 7) Фото/альбом — это снимает «режим ожидания фото»
+	// 7) Фото/альбом
 	if len(upd.Message.Photo) > 0 {
-		clearMode(cid) // получили фото — разблокируем пайплайн
+		if getMode(cid) == "await_solution" {
+			// Фото с ответом ученика → нормализация
+			r.normalizePhoto(context.Background(), *upd.Message)
+			clearMode(cid)
+			return
+		}
+		// Иначе — это фото задачи/страницы
+		clearMode(cid)
 		r.acceptPhoto(*upd.Message)
 		return
 	}
@@ -158,10 +152,10 @@ func (r *Router) handleEngineCommand(chatID int64, cmd string) {
 	name := strings.ToLower(args[0])
 	switch name {
 	case "gemini", "google":
-		setProvider(chatID, "gemini")
+		r.EngManager.Set(chatID, "gemini")
 		r.send(chatID, "✅ Провайдер LLM: gemini")
 	case "gpt", "openai":
-		setProvider(chatID, "gpt")
+		r.EngManager.Set(chatID, "gpt")
 		r.send(chatID, "✅ Провайдер LLM: gpt")
 	default:
 		r.send(chatID, "Неизвестный провайдер. Доступны: gemini | gpt")
@@ -194,5 +188,108 @@ func (r *Router) PhotoAcceptedText() string {
 	return "Фото принято. Если задание на нескольких фото — просто пришлите их подряд, я склею страницы перед обработкой."
 }
 
-// CurrentProvider returns per-chat preferred LLM provider ("gemini"|"gpt").
-func (r *Router) CurrentProvider(chatID int64) string { return getProvider(chatID) }
+// normalizeText — отправляет текст ученика на нормализацию в LLM-прокси
+func (r *Router) normalizeText(ctx context.Context, chatID int64, text string) {
+	llmName := r.EngManager.Get(chatID)
+	shape := r.suggestSolutionShape(chatID)
+	in := ocr.NormalizeInput{
+		SolutionShape: shape,
+		Provider:      llmName,
+		Answer:        ocr.NormalizeAnswer{Source: "text", Text: strings.TrimSpace(text)},
+	}
+	res, err := r.LLM.Normalize(ctx, llmName, in)
+	if err != nil {
+		r.send(chatID, fmt.Sprintf("Не удалось нормализовать ответ: %v", err))
+		return
+	}
+	r.sendNormalizePreview(chatID, res)
+	clearMode(chatID)
+}
+
+// normalizePhoto — скачивает фото из Telegram и отправляет на нормализацию
+func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
+	if len(msg.Photo) == 0 {
+		return
+	}
+	llmName := r.EngManager.Get(msg.Chat.ID)
+	ph := msg.Photo[len(msg.Photo)-1] // самое большое
+	data, mime, err := r.downloadFileBytes(ph.FileID)
+	if err != nil {
+		r.send(msg.Chat.ID, fmt.Sprintf("Не удалось получить фото: %v", err))
+		return
+	}
+	shape := r.suggestSolutionShape(msg.Chat.ID)
+	in := ocr.NormalizeInput{
+		SolutionShape: shape,
+		Provider:      llmName,
+		Answer:        ocr.NormalizeAnswer{Source: "photo", PhotoB64: string(data), Mime: mime},
+	}
+	res, err := r.LLM.Normalize(ctx, llmName, in)
+	if err != nil {
+		r.send(msg.Chat.ID, fmt.Sprintf("Не удалось нормализовать ответ (фото): %v", err))
+		return
+	}
+	r.sendNormalizePreview(msg.Chat.ID, res)
+}
+
+// suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
+func (r *Router) suggestSolutionShape(chatID int64) string {
+	// TODO: можно взять из последнего ParseResult из БД (ParseRepo) subject/task_type → shape
+	return "number"
+}
+
+// sendNormalizePreview — короткий текст для пользователя по NormalizeResult
+func (r *Router) sendNormalizePreview(chatID int64, nr ocr.NormalizeResult) {
+	shape := strings.ToLower(strings.TrimSpace(nr.Shape))
+	val := ""
+	switch v := nr.Value.(type) {
+	case string:
+		val = v
+	case float64:
+		val = strconv.FormatFloat(v, 'f', -1, 64)
+	case int:
+		val = strconv.Itoa(v)
+	case []string:
+		val = strings.Join(v, "; ")
+	default:
+		val = "(не удалось отобразить значение)"
+	}
+	b := &strings.Builder{}
+	b.WriteString("✅ Принял ответ. Форма: ")
+	b.WriteString(shape)
+	if val != "" {
+		b.WriteString("\nЗначение: ")
+		b.WriteString(val)
+	}
+	if nr.UncertainReasons != nil && len(nr.UncertainReasons) > 0 {
+		b.WriteString("\nПредупреждения: ")
+		b.WriteString(strings.Join(nr.UncertainReasons, ", "))
+	}
+	if nr.NeedsClarification && nr.NeedsUserActionMessage != "" {
+		b.WriteString("\nНужно уточнение: ")
+		b.WriteString(nr.NeedsUserActionMessage)
+	}
+	r.send(chatID, b.String())
+}
+
+// downloadFileBytes — скачивает файл Telegram по fileID и возвращает bytes и mime
+func (r *Router) downloadFileBytes(fileID string) ([]byte, string, error) {
+	url, err := r.Bot.GetFileDirectURL(fileID)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	mime := resp.Header.Get("Content-Type")
+	if mime == "" {
+		mime = "image/jpeg"
+	}
+	return b, mime, nil
+}
