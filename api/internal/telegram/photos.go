@@ -47,7 +47,11 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	if b.timer != nil {
 		b.timer.Stop()
 	}
-	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, msg.Contact.UserID) })
+	var userID int64
+	if msg.Contact != nil {
+		userID = msg.Contact.UserID
+	}
+	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, userID) })
 	b.mu.Unlock()
 
 	if len(b.images) == 1 {

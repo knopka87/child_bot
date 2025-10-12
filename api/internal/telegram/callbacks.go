@@ -30,7 +30,13 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery) {
 		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.")
 	case "analogue_solution":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		r.HandleAnalogueCallback(cid, cb.Message.Contact.UserID)
+		var userID int64
+		if cb.Message != nil && cb.Message.Contact != nil {
+			userID = cb.Message.Contact.UserID
+		} else if cb.From != nil {
+			userID = cb.From.ID
+		}
+		r.HandleAnalogueCallback(cid, userID)
 		r.send(cid, "Подбираю похожую задачу. Ожидайте.")
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)

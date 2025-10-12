@@ -76,7 +76,11 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update) {
 		switch getMode(cid) {
 		case "await_solution":
 			// Нормализуем текстовый ответ ученика
-			r.normalizeText(context.Background(), cid, upd.Message.Contact.UserID, upd.Message.Text)
+			var userID int64
+			if upd.Message != nil && upd.Message.Contact != nil {
+				userID = upd.Message.Contact.UserID
+			}
+			r.normalizeText(context.Background(), cid, userID, upd.Message.Text)
 			return
 		case "await_new_task":
 			r.send(cid, "Я жду фото новой задачи. Пожалуйста, пришлите фото.")
@@ -268,6 +272,10 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			Mime:     mime,
 		},
 	}
+	var userID int64
+	if msg.Contact != nil {
+		userID = msg.Contact.UserID
+	}
 	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
 	if err != nil {
@@ -279,7 +287,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 				Error:      err.Error(),
 				DurationMS: time.Since(start).Milliseconds(),
 				ChatID:     &msg.Chat.ID,
-				UserIDAnon: &msg.Contact.UserID,
+				UserIDAnon: &userID,
 				Details: map[string]any{
 					"source": "photo",
 					"mime":   mime,
@@ -298,7 +306,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			OK:         true,
 			DurationMS: time.Since(start).Milliseconds(),
 			ChatID:     &msg.Chat.ID,
-			UserIDAnon: &msg.Contact.UserID,
+			UserIDAnon: &userID,
 			Details: map[string]any{
 				"source":          "photo",
 				"mime":            mime,
@@ -310,7 +318,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 		})
 	}
 	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
-	r.maybeCheckSolution(ctx, msg.Chat.ID, msg.Contact.UserID, res)
+	r.maybeCheckSolution(ctx, msg.Chat.ID, userID, res)
 }
 
 // suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
