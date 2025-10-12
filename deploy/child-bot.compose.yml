@@ -36,6 +36,7 @@ services:
       YC_OAUTH_TOKEN: ${YC_OAUTH_TOKEN}
       YC_FOLDER_ID: ${YC_FOLDER_ID}
       LLM_SERVER_URL: ${LLM_SERVER_URL}
+      DEFAULT_LLM: ${DEFAULT_LLM:-gemini}
     ports:
       - "8080:8080"
     networks: [appnet]
