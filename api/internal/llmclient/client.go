@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -156,15 +157,42 @@ func (c *Client) post(ctx context.Context, path string, body interface{}, out in
 	defer res.Body.Close()
 
 	if res.StatusCode >= 400 {
-		// Попробуем вытащить текст ошибки
-		var e struct {
-			Error string `json:"error"`
+		// Пробуем аккуратно извлечь текст ошибки: JSON (несколько форматов) или простой текст
+		b, _ := io.ReadAll(res.Body)
+
+		// 1) Попытка распарсить как простой {"error": "..."} или {"message": "..."}
+		var e1 struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
 		}
-		_ = json.NewDecoder(res.Body).Decode(&e)
-		if strings.TrimSpace(e.Error) == "" {
-			return fmt.Errorf("llm server http %d", res.StatusCode)
+		if err := json.Unmarshal(b, &e1); err == nil {
+			if msg := strings.TrimSpace(e1.Error); msg != "" {
+				return errors.New(msg)
+			}
+			if msg := strings.TrimSpace(e1.Message); msg != "" {
+				return errors.New(msg)
+			}
 		}
-		return errors.New(e.Error)
+
+		// 2) Попытка nested-формата: {"error": {"message": "..."}}
+		var e2 struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(b, &e2); err == nil {
+			if msg := strings.TrimSpace(e2.Error.Message); msg != "" {
+				return errors.New(msg)
+			}
+		}
+
+		// 3) Фоллбэк: использовать тело как простой текст
+		if msg := strings.TrimSpace(string(b)); msg != "" {
+			return errors.New(msg)
+		}
+
+		// 4) Совсем ничего не удалось вытащить — вернуть код HTTP
+		return fmt.Errorf("llm server http %d", res.StatusCode)
 	}
 	return json.NewDecoder(res.Body).Decode(out)
 }
