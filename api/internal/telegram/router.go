@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
@@ -24,13 +25,14 @@ type Router struct {
 	ParseRepo  *store.ParseRepo
 	HintRepo   *store.HintRepo
 	LLM        *llmclient.Client
+	Metrics    *store.MetricsRepo
 }
 
 func (r *Router) HandleCommand(upd tgbotapi.Update) {
 	cid := upd.Message.Chat.ID
 	switch upd.Message.Command() {
 	case "start":
-		r.send(cid, "Пришли фото задачи — верну распознанный текст и подскажу, с чего начать.\nКоманды: /health, /engine (gemini|gpt)")
+		r.send(cid, "Пришли фото задачи — верну распознанный текст и подскажу, с чего начать.\nКоманды: /health")
 	case "health":
 		r.send(cid, "✅ OK")
 	case "engine":
@@ -74,7 +76,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update) {
 		switch getMode(cid) {
 		case "await_solution":
 			// Нормализуем текстовый ответ ученика
-			r.normalizeText(context.Background(), cid, upd.Message.Text)
+			r.normalizeText(context.Background(), cid, upd.Message.Contact.UserID, upd.Message.Text)
 			return
 		case "await_new_task":
 			r.send(cid, "Я жду фото новой задачи. Пожалуйста, пришлите фото.")
@@ -192,22 +194,55 @@ func (r *Router) PhotoAcceptedText() string {
 }
 
 // normalizeText — отправляет текст ученика на нормализацию в LLM-прокси
-func (r *Router) normalizeText(ctx context.Context, chatID int64, text string) {
+func (r *Router) normalizeText(ctx context.Context, chatID, userID int64, text string) {
 	llmName := r.EngManager.Get(chatID)
 	shape := r.suggestSolutionShape(chatID)
 	in := ocr.NormalizeInput{
+		UserIDAnon:    fmt.Sprint(userID),
 		SolutionShape: shape,
 		Provider:      llmName,
 		Answer:        ocr.NormalizeAnswer{Source: "text", Text: strings.TrimSpace(text)},
 	}
+	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
 	if err != nil {
+		if r.Metrics != nil {
+			_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+				Stage:      "normalize",
+				Provider:   llmName,
+				OK:         false,
+				Error:      err.Error(),
+				DurationMS: time.Since(start).Milliseconds(),
+				ChatID:     &chatID,
+				UserIDAnon: &userID,
+				Details: map[string]any{
+					"source":      "text",
+					"input_chars": len(text),
+				},
+			})
+		}
 		r.send(chatID, fmt.Sprintf("Не удалось нормализовать ответ: %v", err))
 		return
 	}
 	r.sendNormalizePreview(chatID, res)
+	if r.Metrics != nil {
+		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+			Stage:      "normalize",
+			Provider:   llmName,
+			OK:         true,
+			DurationMS: time.Since(start).Milliseconds(),
+			ChatID:     &chatID,
+			UserIDAnon: &userID,
+			Details: map[string]any{
+				"source":          "text",
+				"shape":           res.Shape,
+				"needs_clarify":   res.NeedsClarification,
+				"uncertain_count": len(res.UncertainReasons),
+			},
+		})
+	}
 	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
-	r.maybeCheckSolution(ctx, chatID, res)
+	r.maybeCheckSolution(ctx, chatID, userID, res)
 	clearMode(chatID)
 }
 
@@ -233,14 +268,49 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			Mime:     mime,
 		},
 	}
+	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
 	if err != nil {
+		if r.Metrics != nil {
+			_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+				Stage:      "normalize",
+				Provider:   llmName,
+				OK:         false,
+				Error:      err.Error(),
+				DurationMS: time.Since(start).Milliseconds(),
+				ChatID:     &msg.Chat.ID,
+				UserIDAnon: &msg.Contact.UserID,
+				Details: map[string]any{
+					"source": "photo",
+					"mime":   mime,
+					"bytes":  len(data),
+				},
+			})
+		}
 		r.send(msg.Chat.ID, fmt.Sprintf("Не удалось нормализовать ответ (фото): %v", err))
 		return
 	}
 	r.sendNormalizePreview(msg.Chat.ID, res)
+	if r.Metrics != nil {
+		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+			Stage:      "normalize",
+			Provider:   llmName,
+			OK:         true,
+			DurationMS: time.Since(start).Milliseconds(),
+			ChatID:     &msg.Chat.ID,
+			UserIDAnon: &msg.Contact.UserID,
+			Details: map[string]any{
+				"source":          "photo",
+				"mime":            mime,
+				"bytes":           len(data),
+				"shape":           res.Shape,
+				"needs_clarify":   res.NeedsClarification,
+				"uncertain_count": len(res.UncertainReasons),
+			},
+		})
+	}
 	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
-	r.maybeCheckSolution(ctx, msg.Chat.ID, res)
+	r.maybeCheckSolution(ctx, msg.Chat.ID, msg.Contact.UserID, res)
 }
 
 // suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
@@ -266,8 +336,11 @@ func (r *Router) sendNormalizePreview(chatID int64, nr ocr.NormalizeResult) {
 		val = "(не удалось отобразить значение)"
 	}
 	b := &strings.Builder{}
-	b.WriteString("✅ Принял ответ. Форма: ")
-	b.WriteString(shape)
+	b.WriteString("✅ Принял ответ.")
+	if shape != "" {
+		b.WriteString("\nФорма: ")
+		b.WriteString(shape)
+	}
 	if val != "" {
 		b.WriteString("\nЗначение: ")
 		b.WriteString(val)
@@ -284,7 +357,7 @@ func (r *Router) sendNormalizePreview(chatID int64, nr ocr.NormalizeResult) {
 }
 
 // maybeCheckSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
-func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, nr ocr.NormalizeResult) {
+func (r *Router) maybeCheckSolution(ctx context.Context, chatID, userID int64, nr ocr.NormalizeResult) {
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "math"
 	grade := 0
@@ -346,12 +419,44 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, nr ocr.No
 		Student:    nr,
 		Expected:   exp,
 	}
+	start := time.Now()
 	res, err := r.LLM.CheckSolution(ctx, llmName, in)
 	if err != nil {
+		if r.Metrics != nil {
+			_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+				Stage:      "check",
+				Provider:   llmName,
+				OK:         false,
+				Error:      err.Error(),
+				DurationMS: time.Since(start).Milliseconds(),
+				ChatID:     &chatID,
+				UserIDAnon: &userID,
+				Details: map[string]any{
+					"subject": subj,
+					"grade":   grade,
+				},
+			})
+		}
 		r.send(chatID, fmt.Sprintf("Не удалось проверить решение: %v", err))
+		r.offerAnalogueButton(chatID)
 		return
 	}
 	r.sendCheckResult(chatID, res)
+	if r.Metrics != nil {
+		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+			Stage:      "check",
+			Provider:   llmName,
+			OK:         true,
+			DurationMS: time.Since(start).Milliseconds(),
+			ChatID:     &chatID,
+			UserIDAnon: &userID,
+			Details: map[string]any{
+				"subject": subj,
+				"grade":   grade,
+				"verdict": res.Verdict,
+			},
+		})
+	}
 }
 
 // getExpectedForChat — извлекает ожидаемое решение из вашей БД для текущей задачи чата
@@ -471,25 +576,50 @@ func (r *Router) offerAnalogueButton(chatID int64) {
 
 // HandleAnalogueCallback — публичный помощник для существующего handleCallback
 // Вызовите его из вашего обработчика, когда callback.Data == "ANALOGUE".
-func (r *Router) HandleAnalogueCallback(chatID int64) {
+func (r *Router) HandleAnalogueCallback(chatID, userID int64) {
 	ctx := context.Background()
-	if err := r.runAnalogue(ctx, chatID); err != nil {
+	if err := r.runAnalogue(ctx, chatID, userID); err != nil {
 		r.send(chatID, "Не удалось подготовить аналогичное задание: "+err.Error())
 	}
 }
 
 // runAnalogue — собирает вход из последнего подтверждённого парсинга и вызывает LLM-прокси
-func (r *Router) runAnalogue(ctx context.Context, chatID int64) error {
+func (r *Router) runAnalogue(ctx context.Context, chatID, userID int64) error {
 	in, err := r.buildAnalogueInput(ctx, chatID)
 	if err != nil {
 		return err
 	}
 	llmName := r.EngManager.Get(chatID)
+	start := time.Now()
 	ar, err := r.LLM.AnalogueSolution(ctx, llmName, in)
 	if err != nil {
+		if r.Metrics != nil {
+			_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+				Stage:      "analogue",
+				Provider:   llmName,
+				OK:         false,
+				Error:      err.Error(),
+				DurationMS: time.Since(start).Milliseconds(),
+				ChatID:     &chatID,
+				UserIDAnon: &userID,
+			})
+		}
 		return err
 	}
 	r.sendAnalogueResult(chatID, ar)
+	if r.Metrics != nil {
+		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+			Stage:      "analogue",
+			Provider:   llmName,
+			OK:         true,
+			DurationMS: time.Since(start).Milliseconds(),
+			ChatID:     &chatID,
+			UserIDAnon: &userID,
+			Details: map[string]any{
+				"has_minichecks": len(ar.MiniChecks) > 0,
+			},
+		})
+	}
 	return nil
 }
 

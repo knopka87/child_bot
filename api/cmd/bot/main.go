@@ -62,6 +62,7 @@ func main() {
 
 	parseRepo := store.NewParseRepo(db)
 	hintRepo := store.NewHintRepo(db)
+	metricsRepo := store.NewMetricsRepo(db)
 
 	// --- Telegram bot ---
 	bot, err := tgbotapi.NewBotAPI(cfg.TelegramBotToken)
@@ -72,7 +73,7 @@ func main() {
 
 	// Engines
 
-	// Менеджер движков (дефолт — Gemini; тип должен удовлетворять объединённому интерфейсу EngineFull/ocr.Engine)
+	// Менеджер движков
 	manager := ocr.NewManager(cfg.DefaultLLM)
 	llm := llmclient.New(cfg.LLMServerURL)
 
@@ -83,6 +84,7 @@ func main() {
 		// репозитории для кэша парсинга/подсказок
 		ParseRepo: parseRepo,
 		HintRepo:  hintRepo,
+		Metrics:   metricsRepo,
 	}
 
 	// --- HTTP mux (DefaultServeMux) ---

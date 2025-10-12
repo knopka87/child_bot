@@ -30,7 +30,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery) {
 		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.")
 	case "analogue_solution":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		r.HandleAnalogueCallback(cid)
+		r.HandleAnalogueCallback(cid, cb.Message.Contact.UserID)
 		r.send(cid, "Подбираю похожую задачу. Ожидайте.")
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
@@ -117,7 +117,7 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 	// После того как отправили подсказку текстом:
 	// Отправляем новую клавиатуру с тремя кнопками под НОВЫМ сообщением
 	reply := tgbotapi.NewMessage(chatID, "Выберите дальнейшее действие:")
-	reply.ReplyMarkup = makeActionsKeyboard()
+	reply.ReplyMarkup = makeActionsKeyboard(level)
 	_, _ = r.Bot.Send(reply)
 
 	hs.NextLevel++
