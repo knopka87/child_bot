@@ -35,6 +35,7 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       YC_OAUTH_TOKEN: ${YC_OAUTH_TOKEN}
       YC_FOLDER_ID: ${YC_FOLDER_ID}
+      LLM_SERVER_URL: ${LLM_SERVER_URL}
     ports:
       - "8080:8080"
     networks: [appnet]
