@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"child-bot/api/internal/ocr"
@@ -29,6 +30,18 @@ type ParsedRow struct {
 	AcceptReason       string
 	ConfirmationNeeded bool
 	Confidence         float64
+
+	// Flattened поля из Parse (для удобства в handlers/router.go)
+	RawText        string
+	Question       string
+	ShortEssence   string
+	TaskID         string
+	Grade          int
+	Subject        string
+	TaskType       string
+	MethodTag      string
+	DifficultyHint string
+	Expected       ocr.ExpectedSolution
 }
 
 // FindByHash достаёт самую свежую запись по ключу (image_hash + engine).
@@ -71,7 +84,7 @@ limit 1`
 	}
 	var pr ocr.ParseResult
 	if err := json.Unmarshal(js, &pr); err != nil {
-		// если JSON поломан — считаем, что не найдено (можно логировать отдельным уровнем)
+		// если JSON поломан — считаем, что не найдено
 		return nil, ErrNotFound
 	}
 	return &ParsedRow{
@@ -86,6 +99,17 @@ limit 1`
 		AcceptReason:       acceptReason,
 		ConfirmationNeeded: confirmationNeeded,
 		Confidence:         confidence,
+
+		RawText:        pr.RawText,
+		Question:       pr.Question,
+		ShortEssence:   "", // pr.ShortEssence,
+		TaskID:         "", // pr.TaskID,
+		Grade:          pr.Grade,
+		Subject:        pr.Subject,
+		TaskType:       pr.TaskType,
+		MethodTag:      "", // pr.MethodTag,
+		DifficultyHint: "", // pr.DifficultyHint,
+		// Expected:       pr.Expected,
 	}, nil
 }
 
@@ -185,4 +209,86 @@ func (r *ParseRepo) PurgeOlderThan(ctx context.Context, olderThan time.Duration)
 	}
 	aff, _ := res.RowsAffected()
 	return aff, nil
+}
+
+// FindLastConfirmed возвращает последнюю ПРИНЯТУЮ (accepted=true) запись по chat_id.
+// Удобно для шагов hint/check/analogue, где нужна подтверждённая формулировка.
+func (r *ParseRepo) FindLastConfirmed(ctx context.Context, chatID int64) (*ParsedRow, bool) {
+	const q = `
+select id, created_at,
+       coalesce(chat_id,0) as chat_id,
+       coalesce(media_group_id,'') as media_group_id,
+       coalesce(image_hash,'') as image_hash,
+       coalesce(engine,'') as engine,
+       coalesce(raw_text,'') as raw_text,
+       coalesce(question,'') as question,
+       result_json,
+       accepted,
+       coalesce(accept_reason,'') as accept_reason,
+       confirmation_needed,
+       coalesce(confidence,0) as confidence
+from parsed_tasks
+where chat_id = $1 and accepted = true
+order by created_at desc
+limit 1`
+	row := r.DB.QueryRowContext(ctx, q, chatID)
+
+	var (
+		id           int64
+		ts           time.Time
+		cid          int64
+		mgid         string
+		imgHash      string
+		engine       string
+		rawTextField string
+		questionFld  string
+		jsonBlob     []byte
+		accepted     bool
+		reason       string
+		needConfirm  bool
+		conf         float64
+	)
+	if err := row.Scan(&id, &ts, &cid, &mgid, &imgHash, &engine,
+		&rawTextField, &questionFld, &jsonBlob, &accepted, &reason, &needConfirm, &conf); err != nil {
+		return nil, false
+	}
+
+	var pr ocr.ParseResult
+	if err := json.Unmarshal(jsonBlob, &pr); err != nil {
+		return nil, false
+	}
+
+	out := &ParsedRow{
+		ID:                 id,
+		CreatedAt:          ts,
+		ChatID:             cid,
+		MediaGroupID:       mgid,
+		ImageHash:          imgHash,
+		Engine:             engine,
+		Parse:              pr,
+		Accepted:           accepted,
+		AcceptReason:       reason,
+		ConfirmationNeeded: needConfirm,
+		Confidence:         conf,
+
+		RawText:  firstNonEmpty(rawTextField, pr.RawText),
+		Question: firstNonEmpty(questionFld, pr.Question),
+		// ShortEssence:   pr.ShortEssence,
+		// TaskID:         pr.TaskID,
+		Grade:    pr.Grade,
+		Subject:  pr.Subject,
+		TaskType: pr.TaskType,
+		// MethodTag:      pr.MethodTag,
+		// DifficultyHint: pr.DifficultyHint,
+		// Expected:       pr.Expected,
+	}
+	return out, true
+}
+
+// firstNonEmpty returns a if not empty, otherwise b
+func firstNonEmpty(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
 }
