@@ -28,6 +28,10 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery) {
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		setMode(cid, "await_solution")
 		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.")
+	case "analogue_solution":
+		_ = hideKeyboard(cid, cb.Message.MessageID, r)
+		r.HandleAnalogueCallback(cid)
+		r.send(cid, "Подбираю похожую задачу. Ожидайте.")
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		// Сброс контекстов

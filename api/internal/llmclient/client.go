@@ -87,6 +87,32 @@ func (c *Client) Normalize(ctx context.Context, llmName string, nin ocr.Normaliz
 	return out, nil
 }
 
+func (c *Client) CheckSolution(ctx context.Context, llmName string, cin ocr.CheckSolutionInput) (ocr.CheckSolutionResult, error) {
+	in := checkSolutionRequest{
+		LLMName:            llmName,
+		CheckSolutionInput: cin,
+	}
+	var out ocr.CheckSolutionResult
+	if err := c.post(ctx, "/v1/check_solution", in, &out); err != nil {
+		return ocr.CheckSolutionResult{}, err
+	}
+
+	return out, nil
+}
+
+func (c *Client) AnalogueSolution(ctx context.Context, llmName string, ain ocr.AnalogueSolutionInput) (ocr.AnalogueSolutionResult, error) {
+	in := analogueSolutionRequest{
+		LLMName:               llmName,
+		AnalogueSolutionInput: ain,
+	}
+	var out ocr.AnalogueSolutionResult
+	if err := c.post(ctx, "/v1/analogue_solution", in, &out); err != nil {
+		return ocr.AnalogueSolutionResult{}, err
+	}
+
+	return out, nil
+}
+
 // --- внутренности ------------------------------------------------------------
 
 type detectRequest struct {
@@ -107,6 +133,16 @@ type hintRequest struct {
 type normalizeRequest struct {
 	LLMName string `json:"llm_name"`
 	ocr.NormalizeInput
+}
+
+type checkSolutionRequest struct {
+	LLMName string `json:"llm_name"`
+	ocr.CheckSolutionInput
+}
+
+type analogueSolutionRequest struct {
+	LLMName string `json:"llm_name"`
+	ocr.AnalogueSolutionInput
 }
 
 func (c *Client) post(ctx context.Context, path string, body interface{}, out interface{}) error {

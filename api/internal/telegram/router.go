@@ -2,9 +2,12 @@ package telegram
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -203,6 +206,8 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, text string) {
 		return
 	}
 	r.sendNormalizePreview(chatID, res)
+	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
+	r.maybeCheckSolution(ctx, chatID, res)
 	clearMode(chatID)
 }
 
@@ -222,7 +227,11 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 	in := ocr.NormalizeInput{
 		SolutionShape: shape,
 		Provider:      llmName,
-		Answer:        ocr.NormalizeAnswer{Source: "photo", PhotoB64: string(data), Mime: mime},
+		Answer: ocr.NormalizeAnswer{
+			Source:   "photo",
+			PhotoB64: base64.StdEncoding.EncodeToString(data),
+			Mime:     mime,
+		},
 	}
 	res, err := r.LLM.Normalize(ctx, llmName, in)
 	if err != nil {
@@ -230,6 +239,8 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 		return
 	}
 	r.sendNormalizePreview(msg.Chat.ID, res)
+	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
+	r.maybeCheckSolution(ctx, msg.Chat.ID, res)
 }
 
 // suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
@@ -272,6 +283,154 @@ func (r *Router) sendNormalizePreview(chatID int64, nr ocr.NormalizeResult) {
 	r.send(chatID, b.String())
 }
 
+// maybeCheckSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
+func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, nr ocr.NormalizeResult) {
+	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
+	subj := "math"
+	grade := 0
+	if r.ParseRepo != nil {
+		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+			subj = strings.TrimSpace(pr.Subject)
+			grade = pr.Grade
+		}
+	}
+
+	// 1) Пытаемся взять ожидаемое решение из БД
+	exp, ok := r.getExpectedForChat(ctx, chatID)
+	if !ok {
+		// 2) Фолбэк: строим «policy-only» ожидание по данным нормализации ученика
+		shape := strings.TrimSpace(nr.Shape)
+		if shape == "" {
+			shape = strings.TrimSpace(nr.ShapeDetected)
+		}
+		if shape == "" {
+			shape = "number"
+		}
+
+		var units *ocr.UnitsExpectedSpec
+		if nr.Units != nil {
+			policy := "optional"
+			if nr.Units.Kept {
+				policy = "required"
+			}
+			primary := ""
+			if nr.Units.Canonical != nil {
+				primary = strings.TrimSpace(*nr.Units.Canonical)
+			}
+			alts := []string{}
+			if nr.Units.Detected != nil {
+				det := strings.TrimSpace(*nr.Units.Detected)
+				if det != "" && det != primary {
+					alts = append(alts, det)
+				}
+			}
+			units = &ocr.UnitsExpectedSpec{
+				Policy:          policy,  // требуем/не требуем единицы
+				ExpectedPrimary: primary, // если нормализация вывела канон. единицу
+				Alternatives:    alts,    // допустимые альтернативы
+			}
+		}
+
+		exp = ocr.ExpectedSolution{
+			Shape: shape,
+			Units: units,
+			// Number/String/List/Steps — не задаём без эталона, чтобы не «подгонять» под ответ
+		}
+	}
+
+	llmName := r.EngManager.Get(chatID)
+	in := ocr.CheckSolutionInput{
+		UserIDAnon: fmt.Sprint(chatID),
+		Subject:    subj,
+		Grade:      grade,
+		Student:    nr,
+		Expected:   exp,
+	}
+	res, err := r.LLM.CheckSolution(ctx, llmName, in)
+	if err != nil {
+		r.send(chatID, fmt.Sprintf("Не удалось проверить решение: %v", err))
+		return
+	}
+	r.sendCheckResult(chatID, res)
+}
+
+// getExpectedForChat — извлекает ожидаемое решение из вашей БД для текущей задачи чата
+func (r *Router) getExpectedForChat(ctx context.Context, chatID int64) (ocr.ExpectedSolution, bool) {
+	// if r.ParseRepo != nil {
+	// 	if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+	// 		return pr.Expected, true
+	// 	}
+	// }
+	var exp ocr.ExpectedSolution
+	return exp, false
+}
+
+// sendCheckResult — вывод краткого результата проверки
+func (r *Router) sendCheckResult(chatID int64, cr ocr.CheckSolutionResult) {
+	var b strings.Builder
+	switch cr.Verdict {
+	case "correct":
+		b.WriteString("✅ Задача решена верно\n")
+	case "incorrect":
+		b.WriteString("⚠️ Похоже, есть ошибка\n")
+	case "uncertain":
+		b.WriteString("🤔 Я не уверен в оценке\n")
+	default:
+		b.WriteString("Результат проверки получен\n")
+	}
+	if s := strings.TrimSpace(cr.ShortHint); s != "" {
+		b.WriteString("Подсказка: ")
+		b.WriteString(s)
+		b.WriteString("\n")
+	}
+	// Доп. диагностическая сводка без раскрытия ответа
+	if cr.Comparison.Units != nil && cr.Comparison.Units.Policy != "" {
+		b.WriteString("Единицы: ")
+		if cr.Comparison.Units.Detected == "" {
+			b.WriteString("(не указаны)")
+		} else {
+			b.WriteString(cr.Comparison.Units.Detected)
+		}
+		if cr.Comparison.Units.Applied != "" {
+			b.WriteString("; конверсия: ")
+			b.WriteString(cr.Comparison.Units.Applied)
+		}
+		b.WriteString("\n")
+	}
+	if nd := cr.Comparison.NumberDiff; nd != nil {
+		if nd.WithinTolerance {
+			b.WriteString("Число в допуске\n")
+		} else if nd.EquivalentByRule {
+			b.WriteString("Число эквивалентно по правилу\n")
+		}
+	}
+	if sm := cr.Comparison.StringMatch; sm != nil && sm.Method != "" {
+		b.WriteString("Проверка слова: ")
+		b.WriteString(sm.Method)
+		if sm.Passed {
+			b.WriteString(" — ок\n")
+		} else {
+			b.WriteString(" — есть расхождение\n")
+		}
+	}
+	if lm := cr.Comparison.ListMatch; lm != nil && lm.Total > 0 {
+		b.WriteString(fmt.Sprintf("Элементов совпало: %d/%d\n", lm.Matched, lm.Total))
+	}
+	if st := cr.Comparison.StepsMatch; st != nil && st.Total > 0 {
+		b.WriteString(fmt.Sprintf("Шагов покрыто: %d/%d\n", st.Covered, st.Total))
+	}
+	// Сообщение для озвучивания (не более 140 симв.)
+	if s := strings.TrimSpace(cr.SpeakableMessage); s != "" {
+		b.WriteString("\n")
+		b.WriteString(s)
+	}
+	r.send(chatID, b.String())
+	// Предложить аналогичное задание при ошибке/неуверенности
+	if cr.Verdict == "incorrect" || cr.Verdict == "uncertain" {
+		r.offerAnalogueButton(chatID)
+	}
+}
+
 // downloadFileBytes — скачивает файл Telegram по fileID и возвращает bytes и mime
 func (r *Router) downloadFileBytes(fileID string) ([]byte, string, error) {
 	url, err := r.Bot.GetFileDirectURL(fileID)
@@ -292,4 +451,152 @@ func (r *Router) downloadFileBytes(fileID string) ([]byte, string, error) {
 		mime = "image/jpeg"
 	}
 	return b, mime, nil
+}
+
+// --- ANALOGUE SOLUTION (v1.1) ----------------------------------------------
+// По кнопке «Похожее задание» генерируем аналог по тем же приёмам, но с другими данными.
+// Основано на инструкции ANALOGUE_SOLUTION v1.1.
+
+// offerAnalogueButton — показывает кнопку для вызова аналога
+func (r *Router) offerAnalogueButton(chatID int64) {
+	kb := tgbotapi.NewInlineKeyboardMarkup(
+		[]tgbotapi.InlineKeyboardButton{
+			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution"),
+		},
+	)
+	msg := tgbotapi.NewMessage(chatID, "Если нужно, покажу похожее задание тем же приёмом (без ответа исходной задачи).")
+	msg.ReplyMarkup = kb
+	_, _ = r.Bot.Send(msg)
+}
+
+// HandleAnalogueCallback — публичный помощник для существующего handleCallback
+// Вызовите его из вашего обработчика, когда callback.Data == "ANALOGUE".
+func (r *Router) HandleAnalogueCallback(chatID int64) {
+	ctx := context.Background()
+	if err := r.runAnalogue(ctx, chatID); err != nil {
+		r.send(chatID, "Не удалось подготовить аналогичное задание: "+err.Error())
+	}
+}
+
+// runAnalogue — собирает вход из последнего подтверждённого парсинга и вызывает LLM-прокси
+func (r *Router) runAnalogue(ctx context.Context, chatID int64) error {
+	in, err := r.buildAnalogueInput(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	llmName := r.EngManager.Get(chatID)
+	ar, err := r.LLM.AnalogueSolution(ctx, llmName, in)
+	if err != nil {
+		return err
+	}
+	r.sendAnalogueResult(chatID, ar)
+	return nil
+}
+
+// buildAnalogueInput — конструирует вход для ANALOGUE из данных последнего парсинга
+func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64) (ocr.AnalogueSolutionInput, error) {
+	if r.ParseRepo == nil {
+		return ocr.AnalogueSolutionInput{}, errors.New("ParseRepo is not configured")
+	}
+	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID)
+	if !ok {
+		return ocr.AnalogueSolutionInput{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
+	}
+
+	// Берём краткую суть, либо строим её из вопроса/сырого текста, удаляя числа/единицы
+	essence := strings.TrimSpace(pr.ShortEssence)
+	if essence == "" {
+		base := strings.TrimSpace(pr.Question)
+		if base == "" {
+			base = strings.TrimSpace(pr.RawText)
+		}
+		norm := stripNumbersUnits(base)
+		if norm == "" {
+			return ocr.AnalogueSolutionInput{}, errors.New("не удалось получить краткую суть задания")
+		}
+		essence = norm
+	}
+
+	in := ocr.AnalogueSolutionInput{
+		TaskID:              pr.TaskID,
+		UserIDAnon:          fmt.Sprint(chatID),
+		Grade:               pr.Grade,
+		Subject:             pr.Subject,   // "math"|"russian"|...
+		TaskType:            pr.TaskType,  // если классификатор есть
+		MethodTag:           pr.MethodTag, // ключевой приём (если определён)
+		DifficultyHint:      pr.DifficultyHint,
+		OriginalTaskEssence: essence, // без чисел/единиц исходника
+		Locale:              "ru",
+	}
+	return in, nil
+}
+
+var reNums = regexp.MustCompile(`(?i)(\d+[\d\s./,:-]*\d*|\d+)`)
+var reUnits = regexp.MustCompile(`(?i)(см|мм|м|кг|г|л|мл|ч|мин|сек|%|грн|руб|р\.|км)\.?`)
+
+// stripNumbersUnits — удаляет из текста числа и типичные единицы/знаки, чтобы
+// получить краткую суть без утечки исходных данных (см. anti‑leak в v1.1)
+func stripNumbersUnits(s string) string {
+	out := reNums.ReplaceAllString(s, "N")
+	out = reUnits.ReplaceAllString(out, "U")
+	out = strings.TrimSpace(strings.Join(strings.Fields(out), " "))
+	return out
+}
+
+// sendAnalogueResult — формирует человекочитаемый вывод без раскрытия ответа исходника
+func (r *Router) sendAnalogueResult(chatID int64, ar ocr.AnalogueSolutionResult) {
+	var b strings.Builder
+	if t := strings.TrimSpace(ar.AnalogyTitle); t != "" {
+		b.WriteString("📘 ")
+		b.WriteString(t)
+		b.WriteString("\n\n")
+	}
+	if t := strings.TrimSpace(ar.AnalogyTask); t != "" {
+		b.WriteString("Похожее задание:\n")
+		b.WriteString(t)
+		b.WriteString("\n\n")
+	}
+	if len(ar.SolutionSteps) > 0 {
+		b.WriteString("Как решать (тот же приём):\n")
+		for i, s := range ar.SolutionSteps {
+			b.WriteString(strconv.Itoa(i + 1))
+			b.WriteString(". ")
+			b.WriteString(strings.TrimSpace(s))
+			b.WriteString("\n")
+		}
+	}
+	if len(ar.TransferBridge) > 0 {
+		b.WriteString("\nМостик переноса:\n")
+		for i, s := range ar.TransferBridge {
+			b.WriteString("• ")
+			b.WriteString(strings.TrimSpace(s))
+			if i < len(ar.TransferBridge)-1 {
+				b.WriteString("\n")
+			}
+		}
+	}
+	if s := strings.TrimSpace(ar.TransferCheck); s != "" {
+		b.WriteString("\n\nПроверь себя: ")
+		b.WriteString(s)
+	}
+	// Мини‑проверки: показываем без ответов
+	if len(ar.MiniChecks) > 0 {
+		b.WriteString("\n\nМини‑проверки:\n")
+		for _, mc := range ar.MiniChecks {
+			p := strings.TrimSpace(mc.Prompt)
+			if p == "" && mc.Raw != "" {
+				p = mc.Raw
+			}
+			if p != "" {
+				b.WriteString("— ")
+				b.WriteString(p)
+				b.WriteString("\n")
+			}
+		}
+	}
+	// Короткая подсказка по безопасности/антилику
+	if !ar.LeakGuardPassed || !ar.Safety.NoOriginalAnswerLeak {
+		b.WriteString("\n(Замечание: аналог без ссылок на исходные данные, ответы не раскрываются.)")
+	}
+	r.send(chatID, b.String())
 }
