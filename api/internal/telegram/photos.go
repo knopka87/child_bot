@@ -47,7 +47,7 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	if b.timer != nil {
 		b.timer.Stop()
 	}
-	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key) })
+	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, msg.Contact.UserID) })
 	b.mu.Unlock()
 
 	if len(b.images) == 1 {
@@ -55,7 +55,7 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	}
 }
 
-func (r *Router) processBatch(key string) {
+func (r *Router) processBatch(key string, userID int64) {
 	ctx := context.Background()
 	bi, ok := batches.Load(key)
 	if !ok {
@@ -80,7 +80,7 @@ func (r *Router) processBatch(key string) {
 		return
 	}
 
-	r.runDetectThenParse(ctx, chatID, merged, mediaGroupID)
+	r.runDetectThenParse(ctx, chatID, userID, merged, mediaGroupID)
 }
 
 func combineAsOne(images [][]byte) ([]byte, error) {

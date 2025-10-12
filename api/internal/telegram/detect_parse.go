@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"child-bot/api/internal/ocr"
+	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
 )
 
@@ -27,17 +28,46 @@ type parsePending struct {
 func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Load(chatID); return ok }
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
 
-func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, merged []byte, mediaGroupID string) {
+func (r *Router) runDetectThenParse(ctx context.Context, chatID, userID int64, merged []byte, mediaGroupID string) {
 	mime := util.SniffMimeHTTP(merged)
 	llmName := r.EngManager.Get(chatID)
 
 	// DETECT через llmproxy
 	var dres ocr.DetectResult
+	start := time.Now()
 	if dr, err := r.LLM.Detect(ctx, llmName, merged, mime, 0); err == nil {
 		dres = dr
+		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+			Stage:      "detect",
+			Provider:   llmName,
+			OK:         true,
+			DurationMS: time.Since(start).Milliseconds(),
+			ChatID:     &chatID,
+			UserIDAnon: &userID,
+			Details: map[string]any{
+				"needs_rescan":             dr.NeedsRescan,
+				"rescan_reason":            dr.RescanReason,
+				"multi_task":               dr.MultipleTasksDetected,
+				"final_stage":              dr.FinalState,
+				"has_faces":                dr.HasFaces,
+				"has_diagrams_or_formulas": dr.HasDiagramsOrFormulas,
+				"auto_choice_suggested":    dr.AutoChoiceSuggested,
+			},
+		})
 	} else {
 		// Мягкий фолбэк: продолжаем без детекта (используем значения по умолчанию),
 		// просто логируем ошибку и сообщаем пользователю, что попробуем распознать весь снимок.
+		if r.Metrics != nil {
+			_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+				Stage:      "detect",
+				Provider:   llmName,
+				OK:         false,
+				DurationMS: time.Since(start).Milliseconds(),
+				ChatID:     &chatID,
+				UserIDAnon: &userID,
+				Error:      err.Error(),
+			})
+		}
 		log.Printf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err)
 		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.")
 	}
