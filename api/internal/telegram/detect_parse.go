@@ -37,7 +37,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	start := time.Now()
 	if dr, err := r.LLM.Detect(ctx, llmName, merged, mime, 0); err == nil {
 		dres = dr
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		errM := r.Metrics.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "detect",
 			Provider:   llmName,
 			OK:         true,
@@ -54,6 +54,9 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 				"auto_choice_suggested":    dr.AutoChoiceSuggested,
 			},
 		})
+		if errM != nil {
+			util.PrintError("runDetectThenParse", llmName, chatID, "error insert metrics", errM)
+		}
 	} else {
 		// Мягкий фолбэк: продолжаем без детекта (используем значения по умолчанию),
 		// просто логируем ошибку и сообщаем пользователю, что попробуем распознать весь снимок.
@@ -150,7 +153,10 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	}
 
 	// сохранить черновик
-	_ = r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llmName, pr, false, "")
+	errP := r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llmName, pr, false, "")
+	if errP != nil {
+		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "error upsert parsed_tasks", errP)
+	}
 
 	// 3) подтверждение, если нужно
 	if pr.ConfirmationNeeded {
