@@ -28,7 +28,7 @@ type parsePending struct {
 func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Load(chatID); return ok }
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
 
-func (r *Router) runDetectThenParse(ctx context.Context, chatID, userID int64, merged []byte, mediaGroupID string) {
+func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *int64, merged []byte, mediaGroupID string) {
 	mime := util.SniffMimeHTTP(merged)
 	llmName := r.EngManager.Get(chatID)
 
@@ -43,7 +43,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID, userID int64, m
 			OK:         true,
 			DurationMS: time.Since(start).Milliseconds(),
 			ChatID:     &chatID,
-			UserIDAnon: &userID,
+			UserIDAnon: userID,
 			Details: map[string]any{
 				"needs_rescan":             dr.NeedsRescan,
 				"rescan_reason":            dr.RescanReason,
@@ -64,7 +64,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID, userID int64, m
 				OK:         false,
 				DurationMS: time.Since(start).Milliseconds(),
 				ChatID:     &chatID,
-				UserIDAnon: &userID,
+				UserIDAnon: userID,
 				Error:      err.Error(),
 			})
 		}
@@ -111,10 +111,10 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID, userID int64, m
 
 	// без выбора — сразу PARSE
 	sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
-	r.runParseAndMaybeConfirm(ctx, chatID, sc, -1, "")
+	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, -1, "")
 }
 
-func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
+func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
 	imgHash := util.SHA256Hex(sc.Image)
 	llmName := r.EngManager.Get(chatID)
 
@@ -125,6 +125,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, sc *
 	}
 
 	// 2) LLM.Parse
+	start := time.Now()
 	pr, err := r.LLM.Parse(ctx, llmName, sc.Image, ocr.ParseOptions{
 		SubjectHint:       sc.Detect.SubjectGuess,
 		ChatID:            chatID,
@@ -134,6 +135,16 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, sc *
 		SelectedTaskBrief: selectedBrief,
 	})
 	if err != nil {
+		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+			Stage:      "parse",
+			Provider:   llmName,
+			OK:         false,
+			Error:      err.Error(),
+			DurationMS: time.Since(start).Milliseconds(),
+			ChatID:     &chatID,
+			UserIDAnon: userID,
+		})
+		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "parse", err)
 		r.SendError(chatID, fmt.Errorf("parse: %w", err))
 		return
 	}
