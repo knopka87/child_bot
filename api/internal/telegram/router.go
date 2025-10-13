@@ -743,13 +743,7 @@ func (r *Router) sendAnalogueResult(chatID int64, ar ocr.AnalogueSolutionResult)
 	}
 	if len(ar.TransferBridge) > 0 {
 		b.WriteString("\nМостик переноса:\n")
-		for i, s := range ar.TransferBridge {
-			b.WriteString("• ")
-			b.WriteString(strings.TrimSpace(s))
-			if i < len(ar.TransferBridge)-1 {
-				b.WriteString("\n")
-			}
-		}
+		b.WriteString(ar.TransferBridge)
 	}
 	if s := strings.TrimSpace(ar.TransferCheck); s != "" {
 		b.WriteString("\n\nПроверь себя: ")
