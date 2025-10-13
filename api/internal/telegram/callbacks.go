@@ -12,7 +12,7 @@ import (
 )
 
 func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
-	cid := cb.Message.Chat.ID
+	cid := util.GetChatIDFromTgCB(cb)
 	data := cb.Data
 	_, _ = r.Bot.Request(tgbotapi.NewCallback(cb.ID, "")) // ack
 	// log
