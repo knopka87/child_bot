@@ -11,10 +11,13 @@ import (
 	"child-bot/api/internal/util"
 )
 
-func (r *Router) handleCallback(cb tgbotapi.CallbackQuery) {
+func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	cid := cb.Message.Chat.ID
 	data := cb.Data
 	_, _ = r.Bot.Request(tgbotapi.NewCallback(cb.ID, "")) // ack
+	// log
+	message := fmt.Sprintf("llmName: %s, chatID: %d, data: %s, message: %v", llmName, cid, data, cb.Message)
+	util.PrintInfo("handleCallback", llmName, cid, message)
 
 	switch data {
 	case "hint_next":
@@ -30,14 +33,9 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery) {
 		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.")
 	case "analogue_solution":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		var userID int64
-		if cb.Message != nil && cb.Message.Contact != nil {
-			userID = cb.Message.Contact.UserID
-		} else if cb.From != nil {
-			userID = cb.From.ID
-		}
-		r.HandleAnalogueCallback(cid, userID)
 		r.send(cid, "Подбираю похожую задачу. Ожидайте.")
+		userID := util.GetUserIDFromTgCB(cb)
+		r.HandleAnalogueCallback(cid, userID)
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		// Сброс контекстов

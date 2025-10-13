@@ -17,6 +17,7 @@ import (
 	"child-bot/api/internal/llmclient"
 	"child-bot/api/internal/ocr"
 	"child-bot/api/internal/store"
+	"child-bot/api/internal/util"
 )
 
 type Router struct {
@@ -51,18 +52,22 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 	}
 }
 
-func (r *Router) HandleUpdate(upd tgbotapi.Update) {
+func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// 1) Callback-кнопки
 	if upd.CallbackQuery != nil {
-		r.handleCallback(*upd.CallbackQuery)
+		r.handleCallback(*upd.CallbackQuery, llmName)
 		return
 	}
 
 	// 2) Сообщений нет — выходим
 	if upd.Message == nil {
+		util.PrintInfo("HandleUpdate", llmName, 0, "not found telegram message")
 		return
 	}
+
 	cid := upd.Message.Chat.ID
+	message := fmt.Sprintf("telegram message: %v", upd)
+	util.PrintInfo("HandleUpdate", llmName, upd.Message.Chat.ID, message)
 
 	// 3) Если ждём текстовую правку после «Нет» — приоритетно принимаем её
 	if r.hasPendingCorrection(cid) && upd.Message.Text != "" {
@@ -76,10 +81,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update) {
 		switch getMode(cid) {
 		case "await_solution":
 			// Нормализуем текстовый ответ ученика
-			var userID int64
-			if upd.Message != nil && upd.Message.Contact != nil {
-				userID = upd.Message.Contact.UserID
-			}
+			userID := util.GetUserIDFromTgUpdate(upd)
 			r.normalizeText(context.Background(), cid, userID, upd.Message.Text)
 			return
 		case "await_new_task":
@@ -97,7 +99,9 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update) {
 				pendingCtx.Delete(cid)
 				sc := ctxv.(*selectionContext)
 				r.send(cid, fmt.Sprintf("Ок, беру задание: %s — обрабатываю.", briefs[n-1]))
-				r.runParseAndMaybeConfirm(context.Background(), cid, sc, n-1, briefs[n-1])
+
+				userID := util.GetUserIDFromTgUpdate(upd)
+				r.runParseAndMaybeConfirm(context.Background(), cid, userID, sc, n-1, briefs[n-1])
 				return
 			}
 			pendingChoice.Delete(cid)
@@ -198,7 +202,7 @@ func (r *Router) PhotoAcceptedText() string {
 }
 
 // normalizeText — отправляет текст ученика на нормализацию в LLM-прокси
-func (r *Router) normalizeText(ctx context.Context, chatID, userID int64, text string) {
+func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64, text string) {
 	llmName := r.EngManager.Get(chatID)
 	shape := r.suggestSolutionShape(chatID)
 	in := ocr.NormalizeInput{
@@ -218,7 +222,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID, userID int64, text s
 				Error:      err.Error(),
 				DurationMS: time.Since(start).Milliseconds(),
 				ChatID:     &chatID,
-				UserIDAnon: &userID,
+				UserIDAnon: userID,
 				Details: map[string]any{
 					"source":      "text",
 					"input_chars": len(text),
@@ -236,7 +240,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID, userID int64, text s
 			OK:         true,
 			DurationMS: time.Since(start).Milliseconds(),
 			ChatID:     &chatID,
-			UserIDAnon: &userID,
+			UserIDAnon: userID,
 			Details: map[string]any{
 				"source":          "text",
 				"shape":           res.Shape,
@@ -252,13 +256,17 @@ func (r *Router) normalizeText(ctx context.Context, chatID, userID int64, text s
 
 // normalizePhoto — скачивает фото из Telegram и отправляет на нормализацию
 func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
+	llmName := r.EngManager.Get(msg.Chat.ID)
+
 	if len(msg.Photo) == 0 {
+		util.PrintInfo("normalizePhoto", llmName, msg.Chat.ID, "not found photo")
 		return
 	}
-	llmName := r.EngManager.Get(msg.Chat.ID)
-	ph := msg.Photo[len(msg.Photo)-1] // самое большое
+
+	ph := msg.Photo[len(msg.Photo)-1] // последнее
 	data, mime, err := r.downloadFileBytes(ph.FileID)
 	if err != nil {
+		util.PrintError("normalizePhoto", llmName, msg.Chat.ID, "не удалось получить фото", err)
 		r.send(msg.Chat.ID, fmt.Sprintf("Не удалось получить фото: %v", err))
 		return
 	}
@@ -272,10 +280,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			Mime:     mime,
 		},
 	}
-	var userID int64
-	if msg.Contact != nil {
-		userID = msg.Contact.UserID
-	}
+	userID := util.GetUserIDFromTgMessage(msg)
 	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
 	if err != nil {
@@ -287,7 +292,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 				Error:      err.Error(),
 				DurationMS: time.Since(start).Milliseconds(),
 				ChatID:     &msg.Chat.ID,
-				UserIDAnon: &userID,
+				UserIDAnon: userID,
 				Details: map[string]any{
 					"source": "photo",
 					"mime":   mime,
@@ -295,7 +300,8 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 				},
 			})
 		}
-		r.send(msg.Chat.ID, fmt.Sprintf("Не удалось нормализовать ответ (фото): %v", err))
+		util.PrintError("normalizePhoto", llmName, msg.Chat.ID, "Не удалось нормализовать ответ (фото)", err)
+		r.send(msg.Chat.ID, "Не удалось нормализовать ответ (фото)")
 		return
 	}
 	r.sendNormalizePreview(msg.Chat.ID, res)
@@ -306,7 +312,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			OK:         true,
 			DurationMS: time.Since(start).Milliseconds(),
 			ChatID:     &msg.Chat.ID,
-			UserIDAnon: &userID,
+			UserIDAnon: userID,
 			Details: map[string]any{
 				"source":          "photo",
 				"mime":            mime,
@@ -323,7 +329,38 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 
 // suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
 func (r *Router) suggestSolutionShape(chatID int64) string {
-	// TODO: можно взять из последнего ParseResult из БД (ParseRepo) subject/task_type → shape
+	// Попробуем вывести форму ответа на основе последнего подтверждённого парсинга.
+	// Если данных нет — вернём дефолт: number.
+	if r.ParseRepo != nil {
+		if pr, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
+			subj := strings.ToLower(strings.TrimSpace(pr.Subject))
+			tt := strings.ToLower(strings.TrimSpace(pr.TaskType))
+
+			// Простая эвристика по предмету/типу задания
+			// Русский язык — чаще всего ожидаем строку (слово/фразу)
+			if subj == "russian" || subj == "ru" || subj == "русский" {
+				if strings.Contains(tt, "list") || strings.Contains(tt, "спис") {
+					return "list"
+				}
+				if strings.Contains(tt, "steps") || strings.Contains(tt, "шаг") {
+					return "steps"
+				}
+				return "string"
+			}
+
+			// Математика/прочее
+			if strings.Contains(tt, "list") || strings.Contains(tt, "спис") || strings.Contains(tt, "перечис") {
+				return "list"
+			}
+			if strings.Contains(tt, "steps") || strings.Contains(tt, "шаг") || strings.Contains(tt, "пошаг") {
+				return "steps"
+			}
+			if strings.Contains(tt, "word") || strings.Contains(tt, "слово") {
+				return "string"
+			}
+			return "number"
+		}
+	}
 	return "number"
 }
 
@@ -365,7 +402,7 @@ func (r *Router) sendNormalizePreview(chatID int64, nr ocr.NormalizeResult) {
 }
 
 // maybeCheckSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
-func (r *Router) maybeCheckSolution(ctx context.Context, chatID, userID int64, nr ocr.NormalizeResult) {
+func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *int64, nr ocr.NormalizeResult) {
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "math"
 	grade := 0
@@ -438,7 +475,7 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID, userID int64, n
 				Error:      err.Error(),
 				DurationMS: time.Since(start).Milliseconds(),
 				ChatID:     &chatID,
-				UserIDAnon: &userID,
+				UserIDAnon: userID,
 				Details: map[string]any{
 					"subject": subj,
 					"grade":   grade,
@@ -457,7 +494,7 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID, userID int64, n
 			OK:         true,
 			DurationMS: time.Since(start).Milliseconds(),
 			ChatID:     &chatID,
-			UserIDAnon: &userID,
+			UserIDAnon: userID,
 			Details: map[string]any{
 				"subject": subj,
 				"grade":   grade,
@@ -584,7 +621,7 @@ func (r *Router) offerAnalogueButton(chatID int64) {
 
 // HandleAnalogueCallback — публичный помощник для существующего handleCallback
 // Вызовите его из вашего обработчика, когда callback.Data == "ANALOGUE".
-func (r *Router) HandleAnalogueCallback(chatID, userID int64) {
+func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64) {
 	ctx := context.Background()
 	if err := r.runAnalogue(ctx, chatID, userID); err != nil {
 		r.send(chatID, "Не удалось подготовить аналогичное задание: "+err.Error())
@@ -592,7 +629,7 @@ func (r *Router) HandleAnalogueCallback(chatID, userID int64) {
 }
 
 // runAnalogue — собирает вход из последнего подтверждённого парсинга и вызывает LLM-прокси
-func (r *Router) runAnalogue(ctx context.Context, chatID, userID int64) error {
+func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64) error {
 	in, err := r.buildAnalogueInput(ctx, chatID)
 	if err != nil {
 		return err
@@ -609,7 +646,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID, userID int64) error {
 				Error:      err.Error(),
 				DurationMS: time.Since(start).Milliseconds(),
 				ChatID:     &chatID,
-				UserIDAnon: &userID,
+				UserIDAnon: userID,
 			})
 		}
 		return err
@@ -622,7 +659,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID, userID int64) error {
 			OK:         true,
 			DurationMS: time.Since(start).Milliseconds(),
 			ChatID:     &chatID,
-			UserIDAnon: &userID,
+			UserIDAnon: userID,
 			Details: map[string]any{
 				"has_minichecks": len(ar.MiniChecks) > 0,
 			},

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"child-bot/api/internal/util"
 )
 
 func (r *Router) acceptPhoto(msg tgbotapi.Message) {
@@ -47,10 +49,7 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	if b.timer != nil {
 		b.timer.Stop()
 	}
-	var userID int64
-	if msg.Contact != nil {
-		userID = msg.Contact.UserID
-	}
+	userID := util.GetUserIDFromTgMessage(msg)
 	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, userID) })
 	b.mu.Unlock()
 
@@ -59,7 +58,7 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	}
 }
 
-func (r *Router) processBatch(key string, userID int64) {
+func (r *Router) processBatch(key string, userID *int64) {
 	ctx := context.Background()
 	bi, ok := batches.Load(key)
 	if !ok {
@@ -84,6 +83,7 @@ func (r *Router) processBatch(key string, userID int64) {
 		return
 	}
 
+	r.send(chatID, "Начинаю распознавание текста.")
 	r.runDetectThenParse(ctx, chatID, userID, merged, mediaGroupID)
 }
 
