@@ -20,7 +20,7 @@ import (
 )
 
 func (r *Router) acceptPhoto(msg tgbotapi.Message) {
-	cid := msg.Chat.ID
+	cid := util.GetChatIDFromTgMessage(msg)
 	ph := msg.Photo[len(msg.Photo)-1]
 	file, err := r.Bot.GetFile(tgbotapi.FileConfig{FileID: ph.FileID})
 	if err != nil {

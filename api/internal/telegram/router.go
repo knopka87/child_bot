@@ -30,7 +30,7 @@ type Router struct {
 }
 
 func (r *Router) HandleCommand(upd tgbotapi.Update) {
-	cid := upd.Message.Chat.ID
+	cid := util.GetChatIDByTgUpdate(upd)
 	switch upd.Message.Command() {
 	case "start":
 		r.send(cid, "Пришли фото задачи — верну распознанный текст и подскажу, с чего начать.\nКоманды: /health")
@@ -65,9 +65,9 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		return
 	}
 
-	cid := upd.Message.Chat.ID
+	cid := util.GetChatIDByTgUpdate(upd)
 	message := fmt.Sprintf("telegram message: %v", upd)
-	util.PrintInfo("HandleUpdate", llmName, upd.Message.Chat.ID, message)
+	util.PrintInfo("HandleUpdate", llmName, cid, message)
 
 	// 3) Если ждём текстовую правку после «Нет» — приоритетно принимаем её
 	if r.hasPendingCorrection(cid) && upd.Message.Text != "" {
@@ -256,21 +256,22 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 
 // normalizePhoto — скачивает фото из Telegram и отправляет на нормализацию
 func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
-	llmName := r.EngManager.Get(msg.Chat.ID)
+	llmName := r.EngManager.Get(util.GetChatIDFromTgMessage(msg))
+	chatID := util.GetChatIDFromTgMessage(msg)
 
 	if len(msg.Photo) == 0 {
-		util.PrintInfo("normalizePhoto", llmName, msg.Chat.ID, "not found photo")
+		util.PrintInfo("normalizePhoto", llmName, chatID, "not found photo")
 		return
 	}
 
 	ph := msg.Photo[len(msg.Photo)-1] // последнее
 	data, mime, err := r.downloadFileBytes(ph.FileID)
 	if err != nil {
-		util.PrintError("normalizePhoto", llmName, msg.Chat.ID, "не удалось получить фото", err)
-		r.send(msg.Chat.ID, fmt.Sprintf("Не удалось получить фото: %v", err))
+		util.PrintError("normalizePhoto", llmName, chatID, "не удалось получить фото", err)
+		r.send(chatID, fmt.Sprintf("Не удалось получить фото: %v", err))
 		return
 	}
-	shape := r.suggestSolutionShape(msg.Chat.ID)
+	shape := r.suggestSolutionShape(chatID)
 	in := ocr.NormalizeInput{
 		SolutionShape: shape,
 		Provider:      llmName,
@@ -291,7 +292,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 				OK:         false,
 				Error:      err.Error(),
 				DurationMS: time.Since(start).Milliseconds(),
-				ChatID:     &msg.Chat.ID,
+				ChatID:     &chatID,
 				UserIDAnon: userID,
 				Details: map[string]any{
 					"source": "photo",
@@ -300,18 +301,18 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 				},
 			})
 		}
-		util.PrintError("normalizePhoto", llmName, msg.Chat.ID, "Не удалось нормализовать ответ (фото)", err)
-		r.send(msg.Chat.ID, "Не удалось нормализовать ответ (фото)")
+		util.PrintError("normalizePhoto", llmName, chatID, "Не удалось нормализовать ответ (фото)", err)
+		r.send(chatID, "Не удалось нормализовать ответ (фото)")
 		return
 	}
-	r.sendNormalizePreview(msg.Chat.ID, res)
+	r.sendNormalizePreview(chatID, res)
 	if r.Metrics != nil {
 		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "normalize",
 			Provider:   llmName,
 			OK:         true,
 			DurationMS: time.Since(start).Milliseconds(),
-			ChatID:     &msg.Chat.ID,
+			ChatID:     &chatID,
 			UserIDAnon: userID,
 			Details: map[string]any{
 				"source":          "photo",
@@ -324,7 +325,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 		})
 	}
 	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
-	r.maybeCheckSolution(ctx, msg.Chat.ID, userID, res)
+	r.maybeCheckSolution(ctx, chatID, userID, res)
 }
 
 // suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number

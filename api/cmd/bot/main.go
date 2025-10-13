@@ -23,6 +23,7 @@ import (
 	"child-bot/api/internal/ocr"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/telegram"
+	"child-bot/api/internal/util"
 )
 
 func main() {
@@ -134,7 +135,7 @@ func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router, bas
 
 	go func() {
 		for upd := range updates {
-			r.HandleUpdate(upd, r.EngManager.Get(upd.Message.Chat.ID))
+			r.HandleUpdate(upd, r.EngManager.Get(util.GetChatIDByTgUpdate(upd)))
 		}
 		log.Printf("webhook updates channel closed")
 	}()
@@ -158,7 +159,7 @@ func startPollingMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router) {
 	// Устойчивый поллинг с backoff без log.Fatal/os.Exit
 	ctx := context.Background()
 	runPolling(ctx, bot, func(upd tgbotapi.Update) {
-		r.HandleUpdate(upd, r.EngManager.Get(upd.Message.Chat.ID)) // engines менеджер внутри роутера
+		r.HandleUpdate(upd, r.EngManager.Get(util.GetChatIDByTgUpdate(upd))) // engines менеджер внутри роутера
 	})
 }
 
