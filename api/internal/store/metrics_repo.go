@@ -29,11 +29,18 @@ type MetricEvent struct {
 	CreatedAt   time.Time
 }
 
-func (me *MetricEvent) ChatIDStr() string {
-	if me.ChatID == nil {
+func (e *MetricEvent) ChatIDStr() string {
+	if e.ChatID == nil {
 		return ""
 	}
-	return strconv.FormatInt(*me.ChatID, 10)
+	return strconv.FormatInt(*e.ChatID, 10)
+}
+
+func (e *MetricEvent) UserIDStr() string {
+	if e.UserIDAnon == nil {
+		return ""
+	}
+	return strconv.FormatInt(*e.UserIDAnon, 10)
 }
 
 type MetricsRepo struct{ db *sql.DB }
@@ -72,7 +79,7 @@ func (r *MetricsRepo) InsertEvent(ctx context.Context, ev MetricEvent) error {
 		ev.HTTPCode,
 		ev.DurationMS,
 		ev.ChatIDStr(),
-		ev.UserIDAnon,
+		ev.UserIDStr(),
 		nullIfEmpty(ev.TaskID),
 		nullIfEmpty(ev.Correlation),
 		nullIfEmpty(ev.RequestID),
