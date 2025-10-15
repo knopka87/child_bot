@@ -206,11 +206,14 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	llmName := r.EngManager.Get(chatID)
 	shape := r.suggestSolutionShape(chatID)
 	in := ocr.NormalizeInput{
+
 		UserIDAnon:    fmt.Sprint(userID),
 		SolutionShape: shape,
 		Provider:      llmName,
 		Answer:        ocr.NormalizeAnswer{Source: "text", Text: strings.TrimSpace(text)},
 	}
+	util.PrintInfo("normalizeText", r.EngManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %v", in))
+
 	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
 	if err != nil {
@@ -281,6 +284,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			Mime:     mime,
 		},
 	}
+	util.PrintInfo("normalizePhoto", llmName, chatID, fmt.Sprintf("normalize_input: %v", in))
 	userID := util.GetUserIDFromTgMessage(msg)
 	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
@@ -305,7 +309,6 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 		r.send(chatID, "Не удалось нормализовать ответ (фото)")
 		return
 	}
-	r.sendNormalizePreview(chatID, res)
 	if r.Metrics != nil {
 		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "normalize",
@@ -324,8 +327,12 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			},
 		})
 	}
-	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
-	r.maybeCheckSolution(ctx, chatID, userID, res)
+	util.PrintInfo("normalizePhoto", llmName, chatID, "Не удалось нормализовать ответ (фото)")
+	r.sendNormalizePreview(chatID, res)
+	if res.Success {
+		// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
+		r.maybeCheckSolution(ctx, chatID, userID, res)
+	}
 }
 
 // suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
@@ -334,6 +341,8 @@ func (r *Router) suggestSolutionShape(chatID int64) string {
 	// Если данных нет — вернём дефолт: number.
 	if r.ParseRepo != nil {
 		if pr, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
+			util.PrintInfo("suggestSolutionShape", r.EngManager.Get(chatID), chatID, fmt.Sprintf("parsed_raw: %v", pr))
+
 			subj := strings.ToLower(strings.TrimSpace(pr.Subject))
 			tt := strings.ToLower(strings.TrimSpace(pr.TaskType))
 
@@ -369,6 +378,7 @@ func (r *Router) suggestSolutionShape(chatID int64) string {
 func (r *Router) sendNormalizePreview(chatID int64, nr ocr.NormalizeResult) {
 	shape := strings.ToLower(strings.TrimSpace(nr.Shape))
 	val := ""
+	util.PrintInfo("sendNormalizePreview", r.EngManager.Get(chatID), chatID, fmt.Sprintf("normalize_result_value: %v", nr.Value))
 	switch v := nr.Value.(type) {
 	case string:
 		val = v
@@ -376,6 +386,10 @@ func (r *Router) sendNormalizePreview(chatID int64, nr ocr.NormalizeResult) {
 		val = strconv.FormatFloat(v, 'f', -1, 64)
 	case int:
 		val = strconv.Itoa(v)
+	case int32:
+		val = strconv.FormatInt(int64(v), 10)
+	case int64:
+		val = strconv.FormatInt(v, 10)
 	case []string:
 		val = strings.Join(v, "; ")
 	default:
