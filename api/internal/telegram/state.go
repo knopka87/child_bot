@@ -10,7 +10,14 @@ const (
 	maxPixels = 18_000_000
 )
 
-var chatMode sync.Map // chatID -> string: "", "await_solution", "await_new_task"
+var (
+	batches       sync.Map // key -> *photoBatch
+	pendingChoice sync.Map // chatID -> []string (tasks brief)
+	pendingCtx    sync.Map // chatID -> *selectionContext
+	parseWait     sync.Map // chatID -> *parsePending
+	hintState     sync.Map // chatID -> *hintSession
+	chatMode      sync.Map // chatID -> string: "", "await_solution", "await_new_task"
+)
 
 // хелперы
 func setMode(chatID int64, mode string) { chatMode.Store(chatID, mode) }
@@ -34,11 +41,3 @@ type photoBatch struct {
 	timer  *time.Timer
 	lastAt time.Time
 }
-
-var (
-	batches       sync.Map // key -> *photoBatch
-	pendingChoice sync.Map // chatID -> []string (tasks brief)
-	pendingCtx    sync.Map // chatID -> *selectionContext
-	parseWait     sync.Map // chatID -> *parsePending
-	hintState     sync.Map // chatID -> *hintSession
-)

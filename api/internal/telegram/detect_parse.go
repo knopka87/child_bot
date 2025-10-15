@@ -47,11 +47,12 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			Details: map[string]any{
 				"needs_rescan":             dr.NeedsRescan,
 				"rescan_reason":            dr.RescanReason,
-				"multi_task":               dr.MultipleTasksDetected,
-				"final_stage":              dr.FinalState,
+				"multi_task":               dr.IsMultipleTasks(),
+				"final_state":              dr.FinalState,
 				"has_faces":                dr.HasFaces,
 				"has_diagrams_or_formulas": dr.HasDiagramsOrFormulas,
 				"auto_choice_suggested":    dr.AutoChoiceSuggested,
+				"pii_detected":             dr.PIIDetected,
 			},
 		})
 		if errM != nil {
@@ -80,10 +81,17 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		r.send(chatID, "⚠️ Неподходящее изображение. Пришлите фото учебного задания без личных данных.")
 		return
 	}
-	if dres.NeedsRescan {
+	if dres.FinalState == "not_a_task" {
+		r.send(chatID, "ℹ️ Похоже, на фото нет учебного задания. Пришлите фото условия задачи (1–4 класс).")
+		return
+	}
+	if dres.FinalState == "needs_rescan" {
 		msg := "Пожалуйста, переснимите фото"
 		if dres.RescanReason != "" {
 			msg += ": " + dres.RescanReason
+		}
+		if dres.RescanCode != "" {
+			msg += " (код: " + dres.RescanCode + ")"
 		}
 		r.send(chatID, "📷 "+msg)
 		return
@@ -91,17 +99,49 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	if dres.HasFaces {
 		r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.")
 	}
+	if dres.PIIDetected {
+		r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.")
+	}
 
-	// несколько заданий — спросить номер
-	if dres.MultipleTasksDetected && !(dres.AutoChoiceSuggested && dres.TopCandidateIndex != nil &&
-		*dres.TopCandidateIndex >= 0 && *dres.TopCandidateIndex < len(dres.TasksBrief) &&
-		dres.Confidence >= 0.80) {
+	// несколько заданий — авто-выбор или запрос номера
+	if dres.IsMultipleTasks() {
+		// собрать список для показа: prefer tasks_brief, иначе из candidates
+		tasks := make([]string, 0)
 		if len(dres.TasksBrief) > 0 {
-			pendingChoice.Store(chatID, dres.TasksBrief)
+			tasks = append(tasks, dres.TasksBrief...)
+		} else if len(dres.TasksCandidates) > 0 {
+			for _, c := range dres.TasksCandidates {
+				tasks = append(tasks, c.Title)
+			}
+		}
+
+		// можно ли авто-выбрать?
+		canAuto := false
+		pickedIdx := -1
+		if dres.AutoChoiceSuggested != nil && *dres.AutoChoiceSuggested && dres.TopCandidateIndex != nil {
+			if *dres.TopCandidateIndex >= 0 && *dres.TopCandidateIndex < len(tasks) && dres.Confidence >= 0.80 {
+				canAuto = true
+				pickedIdx = *dres.TopCandidateIndex
+			}
+		}
+
+		if canAuto && pickedIdx >= 0 {
+			brief := ""
+			if pickedIdx < len(tasks) {
+				brief = tasks[pickedIdx]
+			}
+			sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
+			r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, pickedIdx, brief)
+			return
+		}
+
+		// иначе — спросить у пользователя
+		if len(tasks) > 0 {
+			pendingChoice.Store(chatID, tasks)
 			pendingCtx.Store(chatID, &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres})
 			var b strings.Builder
 			b.WriteString("Нашёл несколько заданий. Выберите номер:\n")
-			for i, t := range dres.TasksBrief {
+			for i, t := range tasks {
 				fmt.Fprintf(&b, "%d) %s\n", i+1, t)
 			}
 			if dres.DisambiguationQuestion != "" {
@@ -130,7 +170,12 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	// 2) LLM.Parse
 	start := time.Now()
 	pr, err := r.LLM.Parse(ctx, llmName, sc.Image, ocr.ParseOptions{
-		SubjectHint:       sc.Detect.SubjectGuess,
+		SubjectHint: func() string {
+			if sc.Detect.FinalState == "recognized_ready_to_parse" {
+				return sc.Detect.SubjectGuess
+			}
+			return ""
+		}(),
 		ChatID:            chatID,
 		MediaGroupID:      sc.MediaGroupID,
 		ImageHash:         imgHash,

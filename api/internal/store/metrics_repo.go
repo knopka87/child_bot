@@ -4,7 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"time"
+
+	"child-bot/api/internal/util"
 )
 
 // MetricEvent — одна точка метрик.
@@ -25,6 +29,13 @@ type MetricEvent struct {
 	CreatedAt   time.Time
 }
 
+func (me *MetricEvent) ChatIDStr() string {
+	if me.ChatID == nil {
+		return ""
+	}
+	return strconv.FormatInt(*me.ChatID, 10)
+}
+
 type MetricsRepo struct{ db *sql.DB }
 
 func NewMetricsRepo(db *sql.DB) *MetricsRepo { return &MetricsRepo{db: db} }
@@ -39,7 +50,8 @@ func (r *MetricsRepo) InsertEvent(ctx context.Context, ev MetricEvent) error {
 	} else {
 		b, err := json.Marshal(ev.Details)
 		if err != nil {
-			jb = []byte("{}")
+			jb = []byte(fmt.Sprintf("{}"))
+			util.PrintError("InsertEvent", ev.Provider, *ev.ChatID, "error", err)
 		} else {
 			jb = b
 		}
@@ -59,7 +71,7 @@ func (r *MetricsRepo) InsertEvent(ctx context.Context, ev MetricEvent) error {
 		nullIfEmpty(ev.Error),
 		ev.HTTPCode,
 		ev.DurationMS,
-		ev.ChatID,
+		ev.ChatIDStr(),
 		ev.UserIDAnon,
 		nullIfEmpty(ev.TaskID),
 		nullIfEmpty(ev.Correlation),
