@@ -62,7 +62,7 @@ func GetChatIDByTgUpdate(up tgbotapi.Update) int64 {
 			return chatID
 		}
 	}
-	PrintInfo("GetChatIDByTgUpdate", "", 0, fmt.Sprintf("not found chatID; up: %v", up))
+	PrintInfo("GetChatIDByTgUpdate", "", 0, fmt.Sprintf("not found chatID; up: %+v", up))
 	return 0
 }
 
@@ -73,7 +73,7 @@ func GetChatIDFromTgCB(c tgbotapi.CallbackQuery) int64 {
 		}
 	}
 
-	PrintInfo("GetChatIDFromTgCB", "", 0, fmt.Sprintf("not found chatID; c: %v", c))
+	PrintInfo("GetChatIDFromTgCB", "", 0, fmt.Sprintf("not found chatID; c: %+v", c))
 	return 0
 }
 
@@ -82,6 +82,6 @@ func GetChatIDFromTgMessage(m tgbotapi.Message) int64 {
 		return m.Chat.ID
 	}
 
-	PrintInfo("GetChatIDFromTgMessage", "", 0, fmt.Sprintf("not found chatID; m: %v", m))
+	PrintInfo("GetChatIDFromTgMessage", "", 0, fmt.Sprintf("not found chatID; m: %+v", m))
 	return 0
 }
