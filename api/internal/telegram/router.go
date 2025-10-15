@@ -327,7 +327,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			},
 		})
 	}
-	util.PrintInfo("normalizePhoto", llmName, chatID, "Не удалось нормализовать ответ (фото)")
+	util.PrintInfo("normalizePhoto", llmName, chatID, fmt.Sprintf("normalize_photo: %v", res))
 	r.sendNormalizePreview(chatID, res)
 	if res.Success {
 		// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
