@@ -284,7 +284,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			Mime:     mime,
 		},
 	}
-	util.PrintInfo("normalizePhoto", llmName, chatID, fmt.Sprintf("normalize_input: %v", in))
+	// util.PrintInfo("normalizePhoto", llmName, chatID, fmt.Sprintf("normalize_input: %v", in))
 	userID := util.GetUserIDFromTgMessage(msg)
 	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
