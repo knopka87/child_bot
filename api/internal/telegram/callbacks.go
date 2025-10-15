@@ -16,7 +16,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	data := cb.Data
 	_, _ = r.Bot.Request(tgbotapi.NewCallback(cb.ID, "")) // ack
 	// log
-	message := fmt.Sprintf("llmName: %s, chatID: %d, data: %s, message: %v", llmName, cid, data, cb.Message)
+	message := fmt.Sprintf("llmName: %s, chatID: %d, data: %s, message: %+v", llmName, cid, data, cb.Message)
 	util.PrintInfo("handleCallback", llmName, cid, message)
 
 	switch data {
@@ -111,7 +111,7 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		llmName := r.EngManager.Get(chatID)
 		hrNew, err := r.LLM.Hint(context.Background(), llmName, in)
 		if err != nil {
-			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %v", level, err))
+			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %s", level, err.Error()))
 			return
 		}
 		_ = r.HintRepo.Upsert(context.Background(), imgHash, hs.EngineName, level, hrNew)
