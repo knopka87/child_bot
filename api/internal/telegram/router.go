@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -183,7 +184,9 @@ func (r *Router) send(chatID int64, text string) {
 }
 
 func (r *Router) sendDebug(chatID int64, text string) {
-	if chatID == 255509524 {
+	util.PrintInfo("sendDebug", "", chatID, text)
+	if chatID == int64(255509524) {
+		log.Printf("eto ya!")
 		msg := tgbotapi.NewMessage(chatID, text)
 		_, _ = r.Bot.Send(msg)
 	}
