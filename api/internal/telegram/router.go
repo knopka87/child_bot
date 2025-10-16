@@ -55,9 +55,17 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	util.PrintInfo("HandleUpdate", llmName, util.GetChatIDByTgUpdate(upd), "Start")
 	cid := util.GetChatIDByTgUpdate(upd)
+
+	r.sendDebug(cid, fmt.Sprintf("telegram message:\n```%+v```", upd))
+	message := fmt.Sprintf("telegram message: %+v", upd)
+	util.PrintInfo("HandleUpdate", llmName, cid, message)
+
 	cur := getState(cid)
+	r.sendDebug(cid, fmt.Sprintf("last state: %s", cur))
 
 	if ns, ok := inferNextState(upd, cur); ok && ns != cur {
+		r.sendDebug(cid, fmt.Sprintf("new state: %s", ns))
+
 		if !canTransition(cur, ns) {
 			// Запрещённый переход — сообщим пользователю
 			msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
@@ -67,6 +75,12 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		}
 		// Переход допустим — фиксируем новое состояние
 		setState(cid, ns)
+	} else if !ok {
+		// Запрещённый переход — сообщим пользователю
+		msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
+			friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
+		r.send(cid, msg)
+		return
 	}
 
 	// 1) Callback-кнопки
@@ -80,9 +94,6 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		util.PrintInfo("HandleUpdate", llmName, 0, "not found telegram message")
 		return
 	}
-
-	message := fmt.Sprintf("telegram message: %+v", upd)
-	util.PrintInfo("HandleUpdate", llmName, cid, message)
 
 	// 3) Если ждём текстовую правку после «Нет» — приоритетно принимаем её
 	if r.hasPendingCorrection(cid) && upd.Message.Text != "" {
@@ -143,6 +154,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	if len(upd.Message.Photo) > 0 {
 		if getMode(cid) == "await_solution" {
 			// Фото с ответом ученика → нормализация
+			r.send(cid, "Начинаю нормализацию твоего ответа.")
 			r.normalizePhoto(context.Background(), *upd.Message)
 			clearMode(cid)
 			return
@@ -247,6 +259,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		Answer:        ocr.NormalizeAnswer{Source: "text", Text: strings.TrimSpace(text)},
 	}
 	util.PrintInfo("normalizeText", r.EngManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
+	r.sendDebug(chatID, fmt.Sprintf("normalize_input:\n```%+v```", in))
 
 	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
