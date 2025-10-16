@@ -216,7 +216,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 			"confidence":     pr.Confidence,
 		},
 	})
-	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
+	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
 
 	// сохранить черновик
 	errP := r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llmName, pr, false, "")
@@ -234,5 +234,5 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	// 4) автоподтверждение
 	_ = r.ParseRepo.MarkAccepted(ctx, imgHash, llmName, "auto")
 	r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
-	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("total time: %d", time.Since(start).Milliseconds()))
+	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("total time: %d", time.Since(start).Milliseconds()))
 }
