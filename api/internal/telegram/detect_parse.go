@@ -75,6 +75,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		log.Printf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err)
 		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.")
 	}
+	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
 
 	// базовая политика
 	if dres.FinalState == "inappropriate_image" {
@@ -155,6 +156,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	// без выбора — сразу PARSE
 	sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
 	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, -1, "")
+	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Total time: %d", time.Since(start).Milliseconds()))
 }
 
 func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
@@ -196,6 +198,25 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		r.SendError(chatID, fmt.Errorf("parse: %w", err))
 		return
 	}
+	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		Stage:      "parse",
+		Provider:   llmName,
+		OK:         false,
+		DurationMS: time.Since(start).Milliseconds(),
+		ChatID:     &chatID,
+		UserIDAnon: userID,
+		Details: map[string]any{
+			"final_state":    pr.FinalState,
+			"rescan_reason":  pr.RescanReason,
+			"confirm_reason": pr.ConfirmationReason,
+			"grade_aligment": pr.GradeAlignment,
+			"grade":          pr.Grade,
+			"solution_shape": pr.SolutionShape,
+			"need_rescan":    pr.NeedsRescan,
+			"confidence":     pr.Confidence,
+		},
+	})
+	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
 
 	// сохранить черновик
 	errP := r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llmName, pr, false, "")
@@ -213,4 +234,5 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	// 4) автоподтверждение
 	_ = r.ParseRepo.MarkAccepted(ctx, imgHash, llmName, "auto")
 	r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
+	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("total time: %d", time.Since(start).Milliseconds()))
 }

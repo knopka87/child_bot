@@ -53,6 +53,7 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 }
 
 func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
+	util.PrintInfo("HandleUpdate", llmName, util.GetChatIDByTgUpdate(upd), "Start")
 	// 1) Callback-кнопки
 	if upd.CallbackQuery != nil {
 		r.handleCallback(*upd.CallbackQuery, llmName)
@@ -66,7 +67,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	}
 
 	cid := util.GetChatIDByTgUpdate(upd)
-	message := fmt.Sprintf("telegram message: %v", upd)
+	message := fmt.Sprintf("telegram message: %+v", upd)
 	util.PrintInfo("HandleUpdate", llmName, cid, message)
 
 	// 3) Если ждём текстовую правку после «Нет» — приоритетно принимаем её
@@ -107,8 +108,10 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			pendingChoice.Delete(cid)
 			r.send(cid, "Не нашёл предыдущее изображение. Пришлите фото ещё раз.")
 			return
+		} else {
+			r.send(cid, "Вы ввели некорректный номер задачи. Пришлите корректный номер от 1 до "+strconv.Itoa(len(briefs)))
+			return
 		}
-		// иначе ждём корректный номер
 	}
 
 	// 6) Команды (в т.ч. /engine)
@@ -136,6 +139,15 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	}
 
 	// 8) Остальное — игнорируем
+	message = "Не смог понять, что Вы от меня хотите."
+	switch getMode(cid) {
+	case "await_solution":
+		message += " Я жду от вас фото с решением."
+	case "await_new_task":
+		message += " Я жду от тебя фото с задачей."
+	}
+
+	r.send(cid, message)
 }
 
 func (r *Router) send(chatID int64, text string) {
@@ -274,8 +286,23 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 		r.send(chatID, fmt.Sprintf("Не удалось получить фото: %v", err))
 		return
 	}
+	if mime == "application/octet-stream" {
+		// Попробуем руками распознать распространённые форматы и HEIC/AVIF
+		if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xD8 {
+			mime = "image/jpeg"
+		}
+		if len(data) >= 8 &&
+			data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 &&
+			data[4] == 0x0D && data[5] == 0x0A && data[6] == 0x1A && data[7] == 0x0A {
+			mime = "image/png"
+		}
+		if heicAvif := util.SniffHEICorAVIF(data); heicAvif != "" {
+			mime = heicAvif
+		}
+	}
 	shape := r.suggestSolutionShape(chatID)
 	in := ocr.NormalizeInput{
+		TaskID:        strconv.Itoa(msg.MessageID),
 		SolutionShape: shape,
 		Provider:      llmName,
 		Answer: ocr.NormalizeAnswer{
@@ -298,6 +325,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 				DurationMS: time.Since(start).Milliseconds(),
 				ChatID:     &chatID,
 				UserIDAnon: userID,
+				TaskID:     strconv.Itoa(msg.MessageID),
 				Details: map[string]any{
 					"source": "photo",
 					"mime":   mime,
@@ -317,11 +345,13 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			DurationMS: time.Since(start).Milliseconds(),
 			ChatID:     &chatID,
 			UserIDAnon: userID,
+			TaskID:     strconv.Itoa(msg.MessageID),
 			Details: map[string]any{
 				"source":          "photo",
 				"mime":            mime,
 				"bytes":           len(data),
 				"shape":           res.Shape,
+				"shape_detected":  res.ShapeDetected,
 				"needs_clarify":   res.NeedsClarification,
 				"uncertain_count": len(res.UncertainReasons),
 			},
