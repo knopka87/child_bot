@@ -154,6 +154,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	}
 
 	// без выбора — сразу PARSE
+	r.send(chatID, "Изображение распознано, перехожу к парсингу.")
 	sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
 	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, -1, "")
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Total time: %d", time.Since(start).Milliseconds()))

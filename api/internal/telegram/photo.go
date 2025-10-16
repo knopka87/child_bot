@@ -12,12 +12,25 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"child-bot/api/internal/util"
 )
+
+var batches sync.Map // key -> *photoBatch
+type photoBatch struct {
+	ChatID       int64
+	Key          string // "grp:<mediaGroupID>" | "chat:<chatID>"
+	MediaGroupID string
+
+	mu     sync.Mutex
+	images [][]byte
+	timer  *time.Timer
+	lastAt time.Time
+}
 
 func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	cid := util.GetChatIDFromTgMessage(msg)

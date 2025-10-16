@@ -54,6 +54,21 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 
 func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	util.PrintInfo("HandleUpdate", llmName, util.GetChatIDByTgUpdate(upd), "Start")
+	cid := util.GetChatIDByTgUpdate(upd)
+	cur := getState(cid)
+
+	if ns, ok := inferNextState(upd, cur); ok && ns != cur {
+		if !canTransition(cur, ns) {
+			// Запрещённый переход — сообщим пользователю
+			msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
+				friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
+			r.send(cid, msg)
+			return
+		}
+		// Переход допустим — фиксируем новое состояние
+		setState(cid, ns)
+	}
+
 	// 1) Callback-кнопки
 	if upd.CallbackQuery != nil {
 		r.handleCallback(*upd.CallbackQuery, llmName)
@@ -66,7 +81,6 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		return
 	}
 
-	cid := util.GetChatIDByTgUpdate(upd)
 	message := fmt.Sprintf("telegram message: %+v", upd)
 	util.PrintInfo("HandleUpdate", llmName, cid, message)
 
@@ -83,6 +97,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		case "await_solution":
 			// Нормализуем текстовый ответ ученика
 			userID := util.GetUserIDFromTgUpdate(upd)
+			r.send(cid, "Начинаю нормализацию твоего ответа.")
 			r.normalizeText(context.Background(), cid, userID, upd.Message.Text)
 			return
 		case "await_new_task":
@@ -153,6 +168,13 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 func (r *Router) send(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	_, _ = r.Bot.Send(msg)
+}
+
+func (r *Router) sendDebug(chatID int64, text string) {
+	if chatID == 255509524 {
+		msg := tgbotapi.NewMessage(chatID, text)
+		_, _ = r.Bot.Send(msg)
+	}
 }
 
 func (r *Router) SendResult(chatID int64, text string) {

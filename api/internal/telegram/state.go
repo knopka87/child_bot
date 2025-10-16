@@ -1,8 +1,13 @@
 package telegram
 
 import (
+	"strings"
 	"sync"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"child-bot/api/internal/util"
 )
 
 const (
@@ -11,12 +16,12 @@ const (
 )
 
 var (
-	batches       sync.Map // key -> *photoBatch
 	pendingChoice sync.Map // chatID -> []string (tasks brief)
 	pendingCtx    sync.Map // chatID -> *selectionContext
 	parseWait     sync.Map // chatID -> *parsePending
 	hintState     sync.Map // chatID -> *hintSession
 	chatMode      sync.Map // chatID -> string: "", "await_solution", "await_new_task"
+	chatState     sync.Map // chatID ->
 )
 
 // хелперы
@@ -31,13 +36,207 @@ func getMode(chatID int64) string {
 }
 func clearMode(chatID int64) { chatMode.Delete(chatID) }
 
-type photoBatch struct {
-	ChatID       int64
-	Key          string // "grp:<mediaGroupID>" | "chat:<chatID>"
-	MediaGroupID string
+type State string
 
-	mu     sync.Mutex
-	images [][]byte
-	timer  *time.Timer
-	lastAt time.Time
+var (
+	Home, CollectingPages, Detect, NeedsRescan,
+	NotATask, Inappropriate, DecideTasks, Parse,
+	AutoPick, AskChoice, Report, AnalyzeChoice,
+	Hints, Confirm, AnalogueTask,
+	AwaitSolution, Normalize, Check,
+	Correct, Incorrect, Uncertain, Analogue State
+)
+
+var States = map[State][]State{
+	Home:            {CollectingPages, Home},
+	CollectingPages: {Detect},
+	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks},
+	NeedsRescan:     {Home},
+	NotATask:        {Home},
+	Inappropriate:   {Home},
+	DecideTasks:     {Parse, AutoPick, AskChoice},
+	AutoPick:        {Parse},
+	AskChoice:       {Report, AnalyzeChoice},
+	AnalyzeChoice:   {Parse, Home, AnalyzeChoice, Report},
+	Parse:           {Hints, Confirm},
+	Confirm:         {Hints, Home, Report},
+	Hints:           {AwaitSolution, Home, Hints, Report},
+	AwaitSolution:   {Normalize, Report},
+	Normalize:       {Check},
+	Check:           {Correct, Incorrect, Uncertain},
+	Correct:         {Home},
+	Incorrect:       {Analogue, Home},
+	Uncertain:       {Analogue, Home},
+	Analogue:        {Home, Report},
+}
+
+// canTransition проверяет, можно ли перейти из from в to.
+func canTransition(from, to State) bool {
+	nexts, ok := States[from]
+	if !ok {
+		return false
+	}
+	for _, n := range nexts {
+		if n == to {
+			return true
+		}
+	}
+	return false
+}
+
+func getState(chatID int64) State {
+	if v, ok := chatState.Load(chatID); ok {
+		if s, ok2 := v.(State); ok2 {
+			return s
+		}
+	}
+	chatState.Store(chatID, Home)
+	return Home
+}
+
+func setState(chatID int64, s State) {
+	chatState.Store(chatID, s)
+}
+
+// В схемe Mermaid помечено, что текст явно допустим в L0/L1/L2/L3 и AnalogueTask.
+// У нас этих под-состояний нет, поэтому используем ближайшие «узлы», где мы реально ждём текст:
+func isCanUserText(s State) bool {
+	switch s {
+	case Hints, AskChoice, AwaitSolution, Analogue: // упрощённое соответствие
+		return true
+	default:
+		return false
+	}
+}
+
+func friendlyState(s State) string {
+	switch s {
+	case Home:
+		return "Главная"
+	case CollectingPages:
+		return "Сбор фото"
+	case Detect:
+		return "Детект"
+	case NeedsRescan:
+		return "Нужно перефотографировать"
+	case NotATask:
+		return "Это не задание"
+	case Inappropriate:
+		return "Неподходящее изображение"
+	case DecideTasks:
+		return "Выбор задачи"
+	case Parse:
+		return "Парсинг"
+	case AutoPick:
+		return "Автовыбор задачи"
+	case AskChoice:
+		return "Ожидаю номер задачи"
+	case AnalyzeChoice:
+		return "Анализ выбора"
+	case Hints:
+		return "Подсказки"
+	case Confirm:
+		return "Подтверждение"
+	case AwaitSolution:
+		return "Жду решение"
+	case Normalize:
+		return "Нормализация ответа"
+	case Check:
+		return "Проверка решения"
+	case Correct:
+		return "Верно"
+	case Incorrect:
+		return "Есть ошибка"
+	case Uncertain:
+		return "Не уверен"
+	case Analogue:
+		return "Похожее задание"
+	default:
+		return string(s)
+	}
+}
+
+// Короткие подсказки по доступным действиям в текущем состоянии для пользователя
+func allowedStateHints(cur State) string {
+	switch cur {
+	case Home:
+		return "\nМожно прислать фото задания (1–2 фото). Доступны /start, /health, /engine."
+	case AskChoice:
+		return "\nПришлите номер задачи из списка (целое число 1..N) или нажмите «Сообщить об ошибке»."
+	case Hints:
+		return "\nДоступно: «Получить подсказку», «Готов дать решение», «Перейти к новой задаче»."
+	case AwaitSolution:
+		return "\nПришлите ваш ответ текстом или фото. Либо «Перейти к новой задаче»."
+	case Incorrect, Uncertain:
+		return "\nМожно запросить «Похожее задание» или «Перейти к новой задаче»."
+	default:
+		// По умолчанию — перечислим разрешённые состояния по карте переходов
+		nexts := States[cur]
+		if len(nexts) == 0 {
+			return ""
+		}
+		var names []string
+		for _, n := range nexts {
+			names = append(names, friendlyState(n))
+		}
+		return "\nДоступные действия: " + strings.Join(names, ", ")
+	}
+}
+
+// Пытаемся вывести желаемое следующее состояние по входящему апдейту.
+// Второй флаг = true, если вообще есть предложение смены состояния.
+func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
+	// 1) Callback-и
+	if upd.CallbackQuery != nil {
+		switch strings.ToLower(strings.TrimSpace(upd.CallbackQuery.Data)) {
+		case "analogue_solution", "analogue":
+			return Analogue, true
+		default:
+			return Report, true
+		}
+	}
+
+	// 2) Без сообщения — не меняем состояние
+	if upd.Message == nil {
+		return cur, false
+	}
+
+	// 3) Команды
+	if upd.Message.IsCommand() {
+		// /start, /health, /engine — считаем «сервисными», не меняющими логику ветки.
+		cmd := strings.Fields(strings.TrimPrefix(upd.Message.Text, "/"))
+		if len(cmd) > 0 {
+			switch cmd[0] {
+			case "start", "health":
+				return Home, true
+			case "engine":
+				// провайдер переключится в другом месте; состояние оставим прежним либо Home
+				return Home, true
+			}
+		}
+		// прочие команды — без смены
+		return cur, false
+	}
+
+	// 4) Фото
+	if upd.Message.Photo != nil && len(upd.Message.Photo) > 0 {
+		if cur == AwaitSolution {
+			return Normalize, true // прислано решение фото → нормализация
+		}
+		return CollectingPages, true // прислано фото задания/страницы
+	}
+
+	// 5) Текст
+	if s := strings.TrimSpace(upd.Message.Text); s != "" {
+		if v, ok := pendingChoice.Load(util.GetChatIDByTgUpdate(upd)); ok && v != nil {
+			return AnalyzeChoice, true // ввод номера задачи 1..N
+		}
+		if cur == AwaitSolution {
+			return Normalize, true // текстовое решение → нормализация
+		}
+		// Иначе текст вне контекста: останемся где были
+		return cur, false
+	}
+
+	return cur, false
 }
