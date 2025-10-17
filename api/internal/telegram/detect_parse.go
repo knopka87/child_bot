@@ -32,14 +32,15 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	mime := util.SniffMimeHTTP(merged)
 	llmName := r.EngManager.Get(chatID)
 
-	r.sendDebug(chatID, fmt.Sprintf("Detect: merged: %s, mime: %s", merged, mime))
+	r.sendDebug(chatID, "merged", merged)
+	r.sendDebug(chatID, "mime", mime)
 	// DETECT через llmproxy
 	var dres ocr.DetectResult
 	start := time.Now()
 	dr, err := r.LLM.Detect(ctx, llmName, merged, mime, 0)
 	if err == nil {
 		dres = dr
-		r.sendDebug(chatID, fmt.Sprintf("Detect Res: ```%+v```", dres))
+		r.sendDebug(chatID, "detect_res", dres)
 
 		// агрегируем флаги по задачам
 		tasksCount := len(dres.Tasks)
