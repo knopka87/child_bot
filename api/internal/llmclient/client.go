@@ -24,7 +24,7 @@ func New(base string) *Client {
 	base = strings.TrimRight(base, "/")
 	return &Client{
 		base: base,
-		hc:   &http.Client{Timeout: 60 * time.Second},
+		hc:   &http.Client{Timeout: 180 * time.Second},
 	}
 }
 

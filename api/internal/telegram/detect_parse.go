@@ -32,7 +32,6 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	mime := util.SniffMimeHTTP(merged)
 	llmName := r.EngManager.Get(chatID)
 
-	r.sendDebug(chatID, "merged", merged)
 	r.sendDebug(chatID, "mime", mime)
 	// DETECT через llmproxy
 	var dres ocr.DetectResult
