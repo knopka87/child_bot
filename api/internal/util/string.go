@@ -3,6 +3,7 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 )
 
@@ -18,4 +19,9 @@ func StripCodeFences(s string) string {
 func SHA256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+func PrettyJSON(v any) string {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return string(b)
 }

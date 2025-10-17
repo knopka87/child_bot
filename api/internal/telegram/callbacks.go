@@ -100,14 +100,13 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		r.send(chatID, formatHint(level, hr))
 	} else {
 		in := ocr.HintInput{
-			Level:             lvlToConst(level),
-			RawText:           hs.Parse.RawText,
-			Subject:           hs.Parse.Subject,
-			TaskType:          hs.Parse.TaskType,
-			Grade:             hs.Parse.Grade,
-			SolutionShape:     hs.Parse.SolutionShape,
-			TerminologyLevel:  levelTerminology(level),
-			SubjectConfidence: hs.Detect.SubjectConfidence,
+			Level:            lvlToConst(level),
+			RawText:          hs.Parse.RawText,
+			Subject:          hs.Parse.Subject,
+			TaskType:         hs.Parse.TaskType,
+			Grade:            hs.Parse.Grade,
+			SolutionShape:    hs.Parse.SolutionShape,
+			TerminologyLevel: levelTerminology(level),
 		}
 		llmName := r.EngManager.Get(chatID)
 		hrNew, err := r.LLM.Hint(context.Background(), llmName, in)

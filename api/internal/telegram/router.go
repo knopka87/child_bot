@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"html"
 	"io"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -183,13 +183,32 @@ func (r *Router) send(chatID int64, text string) {
 	_, _ = r.Bot.Send(msg)
 }
 
-func (r *Router) sendDebug(chatID int64, text string) {
-	util.PrintInfo("sendDebug", "", chatID, text)
-	if chatID == int64(255509524) {
-		log.Printf("eto ya!")
-		msg := tgbotapi.NewMessage(chatID, text)
-		_, _ = r.Bot.Send(msg)
+func (r *Router) sendDebug(chatID int64, v any) {
+	const limit = 4096 // лимит длины сообщения в Telegram
+	raw := util.PrettyJSON(v)
+	// экранируем HTML-символы и оборачиваем в pre/code
+	body := "<pre><code class=\"language-json\">" + html.EscapeString(raw) + "</code></pre>"
+
+	// если не помещается — отправим как файл
+	if len(body) > limit {
+		r.sendJSONAsDocument(chatID, []byte(raw), "result.json")
+		return
 	}
+
+	msg := tgbotapi.NewMessage(chatID, body)
+	msg.ParseMode = "HTML"
+	msg.DisableWebPagePreview = true
+	_, _ = r.Bot.Send(msg)
+
+}
+
+func (r *Router) sendJSONAsDocument(chatID int64, data []byte, filename string) {
+	doc := tgbotapi.NewDocument(chatID, tgbotapi.FileBytes{
+		Name:  filename,
+		Bytes: data,
+	})
+	_, _ = r.Bot.Send(doc)
+	return
 }
 
 func (r *Router) SendResult(chatID int64, text string) {
