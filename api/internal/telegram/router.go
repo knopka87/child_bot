@@ -57,15 +57,15 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	util.PrintInfo("HandleUpdate", llmName, util.GetChatIDByTgUpdate(upd), "Start")
 	cid := util.GetChatIDByTgUpdate(upd)
 
-	r.sendDebug(cid, fmt.Sprintf("telegram message:\n```%+v```", upd))
+	r.sendDebug(cid, "telegram_message", upd)
 	message := fmt.Sprintf("telegram message: %+v", upd)
 	util.PrintInfo("HandleUpdate", llmName, cid, message)
 
 	cur := getState(cid)
-	r.sendDebug(cid, fmt.Sprintf("last state: %s", cur))
+	r.sendDebug(cid, "last_state", cur)
 
 	if ns, ok := inferNextState(upd, cur); ok && ns != cur {
-		r.sendDebug(cid, fmt.Sprintf("new state: %s", ns))
+		r.sendDebug(cid, "new_state", ns)
 
 		if !canTransition(cur, ns) {
 			// Запрещённый переход — сообщим пользователю
@@ -183,15 +183,15 @@ func (r *Router) send(chatID int64, text string) {
 	_, _ = r.Bot.Send(msg)
 }
 
-func (r *Router) sendDebug(chatID int64, v any) {
+func (r *Router) sendDebug(chatID int64, name string, v any) {
 	const limit = 4096 // лимит длины сообщения в Telegram
 	raw := util.PrettyJSON(v)
 	// экранируем HTML-символы и оборачиваем в pre/code
-	body := "<pre><code class=\"language-json\">" + html.EscapeString(raw) + "</code></pre>"
+	body := name + ":\n<pre><code class=\"language-json\">" + html.EscapeString(raw) + "</code></pre>"
 
 	// если не помещается — отправим как файл
 	if len(body) > limit {
-		r.sendJSONAsDocument(chatID, []byte(raw), "result.json")
+		r.sendJSONAsDocument(chatID, []byte(raw), name+".json")
 		return
 	}
 
@@ -281,7 +281,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		Answer:        ocr.NormalizeAnswer{Source: "text", Text: strings.TrimSpace(text)},
 	}
 	util.PrintInfo("normalizeText", r.EngManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
-	r.sendDebug(chatID, fmt.Sprintf("normalize_input:\n```%+v```", in))
+	r.sendDebug(chatID, "normalize_input", in)
 
 	start := time.Now()
 	res, err := r.LLM.Normalize(ctx, llmName, in)
