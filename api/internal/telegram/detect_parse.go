@@ -36,9 +36,31 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	// DETECT через llmproxy
 	var dres ocr.DetectResult
 	start := time.Now()
-	if dr, err := r.LLM.Detect(ctx, llmName, merged, mime, 0); err == nil {
-		r.sendDebug(chatID, fmt.Sprintf("Detect Res: ```%+v```", dres))
+	dr, err := r.LLM.Detect(ctx, llmName, merged, mime, 0)
+	if err == nil {
 		dres = dr
+		r.sendDebug(chatID, fmt.Sprintf("Detect Res: ```%+v```", dres))
+
+		// агрегируем флаги по задачам
+		tasksCount := len(dres.Tasks)
+		hasFacesAny := false
+		piiAny := false
+		multipleDetected := false
+		for _, t := range dres.Tasks {
+			if t.HasFaces {
+				hasFacesAny = true
+			}
+			if t.PIIDetected {
+				piiAny = true
+			}
+			if t.MultipleTasksDetected {
+				multipleDetected = true
+			}
+		}
+		if tasksCount > 1 {
+			multipleDetected = true
+		}
+
 		errM := r.Metrics.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "detect",
 			Provider:   llmName,
@@ -47,22 +69,20 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			ChatID:     &chatID,
 			UserIDAnon: userID,
 			Details: map[string]any{
-				"needs_rescan":             dr.NeedsRescan,
-				"rescan_reason":            dr.RescanReason,
-				"multi_task":               dr.IsMultipleTasks(),
-				"final_state":              dr.FinalState,
-				"has_faces":                dr.HasFaces,
-				"has_diagrams_or_formulas": dr.HasDiagramsOrFormulas,
-				"auto_choice_suggested":    dr.AutoChoiceSuggested,
-				"pii_detected":             dr.PIIDetected,
+				"tasks_count":       tasksCount,
+				"verbatim_mode":     dres.VerbatimMode,
+				"operators_strict":  dres.OperatorsStrict,
+				"whitespace_policy": dres.WhitespacePolicy,
+				"page_number":       dres.PageMeta.PageNumber,
+				"multiple_tasks":    multipleDetected,
+				"has_faces_any":     hasFacesAny,
+				"pii_detected_any":  piiAny,
 			},
 		})
 		if errM != nil {
 			util.PrintError("runDetectThenParse", llmName, chatID, "error insert metrics", errM)
 		}
 	} else {
-		// Мягкий фолбэк: продолжаем без детекта (используем значения по умолчанию),
-		// просто логируем ошибку и сообщаем пользователю, что попробуем распознать весь снимок.
 		if r.Metrics != nil {
 			_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 				Stage:      "detect",
@@ -79,80 +99,63 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	}
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
 
-	// базовая политика
-	if dres.FinalState == "inappropriate_image" {
-		r.send(chatID, "⚠️ Неподходящее изображение. Пришлите фото учебного задания без личных данных.")
+	// Базовая политика по результату
+	if len(dres.Tasks) == 0 {
+		r.send(chatID, "ℹ️ Похоже, на фото не распознано учебное задание. Пришлите фото условия задачи (1–4 класс).")
 		return
 	}
-	if dres.FinalState == "not_a_task" {
-		r.send(chatID, "ℹ️ Похоже, на фото нет учебного задания. Пришлите фото условия задачи (1–4 класс).")
-		return
-	}
-	if dres.FinalState == "needs_rescan" {
-		msg := "Пожалуйста, переснимите фото"
-		if dres.RescanReason != "" {
-			msg += ": " + dres.RescanReason
+	// предупредим о лицах/PII, если встречаются в любой задаче
+	hasFacesAny := false
+	piiAny := false
+	for _, t := range dres.Tasks {
+		if t.HasFaces {
+			hasFacesAny = true
 		}
-		if dres.RescanCode != "" {
-			msg += " (код: " + dres.RescanCode + ")"
+		if t.PIIDetected {
+			piiAny = true
 		}
-		r.send(chatID, "📷 "+msg)
-		return
 	}
-	if dres.HasFaces {
+	if hasFacesAny {
 		r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.")
 	}
-	if dres.PIIDetected {
+	if piiAny {
 		r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.")
 	}
 
-	// несколько заданий — авто-выбор или запрос номера
-	if dres.IsMultipleTasks() {
-		// собрать список для показа: prefer tasks_brief, иначе из candidates
-		tasks := make([]string, 0)
-		if len(dres.TasksBrief) > 0 {
-			tasks = append(tasks, dres.TasksBrief...)
-		} else if len(dres.TasksCandidates) > 0 {
-			for _, c := range dres.TasksCandidates {
-				tasks = append(tasks, c.Title)
+	// Несколько заданий — попросить выбрать
+	if len(dres.Tasks) > 1 {
+		tasks := make([]string, 0, len(dres.Tasks))
+		for _, t := range dres.Tasks {
+			// попытка краткого описания: номер + первая строка из первого блока либо TitleRaw
+			brief := strings.TrimSpace(t.TitleRaw)
+			if brief == "" && len(t.Blocks) > 0 {
+				// берём первую строку из block_raw
+				br := t.Blocks[0].BlockRaw
+				br = strings.SplitN(br, "\n", 2)[0]
+				brief = strings.TrimSpace(br)
+			}
+			title := strings.TrimSpace(t.OriginalNumber)
+			if title != "" && brief != "" {
+				tasks = append(tasks, title+" — "+brief)
+			} else if brief != "" {
+				tasks = append(tasks, brief)
+			} else if title != "" {
+				tasks = append(tasks, title)
+			} else {
+				tasks = append(tasks, "Задание")
 			}
 		}
+		pendingChoice.Store(chatID, tasks)
+		pendingCtx.Store(chatID, &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres})
 
-		// можно ли авто-выбрать?
-		canAuto := false
-		pickedIdx := -1
-		if dres.AutoChoiceSuggested != nil && *dres.AutoChoiceSuggested && dres.TopCandidateIndex != nil {
-			if *dres.TopCandidateIndex >= 0 && *dres.TopCandidateIndex < len(tasks) && dres.Confidence >= 0.80 {
-				canAuto = true
-				pickedIdx = *dres.TopCandidateIndex
-			}
+		var b strings.Builder
+		b.WriteString("Нашёл несколько заданий. Выберите номер:\n")
+		for i, t := range tasks {
+			fmt.Fprintf(&b, "%d) %s\n", i+1, t)
 		}
-
-		if canAuto && pickedIdx >= 0 {
-			brief := ""
-			if pickedIdx < len(tasks) {
-				brief = tasks[pickedIdx]
-			}
-			sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
-			r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, pickedIdx, brief)
-			return
-		}
-
-		// иначе — спросить у пользователя
-		if len(tasks) > 0 {
-			pendingChoice.Store(chatID, tasks)
-			pendingCtx.Store(chatID, &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres})
-			var b strings.Builder
-			b.WriteString("Нашёл несколько заданий. Выберите номер:\n")
-			for i, t := range tasks {
-				fmt.Fprintf(&b, "%d) %s\n", i+1, t)
-			}
-			if dres.DisambiguationQuestion != "" {
-				b.WriteString("\n" + dres.DisambiguationQuestion)
-			}
-			r.send(chatID, b.String())
-			return
-		}
+		b.WriteString("\nЕсли номер не виден на фото — укажите позицию из списка.")
+		r.send(chatID, b.String())
+		return
 	}
 
 	// без выбора — сразу PARSE
@@ -175,12 +178,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	// 2) LLM.Parse
 	start := time.Now()
 	pr, err := r.LLM.Parse(ctx, llmName, sc.Image, ocr.ParseOptions{
-		SubjectHint: func() string {
-			if sc.Detect.FinalState == "recognized_ready_to_parse" {
-				return sc.Detect.SubjectGuess
-			}
-			return ""
-		}(),
+		SubjectHint:       "",
 		ChatID:            chatID,
 		MediaGroupID:      sc.MediaGroupID,
 		ImageHash:         imgHash,
@@ -204,7 +202,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "parse",
 		Provider:   llmName,
-		OK:         false,
+		OK:         true,
 		DurationMS: time.Since(start).Milliseconds(),
 		ChatID:     &chatID,
 		UserIDAnon: userID,
