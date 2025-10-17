@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -24,7 +25,21 @@ func New(base string) *Client {
 	base = strings.TrimRight(base, "/")
 	return &Client{
 		base: base,
-		hc:   &http.Client{Timeout: 180 * time.Second},
+		hc: &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   10 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+				ResponseHeaderTimeout: 120 * time.Second, // ждём заголовки до 2 минут
+			},
+			Timeout: 0, // общий таймаут управляем per-request через ctx
+		},
 	}
 }
 
@@ -146,10 +161,45 @@ type analogueSolutionRequest struct {
 	ocr.AnalogueSolutionInput
 }
 
+// addTimeoutSec appends ?timeoutSec=N (or &timeoutSec=N) to the given path.
+func addTimeoutSec(path string, seconds int) string {
+	if seconds <= 0 {
+		return path
+	}
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + "timeoutSec=" + fmt.Sprintf("%d", seconds)
+}
+
 func (c *Client) post(ctx context.Context, path string, body interface{}, out interface{}) error {
+	// Установим per-request timeout, если его ещё нет
+	const defaultTotalTimeout = 3 * time.Minute
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, defaultTotalTimeout)
+		defer cancel()
+	}
+
+	// Вычисляем оставшееся время для передачи downstream
+	var timeoutSec int
+	if dl, ok := ctx.Deadline(); ok {
+		rem := time.Until(dl)
+		if rem > 0 {
+			timeoutSec = int(rem.Seconds())
+		}
+	}
+	pathWithTimeout := addTimeoutSec(path, timeoutSec)
+
 	buf, _ := json.Marshal(body)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(buf))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+pathWithTimeout, bytes.NewReader(buf))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	if timeoutSec > 0 {
+		// Дружелюбный заголовок — сервер может читать либо header, либо query (?timeoutSec=)
+		req.Header.Set("X-Request-Timeout", fmt.Sprintf("%d", timeoutSec))
+	}
 	res, err := c.hc.Do(req)
 	if err != nil {
 		return err
