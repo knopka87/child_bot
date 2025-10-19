@@ -28,6 +28,7 @@ type parsePending struct {
 }
 
 func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
+	setState(chatID, Parse)
 	imgHash := util.SHA256Hex(sc.Image)
 	llmName := r.EngManager.Get(chatID)
 
@@ -121,6 +122,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 
 	// 5) Если нужен рескан — сообщаем и выходим
 	if pr.NeedsRescan {
+		setState(chatID, NeedsRescan)
 		msg := pr.RescanReason
 		if strings.TrimSpace(msg) == "" {
 			msg = "Нужно переснять фото: постарайтесь сделать его чётким, без бликов и поближе к задаче."
@@ -132,6 +134,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 
 	// 6) Если требуется подтверждение — спрашиваем пользователя
 	if pr.ConfirmationNeeded {
+		setState(chatID, Confirm)
 		r.askParseConfirmation(chatID, pr)
 		parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
 		return

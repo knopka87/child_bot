@@ -19,6 +19,7 @@ func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Lo
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
 
 func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *int64, merged []byte, mediaGroupID string) {
+	setState(chatID, Detect)
 	mime := util.SniffMimeHTTP(merged)
 	llmName := r.EngManager.Get(chatID)
 
