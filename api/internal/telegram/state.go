@@ -178,7 +178,7 @@ func friendlyState(s State) string {
 func allowedStateHints(cur State) string {
 	switch cur {
 	case Home:
-		return "\nМожно прислать фото задания (1–2 фото). Доступны /start, /health, /engine."
+		return "\nМожно прислать фото задания (1–2 фото)."
 	case AskChoice:
 		return "\nПришлите номер задачи из списка (целое число 1..N) или нажмите «Сообщить об ошибке»."
 	case Hints:
