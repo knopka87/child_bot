@@ -221,6 +221,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		}
 		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 		r.send(cid, "Неверный номер. Выберите один из:\n"+strings.Join(lines, "\n"), b)
+		setState(cid, AskChoice)
 		return
 	}
 
