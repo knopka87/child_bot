@@ -166,111 +166,109 @@ func (r *Router) sendCheckResult(chatID int64, cr types.CheckSolutionResult) {
 		b.WriteString("Результат проверки получен\n")
 	}
 
-	// 2) Короткая подсказка от проверки (без раскрытия ответа)
-	if s := strings.TrimSpace(cr.ShortHint); s != "" {
-		b.WriteString("Подсказка: ")
-		b.WriteString(s)
-		b.WriteString("\n")
-	}
-
-	// 3) Коды причин (если есть) — компактно
-	if len(cr.ReasonCodes) > 0 {
-		b.WriteString("Причины: ")
-		b.WriteString(strings.Join(cr.ReasonCodes, ", "))
-		b.WriteString("\n")
-	}
-
-	// 4) Диагностическая сводка (без чисел/конкретных значений)
-	c := cr.Comparison
-
-	// Единицы измерения
-	if u := c.Units; u != nil {
-		b.WriteString("Единицы: ")
-		if u.Applied != nil && strings.TrimSpace(*u.Applied) != "" {
-			// конверсия применена, без конкретных значений
-			b.WriteString("конверсия применена\n")
-		} else {
-			// просто констатируем наличие/отсутствие
-			if u.Detected != nil && strings.TrimSpace(*u.Detected) != "" {
-				b.WriteString("указаны\n")
-			} else {
-				b.WriteString("не указаны\n")
-			}
-		}
-	}
-
-	// Числовая проверка
-	if nd := c.NumberDiff; nd != nil {
-		if nd.WithinTolerance {
-			b.WriteString("Числовая проверка: в допустимых пределах\n")
-		} else {
-			// не раскрываем значения/форматы
-			b.WriteString("Числовая проверка: требуется пересмотр\n")
-		}
-	}
-
-	// Словесная проверка (для русского языка)
-	if sm := c.StringMatch; sm != nil {
-		mode := strings.TrimSpace(sm.Mode)
-		if mode == "" {
-			mode = "по тексту"
-		}
-		b.WriteString("Словесная сверка: ")
-		b.WriteString(mode)
-		b.WriteString("\n")
-	}
-
-	// Списки
-	if lm := c.ListMatch; lm != nil {
-		if lm.Extra > 0 || len(lm.Missing) > 0 {
-			b.WriteString("Список: проверь комплектность и лишние элементы\n")
-		} else if lm.Total > 0 {
-			b.WriteString("Список: ок\n")
-		}
-	}
-
-	// Шаги решения
-	if st := c.StepsMatch; st != nil {
-		if !st.OrderOK || len(st.Missing) > 0 || len(st.ExtraSteps) > 0 {
-			b.WriteString("Шаги решения: проверь порядок и полноту\n")
-		} else {
-			b.WriteString("Шаги решения: ок\n")
-		}
-	}
-
-	// 5) Короткая «озвучиваемая» фраза (до 140 символов)
-	if s := strings.TrimSpace(cr.SpeakableMessage); s != "" {
-		b.WriteString("\n")
-		b.WriteString(s)
-	}
-
-	// 6) Рекомендованное следующее действие от модели
-	if code := strings.TrimSpace(cr.NextActionCode); code != "" {
-		var tip string
-		switch code {
-		case "ask_retry":
-			tip = "→ Попробуй ещё раз: перепроверь и пришли новое фото решения."
-		case "ask_rephoto":
-			tip = "→ Пересними фото решения: чётко, без теней и бликов."
-		case "ask_clarify_units":
-			tip = "→ Уточни единицы измерения рядом с ответом."
-		}
-		if tip != "" {
-			b.WriteString("\n")
-			b.WriteString(tip)
-		}
-	}
-
-	if strings.ToLower(strings.TrimSpace(cr.Verdict)) == "correct" {
-		b.WriteString("\nДавай перейдём к решению следующе задачи.")
+	if getState(chatID) == Correct {
+		b.WriteString("\nДавай перейдём к решению следующей задачи.")
 		clearMode(chatID)
 		r.clearSession(chatID)
+	} else {
+		// 2) Короткая подсказка от проверки (без раскрытия ответа)
+		if s := strings.TrimSpace(cr.ShortHint); s != "" {
+			b.WriteString("Подсказка: ")
+			b.WriteString(s)
+			b.WriteString("\n")
+		}
+		// 3) Коды причин (если есть) — компактно
+		if len(cr.ReasonCodes) > 0 {
+			b.WriteString("Причины: ")
+			b.WriteString(strings.Join(cr.ReasonCodes, ", "))
+			b.WriteString("\n")
+		}
+		// 4) Диагностическая сводка (без чисел/конкретных значений)
+		c := cr.Comparison
+
+		// Единицы измерения
+		if u := c.Units; u != nil {
+			b.WriteString("Единицы: ")
+			if u.Applied != nil && strings.TrimSpace(*u.Applied) != "" {
+				// конверсия применена, без конкретных значений
+				b.WriteString("конверсия применена\n")
+			} else {
+				// просто констатируем наличие/отсутствие
+				if u.Detected != nil && strings.TrimSpace(*u.Detected) != "" {
+					b.WriteString("указаны\n")
+				} else {
+					b.WriteString("не указаны\n")
+				}
+			}
+		}
+
+		// Числовая проверка
+		if nd := c.NumberDiff; nd != nil {
+			if nd.WithinTolerance {
+				b.WriteString("Числовая проверка: в допустимых пределах\n")
+			} else {
+				// не раскрываем значения/форматы
+				b.WriteString("Числовая проверка: требуется пересмотр\n")
+			}
+		}
+
+		// Словесная проверка (для русского языка)
+		if sm := c.StringMatch; sm != nil {
+			mode := strings.TrimSpace(sm.Mode)
+			if mode == "" {
+				mode = "по тексту"
+			}
+			b.WriteString("Словесная сверка: ")
+			b.WriteString(mode)
+			b.WriteString("\n")
+		}
+
+		// Списки
+		if lm := c.ListMatch; lm != nil {
+			if lm.Extra > 0 || len(lm.Missing) > 0 {
+				b.WriteString("Список: проверь комплектность и лишние элементы\n")
+			} else if lm.Total > 0 {
+				b.WriteString("Список: ок\n")
+			}
+		}
+
+		// Шаги решения
+		if st := c.StepsMatch; st != nil {
+			if !st.OrderOK || len(st.Missing) > 0 || len(st.ExtraSteps) > 0 {
+				b.WriteString("Шаги решения: проверь порядок и полноту\n")
+			} else {
+				b.WriteString("Шаги решения: ок\n")
+			}
+		}
+
+		// 5) Короткая «озвучиваемая» фраза (до 140 символов)
+		if s := strings.TrimSpace(cr.SpeakableMessage); s != "" {
+			b.WriteString("\n")
+			b.WriteString(s)
+		}
+
+		// 6) Рекомендованное следующее действие от модели
+		if code := strings.TrimSpace(cr.NextActionCode); code != "" {
+			var tip string
+			switch code {
+			case "ask_retry":
+				tip = "→ Попробуй ещё раз: перепроверь и пришли новое фото решения."
+			case "ask_rephoto":
+				tip = "→ Пересними фото решения: чётко, без теней и бликов."
+			case "ask_clarify_units":
+				tip = "→ Уточни единицы измерения рядом с ответом."
+			}
+			if tip != "" {
+				b.WriteString("\n")
+				b.WriteString(tip)
+			}
+		}
 	}
 
 	r.send(chatID, b.String(), nil)
 
 	// 7) При ошибке или неуверенности предлагаем «Похожее задание»
-	if strings.EqualFold(cr.Verdict, "incorrect") || strings.EqualFold(cr.Verdict, "uncertain") {
+	if getState(chatID) != Correct {
 		r.offerAnalogueButton(chatID)
 	}
 }
