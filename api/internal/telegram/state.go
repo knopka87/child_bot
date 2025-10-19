@@ -65,7 +65,7 @@ var (
 
 var States = map[State][]State{
 	Home:            {CollectingPages, Home, Report},
-	CollectingPages: {Detect},
+	CollectingPages: {Detect, Report},
 	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks},
 	NeedsRescan:     {Home},
 	NotATask:        {Home},
@@ -167,6 +167,8 @@ func friendlyState(s State) string {
 		return "Не уверен"
 	case Analogue:
 		return "Похожее задание"
+	case Report:
+		return "Сообщить об ошибке"
 	default:
 		return string(s)
 	}
