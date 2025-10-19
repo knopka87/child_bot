@@ -74,7 +74,7 @@ var States = map[State][]State{
 	AutoPick:        {Parse},
 	AskChoice:       {Report, AnalyzeChoice},
 	AnalyzeChoice:   {Parse, Home, AnalyzeChoice, Report},
-	Parse:           {Hints, Confirm},
+	Parse:           {Hints, AwaitSolution, Confirm},
 	Confirm:         {Hints, Home, Report},
 	Hints:           {AwaitSolution, Home, Hints, Report},
 	AwaitSolution:   {Normalize, Report},
