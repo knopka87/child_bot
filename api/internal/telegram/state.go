@@ -65,7 +65,7 @@ var (
 
 var States = map[State][]State{
 	Home:            {CollectingPages, Home, Report},
-	CollectingPages: {Detect, Report},
+	CollectingPages: {Detect, Report, Home},
 	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks},
 	NeedsRescan:     {Home},
 	NotATask:        {Home},
@@ -128,7 +128,7 @@ func isCanUserText(s State) bool {
 func friendlyState(s State) string {
 	switch s {
 	case Home:
-		return "Главная"
+		return "Жду фото задачи"
 	case CollectingPages:
 		return "Сбор фото"
 	case Detect:
