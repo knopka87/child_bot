@@ -210,11 +210,13 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		setState(chatID, Inappropriate)
 		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 		r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.", b)
+		return
 	}
 	if piiAny {
 		setState(chatID, Inappropriate)
 		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 		r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.", b)
+		return
 	}
 
 	// Несколько заданий — попросить выбрать
@@ -232,6 +234,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	}
 
 	// без выбора — сразу PARSE
+	setState(chatID, DecideTasks)
 	r.send(chatID, "Изображение распознано, перехожу к парсингу.", nil)
 	sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
 	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, -1, "")
