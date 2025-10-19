@@ -15,6 +15,82 @@ import (
 	"child-bot/api/internal/util"
 )
 
+// TaskChoice хранит отображаемый номер варианта и краткое описание + индекс задачи
+type TaskChoice struct {
+	Number      string
+	Description string
+	TaskIndex   int
+}
+
+// briefTaskDesc возвращает короткое описание задания для списка выбора
+func briefTaskDesc(t types.DetectTask) string {
+	brief := strings.TrimSpace(t.TitleRaw)
+	if brief == "" && len(t.Blocks) > 0 {
+		br := t.Blocks[0].BlockRaw
+		br = strings.SplitN(br, "\n", 2)[0]
+		brief = strings.TrimSpace(br)
+	}
+	return brief
+}
+
+// fillPendingChoice подготавливает и сохраняет pendingChoice/pendingCtx,
+// возвращая строки для пользовательского списка.
+func (r *Router) fillPendingChoice(chatID int64, merged []byte, mime, mediaGroupID string, dres types.DetectResult) []string {
+	// Соберём занятые номера из оригинальных номеров задач
+	used := make(map[string]struct{})
+	for _, t := range dres.Tasks {
+		if n := strings.TrimSpace(t.OriginalNumber); n != "" {
+			used[n] = struct{}{}
+		}
+	}
+	// Генератор свободных числовых номеров, не пересекающихся с оригинальными
+	next := 1
+	genFree := func() string {
+		for {
+			n := fmt.Sprintf("%d", next)
+			next++
+			if _, exists := used[n]; !exists {
+				used[n] = struct{}{}
+				return n
+			}
+		}
+	}
+
+	var choices []TaskChoice
+	var lines []string
+
+	for idx, t := range dres.Tasks {
+		brief := briefTaskDesc(t)
+		number := strings.TrimSpace(t.OriginalNumber)
+		if number == "" {
+			number = genFree()
+		}
+		desc := brief
+		if desc == "" && number != "" {
+			desc = number
+		}
+		if desc == "" {
+			desc = "Задание"
+		}
+		choices = append(choices, TaskChoice{
+			Number:      number,
+			Description: desc,
+			TaskIndex:   idx,
+		})
+		lines = append(lines, fmt.Sprintf("%s — %s", number, desc))
+	}
+
+	// Сохраняем в pendingChoice список объектов {номер, описание, индекс}
+	pendingChoice.Store(chatID, choices)
+	pendingCtx.Store(chatID, &selectionContext{
+		Image:        merged,
+		Mime:         mime,
+		MediaGroupID: mediaGroupID,
+		Detect:       dres,
+	})
+	return lines
+}
+
 func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Load(chatID); return ok }
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
 
@@ -140,36 +216,13 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 
 	// Несколько заданий — попросить выбрать
 	if len(dres.Tasks) > 1 {
-		tasks := make([]string, 0, len(dres.Tasks))
-		for _, t := range dres.Tasks {
-			// попытка краткого описания: номер + первая строка из первого блока либо TitleRaw
-			brief := strings.TrimSpace(t.TitleRaw)
-			if brief == "" && len(t.Blocks) > 0 {
-				// берём первую строку из block_raw
-				br := t.Blocks[0].BlockRaw
-				br = strings.SplitN(br, "\n", 2)[0]
-				brief = strings.TrimSpace(br)
-			}
-			title := strings.TrimSpace(t.OriginalNumber)
-			if title != "" && brief != "" {
-				tasks = append(tasks, title+" — "+brief)
-			} else if brief != "" {
-				tasks = append(tasks, brief)
-			} else if title != "" {
-				tasks = append(tasks, title)
-			} else {
-				tasks = append(tasks, "Задание")
-			}
-		}
-		pendingChoice.Store(chatID, tasks)
-		pendingCtx.Store(chatID, &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres})
+		lines := r.fillPendingChoice(chatID, merged, mime, mediaGroupID, dres)
 
 		var b strings.Builder
-		b.WriteString("Нашёл несколько заданий. Выберите номер:\n")
-		for i, t := range tasks {
-			fmt.Fprintf(&b, "%d) %s\n", i+1, t)
+		b.WriteString("Нашёл несколько заданий. Ответьте номером из списка:\n")
+		for _, line := range lines {
+			fmt.Fprintf(&b, "%s\n", line)
 		}
-		b.WriteString("\nЕсли номер не виден на фото — укажите позицию из списка.")
 		r.send(chatID, b.String(), nil)
 		return
 	}

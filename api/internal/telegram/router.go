@@ -153,8 +153,9 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		}
 	}
 
-	// 5) Ветвь выбора пункта при multiple tasks (ожидаем число 1..N)
+	// 5) Ветвь выбора пункта при multiple tasks (ожидаем номер из списка)
 	if v, ok := pendingChoice.Load(cid); ok && upd.Message.Text != "" {
+		setState(cid, AnalyzeChoice)
 		sid, _ := r.getSession(cid)
 		_ = r.History.Insert(context.Background(), store.TimelineEvent{
 			ChatID:        cid,
@@ -167,27 +168,60 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			Text:          upd.Message.Text,
 		})
 
-		briefs := v.([]string)
-		if n, err := strconv.Atoi(strings.TrimSpace(upd.Message.Text)); err == nil && n >= 1 && n <= len(briefs) {
+		choices, ok := v.([]TaskChoice)
+		if !ok || len(choices) == 0 {
+			// Нечего выбирать — очистим и попросим фото снова
+			pendingChoice.Delete(cid)
+			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+			r.send(cid, "Не нашёл варианты задач. Пришлите фото ещё раз.", b)
+			return
+		}
+
+		input := strings.TrimSpace(upd.Message.Text)
+
+		// 1) Пытаемся сопоставить по явному номеру (оригинальному или сгенерированному)
+		var chosen *TaskChoice
+		for i := range choices {
+			if choices[i].Number == input {
+				chosen = &choices[i]
+				break
+			}
+		}
+		// 2) Fallback: если пользователь прислал порядковый номер 1..N
+		if chosen == nil {
+			if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(choices) {
+				chosen = &choices[n-1]
+			}
+		}
+
+		if chosen != nil {
 			if ctxv, ok2 := pendingCtx.Load(cid); ok2 {
 				pendingChoice.Delete(cid)
 				pendingCtx.Delete(cid)
+
 				sc := ctxv.(*selectionContext)
-				r.send(cid, fmt.Sprintf("Ок, беру задание: %s — обрабатываю.", briefs[n-1]), nil)
+				display := fmt.Sprintf("%s — %s", chosen.Number, chosen.Description)
+				r.send(cid, "Ок, беру задание: "+display+" — обрабатываю.", nil)
 
 				userID := util.GetUserIDFromTgUpdate(upd)
-				r.runParseAndMaybeConfirm(context.Background(), cid, userID, sc, n-1, briefs[n-1])
+				r.runParseAndMaybeConfirm(context.Background(), cid, userID, sc, chosen.TaskIndex, display)
 				return
 			}
+			// Нет контекста — сбросим и попросим фото
 			pendingChoice.Delete(cid)
 			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 			r.send(cid, "Не нашёл предыдущее изображение. Пришлите фото ещё раз.", b)
 			return
-		} else {
-			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
-			r.send(cid, "Вы ввели некорректный номер задачи. Пришлите корректный номер от 1 до "+strconv.Itoa(len(briefs)), b)
-			return
 		}
+
+		// Неверный ввод — покажем варианты снова
+		var lines []string
+		for _, c := range choices {
+			lines = append(lines, fmt.Sprintf("%s — %s", c.Number, c.Description))
+		}
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(cid, "Неверный номер. Выберите один из:\n"+strings.Join(lines, "\n"), b)
+		return
 	}
 
 	// 6) Команды (в т.ч. /engine)
