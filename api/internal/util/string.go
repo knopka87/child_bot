@@ -25,3 +25,10 @@ func PrettyJSON(v any) string {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	return string(b)
 }
+
+func NullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}

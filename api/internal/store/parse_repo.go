@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"child-bot/api/internal/ocr"
+	"child-bot/api/internal/ocr/types"
 )
 
 var ErrNotFound = sql.ErrNoRows
@@ -25,7 +25,7 @@ type ParsedRow struct {
 	MediaGroupID       string
 	ImageHash          string
 	Engine             string
-	Parse              ocr.ParseResult
+	Parse              types.ParseResult
 	Accepted           bool
 	AcceptReason       string
 	ConfirmationNeeded bool
@@ -41,7 +41,7 @@ type ParsedRow struct {
 	TaskType       string
 	MethodTag      string
 	DifficultyHint string
-	Expected       ocr.ExpectedSolution
+	Expected       types.ExpectedSolution
 }
 
 // FindByHash достаёт самую свежую запись по ключу (image_hash + engine).
@@ -82,11 +82,12 @@ limit 1`
 	if maxAge > 0 && time.Since(ts) > maxAge {
 		return nil, ErrNotFound
 	}
-	var pr ocr.ParseResult
+	var pr types.ParseResult
 	if err := json.Unmarshal(js, &pr); err != nil {
 		// если JSON поломан — считаем, что не найдено
 		return nil, ErrNotFound
 	}
+
 	return &ParsedRow{
 		ID:                 id,
 		CreatedAt:          ts,
@@ -100,16 +101,12 @@ limit 1`
 		ConfirmationNeeded: confirmationNeeded,
 		Confidence:         confidence,
 
-		RawText:        pr.RawText,
-		Question:       pr.Question,
-		ShortEssence:   "", // pr.ShortEssence,
-		TaskID:         "", // pr.TaskID,
-		Grade:          pr.Grade,
-		Subject:        pr.Subject,
-		TaskType:       pr.TaskType,
-		MethodTag:      "", // pr.MethodTag,
-		DifficultyHint: "", // pr.DifficultyHint,
-		// Expected:       pr.Expected,
+		RawText:  pr.RawText,
+		Question: pr.Question,
+		TaskID:   "", // pr.TaskID,
+		Grade:    pr.Grade,
+		Subject:  pr.Subject,
+		TaskType: pr.TaskType,
 	}, nil
 }
 
@@ -119,7 +116,7 @@ func (r *ParseRepo) Upsert(
 	ctx context.Context,
 	chatID int64,
 	mediaGroupID, imageHash, engine string,
-	pr ocr.ParseResult,
+	pr types.ParseResult,
 	accepted bool,
 	reason string,
 ) error {
@@ -168,7 +165,7 @@ func (r *ParseRepo) AcceptWithOverwrite(
 	ctx context.Context,
 	chatID int64,
 	mediaGroupID, imageHash, engine string,
-	pr ocr.ParseResult,
+	pr types.ParseResult,
 	reason string,
 ) error {
 	js, _ := json.Marshal(pr)
@@ -253,7 +250,7 @@ limit 1`
 		return nil, false
 	}
 
-	var pr ocr.ParseResult
+	var pr types.ParseResult
 	if err := json.Unmarshal(jsonBlob, &pr); err != nil {
 		return nil, false
 	}

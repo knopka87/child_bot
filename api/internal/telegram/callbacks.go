@@ -3,11 +3,11 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr"
+	"child-bot/api/internal/ocr/types"
+	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
 )
 
@@ -20,6 +20,17 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	util.PrintInfo("handleCallback", llmName, cid, message)
 	r.sendDebug(cid, "message", cb.Message)
 
+	sid, _ := r.getSession(cid)
+	_ = r.History.Insert(context.Background(), store.TimelineEvent{
+		ChatID:        cid,
+		TaskSessionID: sid,
+		Direction:     "api",
+		EventType:     "callback_" + data,
+		Provider:      llmName,
+		OK:            true,
+		TgMessageID:   &cb.Message.MessageID,
+	})
+
 	switch data {
 	case "hint_next":
 		r.onHintNext(cid, cb.Message.MessageID)
@@ -31,10 +42,10 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		// Скрыть старые кнопки у сообщения с колбэком
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		setMode(cid, "await_solution")
-		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.")
+		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.", nil)
 	case "analogue_solution":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		r.send(cid, "Подбираю похожую задачу. Ожидайте.")
+		r.send(cid, "Подбираю похожую задачу. Ожидайте.", nil)
 		userID := util.GetUserIDFromTgCB(cb)
 		r.HandleAnalogueCallback(cid, userID)
 	case "new_task":
@@ -45,14 +56,17 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		pendingCtx.Delete(cid)
 		parseWait.Delete(cid)
 		setMode(cid, "await_new_task")
-		r.send(cid, "Хорошо! Жду фото новой задачи.")
+		r.send(cid, "Хорошо! Жду фото новой задачи.", nil)
+	case "report":
+		_ = r.SendSessionReport(context.Background(), cid)
 	}
 }
 
 func (r *Router) onParseYes(chatID int64, msgID int) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
-		r.send(chatID, "Контекст подтверждения не найден.")
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(chatID, "Контекст подтверждения не найден.", b)
 		return
 	}
 	parseWait.Delete(chatID)
@@ -72,57 +86,30 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 func (r *Router) onParseNo(chatID int64, msgID int) {
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, _ = r.Bot.Send(edit)
-	r.send(chatID, "Напишите, пожалуйста, текст задания так, как он должен быть прочитан (без ответа). Это поможет дать корректные подсказки.")
+	b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+	r.send(chatID, "Напишите, пожалуйста, текст задания так, как он должен быть прочитан (без ответа). Это поможет дать корректные подсказки.", b)
 	// остаёмся в состоянии parseWait — следующий текст примем как корректировку
 }
 
 func (r *Router) onHintNext(chatID int64, msgID int) {
 	v, ok := hintState.Load(chatID)
 	if !ok {
-		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.")
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.", b)
 		return
 	}
 	hs := v.(*hintSession)
 	if hs.NextLevel > 3 {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
-		r.send(chatID, "Все подсказки уже показаны.")
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(chatID, "Все подсказки уже показаны.", b)
 		return
 	}
 
 	_ = hideKeyboard(chatID, msgID, r)
 
-	imgHash := util.SHA256Hex(hs.Image)
-	level := hs.NextLevel
-
-	// кэш подсказок
-	if hr, err := r.HintRepo.Find(context.Background(), imgHash, hs.EngineName, level, 90*24*time.Hour); err == nil {
-		r.send(chatID, formatHint(level, hr))
-	} else {
-		in := ocr.HintInput{
-			Level:            lvlToConst(level),
-			RawText:          hs.Parse.RawText,
-			Subject:          hs.Parse.Subject,
-			TaskType:         hs.Parse.TaskType,
-			Grade:            hs.Parse.Grade,
-			SolutionShape:    hs.Parse.SolutionShape,
-			TerminologyLevel: levelTerminology(level),
-		}
-		llmName := r.EngManager.Get(chatID)
-		hrNew, err := r.LLM.Hint(context.Background(), llmName, in)
-		if err != nil {
-			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %s", level, err.Error()))
-			return
-		}
-		_ = r.HintRepo.Upsert(context.Background(), imgHash, hs.EngineName, level, hrNew)
-		r.send(chatID, formatHint(level, hrNew))
-	}
-
-	// После того как отправили подсказку текстом:
-	// Отправляем новую клавиатуру с тремя кнопками под НОВЫМ сообщением
-	reply := tgbotapi.NewMessage(chatID, "Выберите дальнейшее действие:")
-	reply.ReplyMarkup = makeActionsKeyboard(level)
-	_, _ = r.Bot.Send(reply)
+	r.sendHint(chatID, msgID, hs)
 
 	hs.NextLevel++
 	if hs.NextLevel > 3 {
@@ -131,14 +118,14 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 	}
 }
 
-func lvlToConst(n int) ocr.HintLevel {
+func lvlToConst(n int) types.HintLevel {
 	switch n {
 	case 1:
-		return ocr.HintL1
+		return types.HintL1
 	case 2:
-		return ocr.HintL2
+		return types.HintL2
 	default:
-		return ocr.HintL3
+		return types.HintL3
 	}
 }
 
