@@ -190,7 +190,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 
 	// Базовая политика по результату
 	if len(dres.Tasks) == 0 {
-		setState(chatID, NeedsRescan)
+		setState(chatID, NotATask)
 		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 		r.send(chatID, "ℹ️ Похоже, на фото не распознано учебное задание. Пришлите фото условия задачи (1–4 класс).", b)
 		return
@@ -207,12 +207,12 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		}
 	}
 	if hasFacesAny {
-		setState(chatID, NeedsRescan)
+		setState(chatID, Inappropriate)
 		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 		r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.", b)
 	}
 	if piiAny {
-		setState(chatID, NeedsRescan)
+		setState(chatID, Inappropriate)
 		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 		r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.", b)
 	}
