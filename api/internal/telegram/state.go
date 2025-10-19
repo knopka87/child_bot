@@ -220,7 +220,6 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 		case "new_task":
 			return Home, true
 		case "report":
-
 			return Report, true
 		default:
 			return cur, false
