@@ -19,7 +19,7 @@ import (
 )
 
 // Developer/admin chat to receive reports.
-const adminReportChatID int64 = 255509524
+var adminReportChatID = []int64{255509524, 310452272}
 
 type imageFile struct {
 	Data []byte
@@ -164,10 +164,12 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 
 	// 8) Send to admin
 	doc := tgbotapi.FilePath(zipPath)
-	msg := tgbotapi.NewDocument(adminReportChatID, doc)
-	msg.Caption = fmt.Sprintf("Отчёт по сессии\nchatID=%d\nsession=%s\nsteps=%d", chatID, sid, len(events))
-	if _, err := r.Bot.Send(msg); err != nil {
-		return r.sendErrorToAdmin(err, "Не удалось отправить отчёт в Telegram.")
+	for _, cid := range adminReportChatID {
+		msg := tgbotapi.NewDocument(cid, doc)
+		msg.Caption = fmt.Sprintf("Отчёт по сессии\nchatID=%d\nsession=%s\nsteps=%d", chatID, sid, len(events))
+		if _, err := r.Bot.Send(msg); err != nil {
+			return r.sendErrorToAdmin(err, "Не удалось отправить отчёт в Telegram.")
+		}
 	}
 
 	// Optional: notify user that report has been sent
@@ -180,8 +182,10 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 
 // sendErrorToAdmin sends an error message to admin and returns the same error.
 func (r *Router) sendErrorToAdmin(err error, userMsg string) error {
-	adm := tgbotapi.NewMessage(adminReportChatID, fmt.Sprintf("report error: %v", err))
-	_, _ = r.Bot.Send(adm)
+	for _, cid := range adminReportChatID {
+		adm := tgbotapi.NewMessage(cid, fmt.Sprintf("report error: %v", err))
+		_, _ = r.Bot.Send(adm)
+	}
 	return err
 }
 
