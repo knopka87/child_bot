@@ -25,8 +25,7 @@ func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, g
 			subject = pr.Subject
 			taskType = pr.TaskType
 			grade = pr.Grade
-			// Если вы храните сырое JSON парсинга — присвойте в ctx:
-			// ctx = pr.RawJSON
+			ctx = json.RawMessage(pr.Parse.RawText)
 		}
 	}
 	return
