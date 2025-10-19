@@ -261,6 +261,12 @@ func (r *Router) sendCheckResult(chatID int64, cr types.CheckSolutionResult) {
 		}
 	}
 
+	if strings.ToLower(strings.TrimSpace(cr.Verdict)) == "correct" {
+		b.WriteString("\nДавай перейдём к решению следующе задачи.")
+		clearMode(chatID)
+		r.clearSession(chatID)
+	}
+
 	r.send(chatID, b.String(), nil)
 
 	// 7) При ошибке или неуверенности предлагаем «Похожее задание»
