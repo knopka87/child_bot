@@ -80,10 +80,10 @@ var States = map[State][]State{
 	AwaitSolution:   {Normalize, Report},
 	Normalize:       {Check},
 	Check:           {Correct, Incorrect, Uncertain},
-	Correct:         {Home},
-	Incorrect:       {Analogue, Home},
+	Correct:         {Home, CollectingPages},
+	Incorrect:       {Analogue, Home, CollectingPages},
 	Uncertain:       {Analogue, Home},
-	Analogue:        {Home, Report},
+	Analogue:        {Home, CollectingPages, Report},
 }
 
 // canTransition проверяет, можно ли перейти из from в to.
