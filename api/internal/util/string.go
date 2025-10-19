@@ -32,3 +32,18 @@ func NullIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+// EnsureJSONRaw makes sure the blob is valid JSON. If it's plain text (not JSON),
+// it wraps it as a properly quoted JSON string. If empty, returns nil.
+func EnsureJSONRaw(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err == nil {
+		return raw
+	}
+	// treat raw as plain text; quote it
+	b, _ := json.Marshal(string(raw))
+	return json.RawMessage(b)
+}

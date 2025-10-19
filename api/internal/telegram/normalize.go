@@ -25,7 +25,7 @@ func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, g
 			subject = pr.Subject
 			taskType = pr.TaskType
 			grade = pr.Grade
-			ctx = json.RawMessage(pr.Parse.RawText)
+			ctx = util.EnsureJSONRaw(json.RawMessage(pr.Parse.RawText))
 		}
 	}
 	return
@@ -36,6 +36,12 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	setState(chatID, Normalize)
 	llmName := r.EngManager.Get(chatID)
 	shape := r.suggestSolutionShape(chatID)
+
+	text = strings.TrimSpace(text)
+	if text == "" {
+		r.send(chatID, "Пожалуйста, пришлите текст ответа (сообщение пустое).", nil)
+		return
+	}
 
 	subject, taskType, grade, parseCtx := r.lastParseMeta(chatID)
 
@@ -53,7 +59,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		Subject:       subject,
 		TaskType:      taskType,
 		SolutionShape: shape,
-		Answer:        types.NormalizeAnswer{Source: "text", Text: strings.TrimSpace(text)},
+		Answer:        types.NormalizeAnswer{Source: "text", Text: text},
 		ParseContext:  parseCtx,
 		Provider:      llmName,
 	}
