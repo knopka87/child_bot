@@ -83,7 +83,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		r.send(cid, msg, b)
 
 		if upd.Message != nil && upd.Message.Text != "" {
-			sid, _ := r.getSession(cid)
+			sid := r.ensureSession(cid)
 			_ = r.History.Insert(context.Background(), store.TimelineEvent{
 				ChatID:        cid,
 				TaskSessionID: sid,
