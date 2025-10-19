@@ -34,6 +34,7 @@ func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, g
 
 // normalizeText — отправляет текст ученика на нормализацию в LLM-прокси
 func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64, text string) {
+	setState(chatID, Normalize)
 	llmName := r.EngManager.Get(chatID)
 	shape := r.suggestSolutionShape(chatID)
 

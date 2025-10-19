@@ -14,6 +14,7 @@ import (
 
 // maybeCheckSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
 func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *int64, nr types.NormalizeResult) {
+	setState(chatID, Check)
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "math"
 	grade := 0
@@ -147,12 +148,16 @@ func (r *Router) sendCheckResult(chatID int64, cr types.CheckSolutionResult) {
 	// 1) Вердикт
 	switch strings.ToLower(strings.TrimSpace(cr.Verdict)) {
 	case "correct":
+		setState(chatID, Correct)
 		b.WriteString("✅ Задача решена верно\n")
 	case "incorrect":
+		setState(chatID, Incorrect)
 		b.WriteString("⚠️ Похоже, есть ошибка\n")
 	case "uncertain":
+		setState(chatID, Uncertain)
 		b.WriteString("🤔 Пока не уверен в оценке\n")
 	default:
+		setState(chatID, Uncertain)
 		b.WriteString("Результат проверки получен\n")
 	}
 
