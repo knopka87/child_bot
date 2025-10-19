@@ -25,7 +25,7 @@ func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, g
 			subject = pr.Subject
 			taskType = pr.TaskType
 			grade = pr.Grade
-			ctx = util.EnsureJSONRaw(json.RawMessage(pr.Parse.RawText))
+			ctx, _ = json.Marshal(pr.Parse)
 		}
 	}
 	return
