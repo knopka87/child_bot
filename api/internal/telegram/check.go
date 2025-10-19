@@ -76,6 +76,7 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 		Student:    nr,
 		Expected:   exp,
 	}
+	r.sendDebug(chatID, "check_solution_input", in)
 	start := time.Now()
 	res, err := r.LLM.CheckSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
