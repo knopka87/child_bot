@@ -50,14 +50,10 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		r.HandleAnalogueCallback(cid, userID)
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		// Сброс контекстов
-		hintState.Delete(cid)
-		pendingChoice.Delete(cid)
-		pendingCtx.Delete(cid)
-		parseWait.Delete(cid)
-		setMode(cid, "await_new_task")
+		resetContext(cid)
 		r.send(cid, "Хорошо! Жду фото новой задачи.", nil)
 	case "report":
+		resetContext(cid)
 		_ = r.SendSessionReport(context.Background(), cid)
 	}
 }
@@ -144,4 +140,14 @@ func hideKeyboard(chatID int64, msgID int, r *Router) error {
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, err := r.Bot.Send(edit)
 	return err
+}
+
+func resetContext(cid int64) {
+	// Сброс контекстов
+	hintState.Delete(cid)
+	pendingChoice.Delete(cid)
+	pendingCtx.Delete(cid)
+	parseWait.Delete(cid)
+	setMode(cid, "await_new_task")
+	setState(cid, Home)
 }
