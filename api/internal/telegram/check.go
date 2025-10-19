@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -18,10 +19,12 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "math"
 	grade := 0
+	var parseCtx json.RawMessage
 	if r.ParseRepo != nil {
 		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
 			subj = strings.TrimSpace(pr.Subject)
 			grade = pr.Grade
+			parseCtx, _ = json.Marshal(pr.Parse)
 		}
 	}
 
@@ -70,11 +73,12 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 
 	llmName := r.EngManager.Get(chatID)
 	in := types.CheckSolutionInput{
-		UserIDAnon: fmt.Sprint(chatID),
-		Subject:    subj,
-		Grade:      grade,
-		Student:    nr,
-		Expected:   exp,
+		UserIDAnon:   fmt.Sprint(chatID),
+		Subject:      subj,
+		Grade:        grade,
+		Student:      nr,
+		Expected:     exp,
+		ParseContext: parseCtx,
 	}
 	r.sendDebug(chatID, "check_solution_input", in)
 	start := time.Now()
