@@ -3,7 +3,6 @@ package llmclient
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	ocr "child-bot/api/internal/ocr"
+	"child-bot/api/internal/ocr/types"
 )
 
 type Client struct {
@@ -45,85 +44,78 @@ func New(base string) *Client {
 
 // Detect отправляет СЫРЫЕ данные 1-в-1 как входы метода Engine.Detect
 // и возвращает структуру DetectResult, которую должен вернуть LLM-сервис.
-func (c *Client) Detect(ctx context.Context, llmName string, img []byte, mime string, gradeHint int) (ocr.DetectResult, error) {
+func (c *Client) Detect(ctx context.Context, llmName string, din types.DetectInput) (types.DetectResult, error) {
 	in := detectRequest{
-		LLMName: llmName,
-		DetectInput: ocr.DetectInput{
-			ImageB64:  base64.StdEncoding.EncodeToString(img),
-			Mime:      mime,
-			GradeHint: gradeHint,
-		},
+		LLMName:     llmName,
+		DetectInput: din,
 	}
-	var out ocr.DetectResult
+	var out types.DetectResult
 	if err := c.post(ctx, "/v1/detect", in, &out); err != nil {
-		return ocr.DetectResult{}, err
+		return types.DetectResult{}, err
 	}
 	return out, nil
 }
 
 // Parse отправляет СЫРЫЕ данные 1-в-1 как входы метода Engine.Parse
 // image передаётся как base64, остальные параметры — внутри options.
-func (c *Client) Parse(ctx context.Context, llmName string, image []byte, options ocr.ParseOptions) (ocr.ParseResult, error) {
+func (c *Client) Parse(ctx context.Context, llmName string, pin types.ParseInput) (types.ParseResult, error) {
 	in := parseRequest{
-		LLMName: llmName,
-		ParseInput: ocr.ParseInput{
-			ImageB64: base64.StdEncoding.EncodeToString(image),
-			Options:  options,
-		},
+		LLMName:    llmName,
+		ParseInput: pin,
 	}
-	var out ocr.ParseResult
+	var out types.ParseResult
 	if err := c.post(ctx, "/v1/parse", in, &out); err != nil {
-		return ocr.ParseResult{}, err
+		return types.ParseResult{}, err
 	}
 	return out, nil
 }
 
 // Hint отправляет СЫРЫЙ ocr.HintInput и ожидает ocr.HintResult.
-func (c *Client) Hint(ctx context.Context, llmName string, hin ocr.HintInput) (ocr.HintResult, error) {
+func (c *Client) Hint(ctx context.Context, llmName string, hin types.HintInput) (types.HintResult, error) {
 	in := hintRequest{
 		LLMName:   llmName,
 		HintInput: hin,
 	}
-	var out ocr.HintResult
+	var out types.HintResult
 	if err := c.post(ctx, "/v1/hint", in, &out); err != nil {
-		return ocr.HintResult{}, err
+		return types.HintResult{}, err
 	}
 	return out, nil
 }
 
-func (c *Client) Normalize(ctx context.Context, llmName string, nin ocr.NormalizeInput) (ocr.NormalizeResult, error) {
+func (c *Client) Normalize(ctx context.Context, llmName string, nin types.NormalizeInput) (types.NormalizeResult, error) {
 	in := normalizeRequest{
 		LLMName:        llmName,
 		NormalizeInput: nin,
 	}
-	var out ocr.NormalizeResult
+	var out types.NormalizeResult
 	if err := c.post(ctx, "/v1/normalize", in, &out); err != nil {
-		return ocr.NormalizeResult{}, err
+		return types.NormalizeResult{}, err
 	}
 	return out, nil
 }
 
-func (c *Client) CheckSolution(ctx context.Context, llmName string, cin ocr.CheckSolutionInput) (ocr.CheckSolutionResult, error) {
+func (c *Client) CheckSolution(ctx context.Context, llmName string, cin types.CheckSolutionInput) (types.CheckSolutionResult, error) {
 	in := checkSolutionRequest{
 		LLMName:            llmName,
 		CheckSolutionInput: cin,
 	}
-	var out ocr.CheckSolutionResult
+	var out types.CheckSolutionResult
 	if err := c.post(ctx, "/v1/check_solution", in, &out); err != nil {
-		return ocr.CheckSolutionResult{}, err
+		return types.CheckSolutionResult{}, err
 	}
 
 	return out, nil
 }
 
-func (c *Client) AnalogueSolution(ctx context.Context, llmName string, ain ocr.AnalogueSolutionInput) (ocr.AnalogueSolutionResult, error) {
+func (c *Client) AnalogueSolution(ctx context.Context, llmName string, ain types.AnalogueSolutionInput) (types.AnalogueSolutionResult, error) {
 	in := analogueSolutionRequest{
 		LLMName:               llmName,
 		AnalogueSolutionInput: ain,
 	}
-	var out ocr.AnalogueSolutionResult
+	var out types.AnalogueSolutionResult
 	if err := c.post(ctx, "/v1/analogue_solution", in, &out); err != nil {
-		return ocr.AnalogueSolutionResult{}, err
+		return types.AnalogueSolutionResult{}, err
 	}
 
 	return out, nil
@@ -133,32 +125,32 @@ func (c *Client) AnalogueSolution(ctx context.Context, llmName string, ain ocr.A
 
 type detectRequest struct {
 	LLMName string `json:"llm_name"`
-	ocr.DetectInput
+	types.DetectInput
 }
 
 type parseRequest struct {
 	LLMName string `json:"llm_name"`
-	ocr.ParseInput
+	types.ParseInput
 }
 
 type hintRequest struct {
 	LLMName string `json:"llm_name"`
-	ocr.HintInput
+	types.HintInput
 }
 
 type normalizeRequest struct {
 	LLMName string `json:"llm_name"`
-	ocr.NormalizeInput
+	types.NormalizeInput
 }
 
 type checkSolutionRequest struct {
 	LLMName string `json:"llm_name"`
-	ocr.CheckSolutionInput
+	types.CheckSolutionInput
 }
 
 type analogueSolutionRequest struct {
 	LLMName string `json:"llm_name"`
-	ocr.AnalogueSolutionInput
+	types.AnalogueSolutionInput
 }
 
 // addTimeoutSec appends ?timeoutSec=N (or &timeoutSec=N) to the given path.

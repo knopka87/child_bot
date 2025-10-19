@@ -10,7 +10,8 @@ import (
 func makeParseConfirmKeyboard() tgbotapi.InlineKeyboardMarkup {
 	yes := tgbotapi.NewInlineKeyboardButtonData("Да", "parse_yes")
 	no := tgbotapi.NewInlineKeyboardButtonData("Нет", "parse_no")
-	return tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(yes, no))
+	report := tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")
+	return tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(yes, no), tgbotapi.NewInlineKeyboardRow(report))
 }
 
 // Три кнопки действий после подсказки/парсинга
@@ -23,7 +24,8 @@ func makeActionsKeyboard(level int) tgbotapi.InlineKeyboardMarkup {
 
 	btnReady := tgbotapi.NewInlineKeyboardButtonData("Готов дать решение", "ready_solution")
 	btnNew := tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnReady), tgbotapi.NewInlineKeyboardRow(btnNew))
+	btnReport := tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")
+	rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnReady), tgbotapi.NewInlineKeyboardRow(btnNew), tgbotapi.NewInlineKeyboardRow(btnReport))
 
 	return tgbotapi.NewInlineKeyboardMarkup(rows...)
 }

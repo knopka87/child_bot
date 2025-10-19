@@ -64,6 +64,8 @@ func main() {
 	parseRepo := store.NewParseRepo(db)
 	hintRepo := store.NewHintRepo(db)
 	metricsRepo := store.NewMetricsRepo(db)
+	historyRepo := store.NewHistoryRepo(db)
+	sessionRepo := store.NewSessionRepo(db)
 
 	// --- Telegram bot ---
 	bot, err := tgbotapi.NewBotAPI(cfg.TelegramBotToken)
@@ -82,10 +84,12 @@ func main() {
 		Bot:        bot,
 		EngManager: manager,
 		LLM:        llm,
-		// репозитории для кэша парсинга/подсказок
+		// репозитории
 		ParseRepo: parseRepo,
 		HintRepo:  hintRepo,
 		Metrics:   metricsRepo,
+		History:   historyRepo,
+		Session:   sessionRepo,
 	}
 
 	// --- HTTP mux (DefaultServeMux) ---

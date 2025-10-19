@@ -2,28 +2,18 @@ package telegram
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
-	"child-bot/api/internal/ocr"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
 )
-
-type selectionContext struct {
-	Image        []byte
-	Mime         string
-	MediaGroupID string
-	Detect       ocr.DetectResult
-}
-
-type parsePending struct {
-	Sc  *selectionContext
-	PR  ocr.ParseResult
-	LLM string // "gemini"|"gpt"
-}
 
 func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Load(chatID); return ok }
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
@@ -34,11 +24,18 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 
 	r.sendDebug(chatID, "mime", mime)
 	// DETECT через llmproxy
-	var dres ocr.DetectResult
+	var dres types.DetectResult
+	in := types.DetectInput{
+		ImageB64:  base64.StdEncoding.EncodeToString(merged),
+		Mime:      mime,
+		GradeHint: 0,
+	}
 	start := time.Now()
-	dr, err := r.LLM.Detect(ctx, llmName, merged, mime, 0)
+	dr, err := r.LLM.Detect(ctx, llmName, in)
+	latency := time.Since(start).Milliseconds()
 	if err == nil {
 		dres = dr
+		r.sendDebug(chatID, "detect_req", in)
 		r.sendDebug(chatID, "detect_res", dres)
 
 		// агрегируем флаги по задачам
@@ -65,7 +62,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			Stage:      "detect",
 			Provider:   llmName,
 			OK:         true,
-			DurationMS: time.Since(start).Milliseconds(),
+			DurationMS: latency,
 			ChatID:     &chatID,
 			UserIDAnon: userID,
 			Details: map[string]any{
@@ -88,20 +85,36 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 				Stage:      "detect",
 				Provider:   llmName,
 				OK:         false,
-				DurationMS: time.Since(start).Milliseconds(),
+				DurationMS: latency,
 				ChatID:     &chatID,
 				UserIDAnon: userID,
 				Error:      err.Error(),
 			})
 		}
 		log.Printf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err)
-		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.")
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.", b)
 	}
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
 
+	sid, _ := r.getSession(chatID)
+	_ = r.History.Insert(ctx, store.TimelineEvent{
+		ChatID:        chatID,
+		TaskSessionID: sid,
+		Provider:      llmName,
+		Direction:     "api",
+		EventType:     string(Detect),
+		InputPayload:  in,
+		OutputPayload: dres,
+		Error:         err,
+		OK:            err == nil,
+		LatencyMS:     &latency,
+	})
+
 	// Базовая политика по результату
 	if len(dres.Tasks) == 0 {
-		r.send(chatID, "ℹ️ Похоже, на фото не распознано учебное задание. Пришлите фото условия задачи (1–4 класс).")
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(chatID, "ℹ️ Похоже, на фото не распознано учебное задание. Пришлите фото условия задачи (1–4 класс).", b)
 		return
 	}
 	// предупредим о лицах/PII, если встречаются в любой задаче
@@ -116,10 +129,12 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		}
 	}
 	if hasFacesAny {
-		r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.")
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.", b)
 	}
 	if piiAny {
-		r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.")
+		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.", b)
 	}
 
 	// Несколько заданий — попросить выбрать
@@ -154,86 +169,13 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			fmt.Fprintf(&b, "%d) %s\n", i+1, t)
 		}
 		b.WriteString("\nЕсли номер не виден на фото — укажите позицию из списка.")
-		r.send(chatID, b.String())
+		r.send(chatID, b.String(), nil)
 		return
 	}
 
 	// без выбора — сразу PARSE
-	r.send(chatID, "Изображение распознано, перехожу к парсингу.")
+	r.send(chatID, "Изображение распознано, перехожу к парсингу.", nil)
 	sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
 	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, -1, "")
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Total time: %d", time.Since(start).Milliseconds()))
-}
-
-func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
-	imgHash := util.SHA256Hex(sc.Image)
-	llmName := r.EngManager.Get(chatID)
-
-	// 1) кэш из БД: принят ли PARSE
-	if prRow, err := r.ParseRepo.FindByHash(ctx, imgHash, llmName, 30*24*time.Hour); err == nil && prRow.Accepted {
-		r.showTaskAndPrepareHints(chatID, sc, prRow.Parse, llmName)
-		return
-	}
-
-	// 2) LLM.Parse
-	start := time.Now()
-	pr, err := r.LLM.Parse(ctx, llmName, sc.Image, ocr.ParseOptions{
-		SubjectHint:       "",
-		ChatID:            chatID,
-		MediaGroupID:      sc.MediaGroupID,
-		ImageHash:         imgHash,
-		SelectedTaskIndex: selectedIdx,
-		SelectedTaskBrief: selectedBrief,
-	})
-	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
-			Stage:      "parse",
-			Provider:   llmName,
-			OK:         false,
-			Error:      err.Error(),
-			DurationMS: time.Since(start).Milliseconds(),
-			ChatID:     &chatID,
-			UserIDAnon: userID,
-		})
-		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "parse", err)
-		r.SendError(chatID, fmt.Errorf("parse: %w", err))
-		return
-	}
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
-		Stage:      "parse",
-		Provider:   llmName,
-		OK:         true,
-		DurationMS: time.Since(start).Milliseconds(),
-		ChatID:     &chatID,
-		UserIDAnon: userID,
-		Details: map[string]any{
-			"final_state":    pr.FinalState,
-			"rescan_reason":  pr.RescanReason,
-			"confirm_reason": pr.ConfirmationReason,
-			"grade_aligment": pr.GradeAlignment,
-			"grade":          pr.Grade,
-			"solution_shape": pr.SolutionShape,
-			"need_rescan":    pr.NeedsRescan,
-			"confidence":     pr.Confidence,
-		},
-	})
-	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
-
-	// сохранить черновик
-	errP := r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llmName, pr, false, "")
-	if errP != nil {
-		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "error upsert parsed_tasks", errP)
-	}
-
-	// 3) подтверждение, если нужно
-	if pr.ConfirmationNeeded {
-		r.askParseConfirmation(chatID, pr)
-		parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
-		return
-	}
-
-	// 4) автоподтверждение
-	_ = r.ParseRepo.MarkAccepted(ctx, imgHash, llmName, "auto")
-	r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
-	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("total time: %d", time.Since(start).Milliseconds()))
 }

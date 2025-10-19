@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr"
+	"child-bot/api/internal/ocr/types"
+	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
 )
 
@@ -15,13 +17,63 @@ type hintSession struct {
 	Image        []byte
 	Mime         string
 	MediaGroupID string
-	Parse        ocr.ParseResult
-	Detect       ocr.DetectResult
+	Parse        types.ParseResult
+	Detect       types.DetectResult
 	EngineName   string
 	NextLevel    int
 }
 
-func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr ocr.ParseResult, llmName string) {
+func (r *Router) sendHint(chatID int64, msgID int, hs *hintSession) {
+	imgHash := util.SHA256Hex(hs.Image)
+	level := hs.NextLevel
+
+	// кэш подсказок
+	if hr, err := r.HintRepo.Find(context.Background(), imgHash, hs.EngineName, level, 90*24*time.Hour); err == nil {
+		r.send(chatID, formatHint(level, hr), nil)
+	} else {
+		in := types.HintInput{
+			Level:            lvlToConst(level),
+			RawText:          hs.Parse.RawText,
+			Subject:          hs.Parse.Subject,
+			TaskType:         hs.Parse.TaskType,
+			Grade:            hs.Parse.Grade,
+			SolutionShape:    hs.Parse.SolutionShape,
+			TerminologyLevel: levelTerminology(level),
+		}
+		llmName := r.EngManager.Get(chatID)
+		start := time.Now()
+		hrNew, err := r.LLM.Hint(context.Background(), llmName, in)
+		latency := time.Since(start).Milliseconds()
+		sid, _ := r.getSession(chatID)
+		_ = r.History.Insert(context.Background(), store.TimelineEvent{
+			ChatID:        chatID,
+			TaskSessionID: sid,
+			Direction:     "api",
+			EventType:     string(Hints),
+			Provider:      llmName,
+			OK:            err == nil,
+			LatencyMS:     &latency,
+			TgMessageID:   &msgID,
+			InputPayload:  in,
+			OutputPayload: hrNew,
+			Error:         err,
+		})
+		if err != nil {
+			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %s", level, err.Error()), b)
+			return
+		}
+		_ = r.HintRepo.Upsert(context.Background(), imgHash, hs.EngineName, level, hrNew)
+		r.send(chatID, formatHint(level, hrNew), nil)
+	}
+	// После того как отправили подсказку текстом:
+	// Отправляем новую клавиатуру с тремя кнопками под НОВЫМ сообщением
+	reply := tgbotapi.NewMessage(chatID, "Выберите дальнейшее действие:")
+	reply.ReplyMarkup = makeActionsKeyboard(level)
+	_, _ = r.Bot.Send(reply)
+}
+
+func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr types.ParseResult, llmName string) {
 	var b strings.Builder
 	b.WriteString("📄 *Текст задания:*\n```\n")
 	if strings.TrimSpace(pr.RawText) != "" {
@@ -71,7 +123,7 @@ func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string
 	}, pr, llmName)
 }
 
-func formatHint(level int, hr ocr.HintResult) string {
+func formatHint(level int, hr types.HintResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "💡 *Подсказка L%d*: %s\n", level, safe(hr.HintTitle))
 	for _, s := range hr.HintSteps {

@@ -32,8 +32,7 @@ type photoBatch struct {
 	lastAt time.Time
 }
 
-func (r *Router) acceptPhoto(msg tgbotapi.Message) {
-	cid := util.GetChatIDFromTgMessage(msg)
+func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	ph := msg.Photo[len(msg.Photo)-1]
 	file, err := r.Bot.GetFile(tgbotapi.FileConfig{FileID: ph.FileID})
 	if err != nil {
@@ -67,7 +66,7 @@ func (r *Router) acceptPhoto(msg tgbotapi.Message) {
 	b.mu.Unlock()
 
 	if len(b.images) == 1 {
-		r.send(cid, r.PhotoAcceptedText())
+		r.send(cid, r.PhotoAcceptedText(), nil)
 	}
 }
 
@@ -96,7 +95,7 @@ func (r *Router) processBatch(key string, userID *int64) {
 		return
 	}
 
-	r.send(chatID, "Начинаю распознавание текста.")
+	r.send(chatID, "Начинаю распознавание текста.", nil)
 	r.runDetectThenParse(ctx, chatID, userID, merged, mediaGroupID)
 }
 

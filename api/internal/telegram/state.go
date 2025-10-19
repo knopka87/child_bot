@@ -39,16 +39,32 @@ func clearMode(chatID int64) { chatMode.Delete(chatID) }
 type State string
 
 var (
-	Home, CollectingPages, Detect, NeedsRescan,
-	NotATask, Inappropriate, DecideTasks, Parse,
-	AutoPick, AskChoice, Report, AnalyzeChoice,
-	Hints, Confirm, AnalogueTask,
-	AwaitSolution, Normalize, Check,
-	Correct, Incorrect, Uncertain, Analogue State
+	Home            State = "home"
+	CollectingPages State = "collecting_pages"
+	Detect          State = "detect"
+	NeedsRescan     State = "need_rescan"
+	NotATask        State = "not_a_task"
+	Inappropriate   State = "inappropriate"
+	DecideTasks     State = "decide_task"
+	Parse           State = "parse"
+	AutoPick        State = "auto_pick"
+	AskChoice       State = "ask_choice"
+	Report          State = "report"
+	AnalyzeChoice   State = "analyze_choice"
+	Hints           State = "hint"
+	Confirm         State = "confirm"
+	AnalogueTask    State = "analogue_task"
+	AwaitSolution   State = "await_solution"
+	Normalize       State = "normalize"
+	Check           State = "check"
+	Correct         State = "correct"
+	Incorrect       State = "incorrect"
+	Uncertain       State = "uncertain"
+	Analogue        State = "analogue"
 )
 
 var States = map[State][]State{
-	Home:            {CollectingPages, Home},
+	Home:            {CollectingPages, Home, Report},
 	CollectingPages: {Detect},
 	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks},
 	NeedsRescan:     {Home},
@@ -191,8 +207,21 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 		switch strings.ToLower(strings.TrimSpace(upd.CallbackQuery.Data)) {
 		case "analogue_solution", "analogue":
 			return Analogue, true
-		default:
+		case "hint_next":
+			return Hints, true
+		case "parse_yes":
+			return Hints, true
+		case "parse_no":
+			return Home, true
+		case "ready_solution":
+			return AwaitSolution, true
+		case "new_task":
+			return Home, true
+		case "report":
+
 			return Report, true
+		default:
+			return cur, false
 		}
 	}
 
@@ -234,7 +263,7 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 		if cur == AwaitSolution {
 			return Normalize, true // текстовое решение → нормализация
 		}
-		// Иначе текст вне контекста: останемся где были
+		// Иначе текст вне контекста: останемся, где были
 		return cur, false
 	}
 
