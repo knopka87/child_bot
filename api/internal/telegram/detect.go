@@ -121,12 +121,12 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		piiAny := false
 		multipleDetected := false
 		for _, t := range dres.Tasks {
-			if t.HasFaces {
+			/*if t.HasFaces {
 				hasFacesAny = true
 			}
 			if t.PIIDetected {
 				piiAny = true
-			}
+			}*/
 			if t.MultipleTasksDetected {
 				multipleDetected = true
 			}
@@ -196,28 +196,30 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		return
 	}
 	// предупредим о лицах/PII, если встречаются в любой задаче
-	hasFacesAny := false
-	piiAny := false
-	for _, t := range dres.Tasks {
-		if t.HasFaces {
-			hasFacesAny = true
+	/*
+		hasFacesAny := false
+		piiAny := false
+		for _, t := range dres.Tasks {
+			if t.HasFaces {
+				hasFacesAny = true
+			}
+			if t.PIIDetected {
+				piiAny = true
+			}
 		}
-		if t.PIIDetected {
-			piiAny = true
+		if hasFacesAny {
+			setState(chatID, Inappropriate)
+			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+			r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.", b)
+			return
 		}
-	}
-	if hasFacesAny {
-		setState(chatID, Inappropriate)
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
-		r.send(chatID, "ℹ️ На фото видны лица. Лучше переснять без лиц.", b)
-		return
-	}
-	if piiAny {
-		setState(chatID, Inappropriate)
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
-		r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.", b)
-		return
-	}
+		if piiAny {
+			setState(chatID, Inappropriate)
+			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+			r.send(chatID, "ℹ️ На фото обнаружены личные данные. Пожалуйста, замажьте их или переснимите без них.", b)
+			return
+		}
+	*/
 
 	// Несколько заданий — попросить выбрать
 	if len(dres.Tasks) > 1 {
