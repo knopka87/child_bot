@@ -54,15 +54,15 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	util.PrintInfo("HandleUpdate", llmName, util.GetChatIDByTgUpdate(upd), "Start")
 	cid := util.GetChatIDByTgUpdate(upd)
 
-	r.sendDebug(cid, "telegram_message", upd)
+	// r.sendDebug(cid, "telegram_message", upd)
 	message := fmt.Sprintf("telegram message: %+v", upd)
 	// util.PrintInfo("HandleUpdate", llmName, cid, message)
 
 	cur := getState(cid)
-	r.sendDebug(cid, "last_state", cur)
+	// r.sendDebug(cid, "last_state", cur)
 
 	if ns, ok := inferNextState(upd, cur); ok && ns != cur {
-		r.sendDebug(cid, "new_state", ns)
+		// r.sendDebug(cid, "new_state", ns)
 
 		if !canTransition(cur, ns) {
 			// Запрещённый переход — сообщим пользователю
