@@ -96,7 +96,10 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 			},
 		})
 
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task"),
+			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
+		)
 		r.send(chatID, fmt.Sprintf("Не удалось нормализовать ответ: %v", err), b)
 		return
 	}
