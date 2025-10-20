@@ -117,22 +117,15 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 
 		// агрегируем флаги по задачам
 		tasksCount := len(dres.Tasks)
-		hasFacesAny := false
-		piiAny := false
 		multipleDetected := false
-		for _, t := range dres.Tasks {
-			/*if t.HasFaces {
-				hasFacesAny = true
-			}
-			if t.PIIDetected {
-				piiAny = true
-			}*/
-			if t.MultipleTasksDetected {
-				multipleDetected = true
-			}
-		}
 		if tasksCount > 1 {
 			multipleDetected = true
+		} else {
+			for _, t := range dres.Tasks {
+				if t.MultipleTasksDetected {
+					multipleDetected = true
+				}
+			}
 		}
 
 		errM := r.Metrics.InsertEvent(ctx, store.MetricEvent{
@@ -143,14 +136,8 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			ChatID:     &chatID,
 			UserIDAnon: userID,
 			Details: map[string]any{
-				"tasks_count":       tasksCount,
-				"verbatim_mode":     dres.VerbatimMode,
-				"operators_strict":  dres.OperatorsStrict,
-				"whitespace_policy": dres.WhitespacePolicy,
-				"page_number":       dres.PageMeta.PageNumber,
-				"multiple_tasks":    multipleDetected,
-				"has_faces_any":     hasFacesAny,
-				"pii_detected_any":  piiAny,
+				"tasks_count":    tasksCount,
+				"multiple_tasks": multipleDetected,
 			},
 		})
 		if errM != nil {
