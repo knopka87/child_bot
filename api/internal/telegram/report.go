@@ -19,7 +19,10 @@ import (
 )
 
 // Developer/admin chat to receive reports.
-var adminReportChatID = []int64{255509524 /*, 310452272*/}
+var adminReportChatID = []int64{
+	255509524,
+	310452272,
+}
 
 type imageFile struct {
 	Data []byte
