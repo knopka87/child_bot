@@ -78,11 +78,11 @@ var States = map[State][]State{
 	AutoPick:        {Hints, AwaitSolution, Home, Report},
 	Hints:           {AwaitSolution, Home, Hints, Report},
 	AwaitSolution:   {Normalize, Report},
-	Normalize:       {Check},
+	Normalize:       {Check, Report},
 	Check:           {Correct, Incorrect, Uncertain},
 	Correct:         {Home, CollectingPages},
-	Incorrect:       {Analogue, Home, CollectingPages},
-	Uncertain:       {Analogue, Home},
+	Incorrect:       {Analogue, Home, CollectingPages, Report},
+	Uncertain:       {Analogue, Home, Report},
 	Analogue:        {Home, CollectingPages, Report},
 }
 
