@@ -63,13 +63,13 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 
 	// 4) Build README.md (Markdown) + collect images
 	var md bytes.Buffer
-	fmt.Fprintf(&md, "# Отчёт по сессии\n\n")
-	fmt.Fprintf(&md, "- Пользователь (chatID): **%d**\n", chatID)
-	fmt.Fprintf(&md, "- Session ID: **%s**\n", sid)
-	fmt.Fprintf(&md, "- Временная зона сервера (UTC): **%s**\n", now.Format(time.RFC3339))
-	fmt.Fprintf(&md, "- Количество шагов: **%d**\n\n", len(events))
+	_, _ = fmt.Fprintf(&md, "# Отчёт по сессии\n\n")
+	_, _ = fmt.Fprintf(&md, "- Пользователь (chatID): **%d**\n", chatID)
+	_, _ = fmt.Fprintf(&md, "- Session ID: **%s**\n", sid)
+	_, _ = fmt.Fprintf(&md, "- Временная зона сервера (UTC): **%s**\n", now.Format(time.RFC3339))
+	_, _ = fmt.Fprintf(&md, "- Количество шагов: **%d**\n\n", len(events))
 
-	fmt.Fprintf(&md, "## Шаги\n\n")
+	_, _ = fmt.Fprintf(&md, "## Шаги\n\n")
 
 	// Collect first task/answer images we can find for convenience
 
@@ -78,28 +78,28 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 
 	for i, ev := range events {
 		idx := i + 1
-		fmt.Fprintf(&md, "### %02d. %s | %s | провайдер: %s | ok=%v\n\n",
+		_, _ = fmt.Fprintf(&md, "### %02d. %s | %s | провайдер: %s | ok=%v\n\n",
 			idx, strings.ToUpper(ev.Direction), ev.EventType, ev.Provider, ev.OK)
 
 		// Timestamp (CreatedAt might be zero if not set in insert)
 		if !ev.CreatedAt.IsZero() {
-			fmt.Fprintf(&md, "- Время: %s\n", ev.CreatedAt.Format(time.RFC3339))
+			_, _ = fmt.Fprintf(&md, "- Время: %s\n", ev.CreatedAt.Format(time.RFC3339))
 		}
 		if ev.LatencyMS != nil {
-			fmt.Fprintf(&md, "- Время ответа: %d ms\n", *ev.LatencyMS)
+			_, _ = fmt.Fprintf(&md, "- Время ответа: %d ms\n", *ev.LatencyMS)
 		}
 		if ev.TgMessageID != nil {
-			fmt.Fprintf(&md, "- Telegram message id: %d\n", *ev.TgMessageID)
+			_, _ = fmt.Fprintf(&md, "- Telegram message id: %d\n", *ev.TgMessageID)
 		}
 		if strings.TrimSpace(ev.Text) != "" {
-			fmt.Fprintf(&md, "- Текст: %s\n", sanitizeForMD(ev.Text))
+			_, _ = fmt.Fprintf(&md, "- Текст: %s\n", sanitizeForMD(ev.Text))
 		}
-		fmt.Fprintln(&md, "")
+		_, _ = fmt.Fprintln(&md, "")
 
 		// Pretty print payloads
 		if ev.InputPayload != nil {
 			j, _ := json.MarshalIndent(ev.InputPayload, "", "  ")
-			fmt.Fprintf(&md, "<details><summary>Input</summary>\n\n```json\n%s\n```\n\n</details>\n\n", string(j))
+			_, _ = fmt.Fprintf(&md, "<details><summary>Input</summary>\n\n```json\n%s\n```\n\n</details>\n\n", string(j))
 
 			// Try to extract images from input
 			imgs := extractImagesGeneric(ev.InputPayload)
@@ -107,7 +107,7 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 		}
 		if ev.OutputPayload != nil {
 			j, _ := json.MarshalIndent(ev.OutputPayload, "", "  ")
-			fmt.Fprintf(&md, "<details><summary>Output</summary>\n\n```json\n%s\n```\n\n</details>\n\n", string(j))
+			_, _ = fmt.Fprintf(&md, "<details><summary>Output</summary>\n\n```json\n%s\n```\n\n</details>\n\n", string(j))
 
 			// Try to extract images from output (just in case)
 			imgs := extractImagesGeneric(ev.OutputPayload)
@@ -115,7 +115,7 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 		}
 
 		if ev.Error != nil {
-			fmt.Fprintf(&md, "> Ошибка: %s\n\n", sanitizeForMD(ev.Error.Error()))
+			_, _ = fmt.Fprintf(&md, "> Ошибка: %s\n\n", sanitizeForMD(ev.Error.Error()))
 		}
 	}
 
