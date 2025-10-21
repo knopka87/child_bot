@@ -39,7 +39,7 @@ func clearMode(chatID int64) { chatMode.Delete(chatID) }
 type State string
 
 var (
-	Home            State = "home"
+	AwaitingTask    State = "awaiting_task"
 	CollectingPages State = "collecting_pages"
 	Detect          State = "detect"
 	NeedsRescan     State = "need_rescan"
@@ -64,26 +64,26 @@ var (
 )
 
 var States = map[State][]State{
-	Home:            {CollectingPages, Home, Report},
-	CollectingPages: {Detect, Report, Home},
+	AwaitingTask:    {CollectingPages, AwaitingTask, Report},
+	CollectingPages: {Detect, Report, AwaitingTask},
 	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks},
-	NeedsRescan:     {Home, CollectingPages, Report},
-	NotATask:        {Home, CollectingPages, Report},
-	Inappropriate:   {Home, CollectingPages, Report},
+	NeedsRescan:     {AwaitingTask, CollectingPages, Report},
+	NotATask:        {AwaitingTask, CollectingPages, Report},
+	Inappropriate:   {AwaitingTask, CollectingPages, Report},
 	DecideTasks:     {Parse, AskChoice},
 	AskChoice:       {Report, AnalyzeChoice},
-	AnalyzeChoice:   {Parse, Home, AnalyzeChoice, Report},
+	AnalyzeChoice:   {Parse, AwaitingTask, AnalyzeChoice, Report},
 	Parse:           {Hints, AwaitSolution, Confirm, NeedsRescan},
-	Confirm:         {Hints, AwaitSolution, Home, Report},
-	AutoPick:        {Hints, AwaitSolution, Home, Report},
-	Hints:           {AwaitSolution, Home, Hints, Report},
+	Confirm:         {Hints, AwaitSolution, AwaitingTask, Report},
+	AutoPick:        {Hints, AwaitSolution, AwaitingTask, Report},
+	Hints:           {AwaitSolution, AwaitingTask, Hints, Report},
 	AwaitSolution:   {Normalize, Report},
-	Normalize:       {Check, Report, Home},
-	Check:           {Correct, Incorrect, Uncertain},
-	Correct:         {Home, CollectingPages},
-	Incorrect:       {Analogue, Home, CollectingPages, Report},
-	Uncertain:       {Analogue, Home, Report},
-	Analogue:        {Home, CollectingPages, Report},
+	Normalize:       {Check, Report, AwaitingTask},
+	Check:           {Correct, Incorrect, Uncertain, Report, AwaitingTask},
+	Correct:         {AwaitingTask, CollectingPages},
+	Incorrect:       {Analogue, AwaitingTask, CollectingPages, Report},
+	Uncertain:       {Analogue, AwaitingTask, Report},
+	Analogue:        {AwaitingTask, CollectingPages, Report},
 }
 
 // canTransition проверяет, можно ли перейти из from в to.
@@ -106,8 +106,9 @@ func getState(chatID int64) State {
 			return s
 		}
 	}
-	chatState.Store(chatID, Home)
-	return Home
+
+	chatState.Store(chatID, AwaitingTask)
+	return AwaitingTask
 }
 
 func setState(chatID int64, s State) {
@@ -127,7 +128,7 @@ func isCanUserText(s State) bool {
 
 func friendlyState(s State) string {
 	switch s {
-	case Home:
+	case AwaitingTask:
 		return "Жду фото задачи"
 	case CollectingPages:
 		return "Сбор фото"
@@ -177,7 +178,7 @@ func friendlyState(s State) string {
 // Короткие подсказки по доступным действиям в текущем состоянии для пользователя
 func allowedStateHints(cur State) string {
 	switch cur {
-	case Home:
+	case AwaitingTask:
 		return "\nМожно прислать фото задания (1–2 фото)."
 	case AskChoice:
 		return "\nПришлите номер задачи из списка (целое число 1..N) или нажмите «Сообщить об ошибке»."
@@ -214,11 +215,11 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 		case "parse_yes":
 			return Hints, true
 		case "parse_no":
-			return Home, true
+			return AwaitingTask, true
 		case "ready_solution":
 			return AwaitSolution, true
 		case "new_task":
-			return Home, true
+			return AwaitingTask, true
 		case "report":
 			return Report, true
 		default:
@@ -238,10 +239,10 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 		if len(cmd) > 0 {
 			switch cmd[0] {
 			case "start", "health":
-				return Home, true
+				return AwaitingTask, true
 			case "engine":
-				// провайдер переключится в другом месте; состояние оставим прежним либо Home
-				return Home, true
+				// провайдер переключится в другом месте; состояние оставим прежним либо AwaitingTask
+				return AwaitingTask, true
 			}
 		}
 		// прочие команды — без смены

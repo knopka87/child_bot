@@ -24,7 +24,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	_ = r.History.Insert(context.Background(), store.TimelineEvent{
 		ChatID:        cid,
 		TaskSessionID: sid,
-		Direction:     "api",
+		Direction:     "button",
 		EventType:     "callback_" + data,
 		Provider:      llmName,
 		OK:            true,
@@ -149,5 +149,5 @@ func resetContext(cid int64) {
 	pendingCtx.Delete(cid)
 	parseWait.Delete(cid)
 	setMode(cid, "await_new_task")
-	setState(cid, Home)
+	setState(cid, AwaitingTask)
 }

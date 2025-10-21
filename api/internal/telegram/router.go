@@ -129,20 +129,20 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// 4) «Жёсткий» режим ввода: если ждём решение — принимаем и текст, и фото;
 	//    если ждём новую задачу — просим фото задачи; в остальных случаях — как раньше.
 	if upd.Message.Text != "" && !upd.Message.IsCommand() {
-		switch getMode(cid) {
-		case "await_solution":
+		switch getState(cid) {
+		case AwaitSolution:
 			// Нормализуем текстовый ответ ученика
 			r.send(cid, "Начинаю нормализацию твоего ответа.", nil)
 			userID := util.GetUserIDFromTgUpdate(upd)
 			r.normalizeText(context.Background(), cid, userID, upd.Message.Text)
 			return
-		case "await_new_task":
+		case AwaitingTask:
 			sid, _ := r.getSession(cid)
 			_ = r.History.Insert(context.Background(), store.TimelineEvent{
 				ChatID:        cid,
 				TaskSessionID: sid,
 				Direction:     "in",
-				EventType:     string(Home),
+				EventType:     string(AwaitingTask),
 				Provider:      llmName,
 				OK:            true,
 				TgMessageID:   &upd.Message.MessageID,

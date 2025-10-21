@@ -123,8 +123,8 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 	}
 
 	// 5) Add README.md to ZIP
-	if err := writeZipFile(zw, "README.md", md.Bytes()); err != nil {
-		return r.sendErrorToAdmin(err, "Не удалось записать README.md в ZIP.")
+	if err := writeZipFile(zw, "Report.md", md.Bytes()); err != nil {
+		return r.sendErrorToAdmin(err, "Не удалось записать Report.md в ZIP.")
 	}
 
 	// 6) Add images to ZIP
@@ -308,7 +308,7 @@ func decodeMaybeDataURL(s string, fallbackMime string) ([]byte, string) {
 
 func mimeToExt(m string) string {
 	if m == "" {
-		return ".bin"
+		return ".jpg"
 	}
 	exts, _ := mime.ExtensionsByType(m)
 	if len(exts) > 0 {

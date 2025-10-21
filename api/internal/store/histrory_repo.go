@@ -16,16 +16,16 @@ func NewHistoryRepo(db *sql.DB) *HistoryRepo {
 
 type TimelineEvent struct {
 	ChatID        int64
-	TaskSessionID string
-	Direction     string // in|out|api
-	EventType     string
-	Provider      string
+	TaskSessionID string // A unique identifier for a specific task session.
+	Direction     string // The flow of data or action. Possible values: in|out|api|button
+	EventType     string // The type of event occurring in the timeline. Possible values: State|callback_<button_name>|tg_text|pending_correction
+	Provider      string // AI provider: gpt|gemini
 	OK            bool
 	LatencyMS     *int64
 	TgMessageID   *int
-	Text          string
-	InputPayload  any
-	OutputPayload any
+	Text          string // Text from telegram.
+	InputPayload  any    // API Request
+	OutputPayload any    // API Response
 	Error         error
 	CreatedAt     time.Time
 }
