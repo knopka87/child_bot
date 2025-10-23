@@ -403,7 +403,7 @@ func (r *Router) postUpdatePrompt(ctx context.Context, chatID int64, name, text 
 
 	if !out.OK {
 		// Ответ пришёл, но ок == false — покажем пользователю
-		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s' (путь: %s)", out.Name, out.Provider, out.Path), nil)
+		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s' (путь: %s): %v", out.Name, out.Provider, out.Path, err), nil)
 		return
 	}
 
