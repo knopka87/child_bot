@@ -125,19 +125,50 @@ func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string
 
 func formatHint(level int, hr types.HintResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "💡 *Подсказка L%d*: %s\n", level, safe(hr.HintTitle))
+
+	// Человеко-понятная подпись уровня в соответствии с промптом:
+	// L1 — наводящий вопрос, L2 — практический совет, L3 — общий алгоритм.
+	var ruTitle string
+	switch hr.HintTitle {
+	case types.HintL1:
+		ruTitle = "наводящий вопрос"
+	case types.HintL2:
+		ruTitle = "практический совет"
+	case types.HintL3:
+		ruTitle = "общий алгоритм"
+	default:
+		ruTitle = ""
+	}
+
+	if ruTitle != "" {
+		fmt.Fprintf(&b, "💡 *Подсказка L%d* — %s\n", level, ruTitle)
+	} else {
+		fmt.Fprintf(&b, "💡 *Подсказка L%d*\n", level)
+	}
+
+	// В соответствии со схемой и промптом ограничиваем количество выводимых шагов:
+	// L1: 1 шаг; L2: 1–2 шага; L3: 2–3 шага.
+	maxSteps := 3
+	switch hr.HintTitle {
+	case types.HintL1:
+		maxSteps = 1
+	case types.HintL2:
+		maxSteps = 2
+	case types.HintL3:
+		maxSteps = 3
+	}
+
+	shown := 0
 	for _, s := range hr.HintSteps {
 		if t := strings.TrimSpace(s); t != "" {
-			fmt.Fprintf(&b, "• %s\n", safe(t))
+			_, _ = fmt.Fprintf(&b, "• %s\n", safe(t))
+			shown++
+			if shown >= maxSteps {
+				break
+			}
 		}
 	}
-	if t := strings.TrimSpace(hr.ControlQuestion); t != "" {
-		fmt.Fprintf(&b, "\n*Проверь себя:* %s\n", safe(t))
-	}
-	// Дополнительные поля (при наличии)
-	if hr.RuleHint != "" {
-		fmt.Fprintf(&b, "_Подсказка по правилу:_ %s\n", safe(hr.RuleHint))
-	}
+
 	msg := tgbotapi.NewMessage(0, "") // заглушка для ParseMode
 	_ = msg                           // просто, чтобы напомнить: используйте Markdown, поэтому экранируем
 	return markdown(b.String())
