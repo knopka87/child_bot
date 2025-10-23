@@ -12,6 +12,7 @@ import (
 
 	"child-bot/api/internal/llmclient"
 	"child-bot/api/internal/ocr"
+	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
 )
@@ -44,6 +45,31 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 		}
 		// применим через общий обработчик ниже
 		r.handleEngineCommand(cid, upd.Message.Text)
+		return
+	case "hintL1":
+		// Everything after the subcommand is treated as the prompt text
+		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL1"))
+		if rest == "" {
+			r.send(cid, "Использование: /hintL1  <текст промпта>", nil)
+			return
+		}
+		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
+		return
+	case "hintL2":
+		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL2"))
+		if rest == "" {
+			r.send(cid, "Использование: /hintL2  <текст промпта>", nil)
+			return
+		}
+		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
+		return
+	case "hintL3":
+		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL3"))
+		if rest == "" {
+			r.send(cid, "Использование: /hintL3  <текст промпта>", nil)
+			return
+		}
+		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
 		return
 	default:
 		r.send(cid, "Неизвестная команда", nil)
@@ -357,4 +383,31 @@ func (r *Router) handleEngineCommand(chatID int64, cmd string) {
 // PhotoAcceptedText — первый ответ после получения фото/первой страницы альбома.
 func (r *Router) PhotoAcceptedText() string {
 	return "Фото принято. Если задание на нескольких фото — просто пришлите их подряд, я склею страницы перед обработкой."
+}
+
+// postUpdatePrompt sends UpdatePromptRequest to llm-proxy /api/prompt and reports the result back to the chat.
+func (r *Router) postUpdatePrompt(ctx context.Context, chatID int64, name, text string) {
+	provider := r.EngManager.Get(chatID)
+
+	// Build request payload
+	reqBody := types.UpdatePromptRequest{
+		Provider: provider,
+		Name:     name,
+		Text:     text,
+	}
+
+	out, err := r.LLM.UpdatePrompt(ctx, reqBody)
+	if err != nil {
+		r.sendDebug(chatID, "update prompt", err)
+	}
+
+	if !out.OK {
+		// Ответ пришёл, но ок == false — покажем пользователю
+		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s' (путь: %s)", out.Name, out.Provider, out.Path), nil)
+		return
+	}
+
+	// Успех
+	msg := fmt.Sprintf("✅ Промпт обновлён.\nПровайдер: %s\nИмя: %s\nФайл: %s\nРазмер: %d байт\nОбновлён: %s", out.Provider, out.Name, out.Path, out.Size, out.Updated)
+	r.send(chatID, msg, nil)
 }
