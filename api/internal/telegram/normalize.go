@@ -310,7 +310,7 @@ func (r *Router) sendNormalizePreview(chatID int64, nr types.NormalizeResult) {
 	case []string:
 		val = strings.Join(v, "; ")
 	default:
-		val = "(не удалось отобразить значение)"
+		val = fmt.Sprintf("%+v", v)
 	}
 	b := &strings.Builder{}
 	b.WriteString("✅ Принял ответ.")
