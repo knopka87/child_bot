@@ -239,10 +239,12 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 		if len(cmd) > 0 {
 			switch cmd[0] {
 			case "start", "health":
-				return AwaitingTask, true
+				return cur, true
 			case "engine":
 				// провайдер переключится в другом месте; состояние оставим прежним либо AwaitingTask
-				return AwaitingTask, true
+				return cur, true
+			case "hintL1", "hintL2", "hintL3":
+				return cur, true
 			}
 		}
 		// прочие команды — без смены
