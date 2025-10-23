@@ -401,9 +401,14 @@ func (r *Router) postUpdatePrompt(ctx context.Context, chatID int64, name, text 
 		r.sendDebug(chatID, "update prompt", err)
 	}
 
+	if err != nil {
+		// Ответ пришёл с ошибкой
+		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s': %v", reqBody.Name, reqBody.Provider, err), nil)
+		return
+	}
 	if !out.OK {
 		// Ответ пришёл, но ок == false — покажем пользователю
-		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s' (путь: %s): %v", out.Name, out.Provider, out.Path, err), nil)
+		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s' (путь: %s)", out.Name, out.Provider, out.Path), nil)
 		return
 	}
 
