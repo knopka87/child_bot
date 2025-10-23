@@ -121,6 +121,15 @@ func (c *Client) AnalogueSolution(ctx context.Context, llmName string, ain types
 	return out, nil
 }
 
+func (c *Client) UpdatePrompt(ctx context.Context, in types.UpdatePromptRequest) (types.UpdatePromptResponse, error) {
+	var out types.UpdatePromptResponse
+	if err := c.post(ctx, "/api/prompt", in, &out); err != nil {
+		return types.UpdatePromptResponse{}, err
+	}
+
+	return out, nil
+}
+
 // --- внутренности ------------------------------------------------------------
 
 type detectRequest struct {
