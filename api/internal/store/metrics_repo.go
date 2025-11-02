@@ -14,7 +14,7 @@ import (
 // MetricEvent — одна точка метрик.
 // details — свободная структура для этап-специфичных полей.
 type MetricEvent struct {
-	Stage       string // detect|parse|hint|normalize|check|analogue
+	Stage       string // detect|parse|hint|ocr|normalize|check|analogue
 	Provider    string // gemini|gpt|yandex|...
 	OK          bool
 	Error       string // короткая причина (если ошибка)

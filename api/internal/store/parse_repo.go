@@ -7,9 +7,27 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"child-bot/api/internal/ocr/types"
 )
+
+type ParsedTasks struct {
+	ID                    int64           `db:"id"`
+	CreatedAt             time.Time       `db:"created_at"`
+	ChatID                int64           `db:"chat_id"`
+	MediaGroupID          string          `db:"media_group_id"`
+	ImageHash             string          `db:"image_hash"`
+	Engine                string          `db:"engine"`
+	Subject               string          `db:"subject"`
+	Grade                 int             `db:"grade_hint"`
+	RawTaskText           string          `db:"raw_task_text"`
+	Question              string          `db:"question"`
+	ResultJSON            json.RawMessage `db:"result_json"`
+	NeedsUserConfirmation bool            `db:"needs_user_confirmation"`
+	TaskType              string          `db:"task_type"`
+	CombinedSubpoints     bool            `db:"combined_subpoints"`
+	Confidence            float64         `db:"confidence"`
+	Accepted              bool            `db:"accepted"`
+	AcceptReason          string          `db:"accept_reason"`
+}
 
 var ErrNotFound = sql.ErrNoRows
 
@@ -17,130 +35,140 @@ type ParseRepo struct{ DB *sql.DB }
 
 func NewParseRepo(db *sql.DB) *ParseRepo { return &ParseRepo{DB: db} }
 
-// ParsedRow — то, что чаще всего нужно наверх.
-type ParsedRow struct {
-	ID                 int64
-	CreatedAt          time.Time
-	ChatID             int64
-	MediaGroupID       string
-	ImageHash          string
-	Engine             string
-	Parse              types.ParseResult
-	Accepted           bool
-	AcceptReason       string
-	ConfirmationNeeded bool
-	Confidence         float64
-
-	// Flattened поля из Parse (для удобства в handlers/router.go)
-	RawText        string
-	Question       string
-	ShortEssence   string
-	TaskID         string
-	Grade          int
-	Subject        string
-	TaskType       string
-	MethodTag      string
-	DifficultyHint string
-	Expected       types.ExpectedSolution
-}
-
 // FindByHash достаёт самую свежую запись по ключу (image_hash + engine).
 // Если maxAge > 0 — проверяет "свежесть", иначе игнорирует возраст.
-func (r *ParseRepo) FindByHash(ctx context.Context, imageHash, engine string, maxAge time.Duration) (*ParsedRow, error) {
+func (r *ParseRepo) FindByHash(ctx context.Context, imageHash, engine string, maxAge time.Duration) (*ParsedTasks, error) {
 	const q = `
-select id, created_at,
+select id,
+       created_at,
        coalesce(chat_id,0) as chat_id,
        coalesce(media_group_id,'') as media_group_id,
-       image_hash, engine,
+       image_hash,
+       engine,
+       subject,
+       grade_hint,
+       raw_task_text,
+       question,
        result_json,
-       accepted, coalesce(accept_reason,'') as accept_reason,
-       confirmation_needed,
-       coalesce(confidence,0) as confidence
+       needs_user_confirmation,
+       task_type,
+       combined_subpoints,
+       accepted,
+       accept_reason,
+       confidence
 from parsed_tasks
 where image_hash = $1 and engine = $2
 order by created_at desc
 limit 1`
+
 	row := r.DB.QueryRowContext(ctx, q, imageHash, engine)
 
 	var (
-		id                 int64
-		ts                 time.Time
-		chatID             int64
-		mediaGroupID       string
-		imgHash            string
-		engName            string
-		js                 []byte
-		accepted           bool
-		acceptReason       string
-		confirmationNeeded bool
-		confidence         float64
+		id           int64
+		createdAt    time.Time
+		chatID       int64
+		mediaGroupID string
+		imgHash      string
+		engName      string
+		subject      string
+		grade        int
+		rawText      string
+		question     string
+		jsonBlob     []byte
+		needConf     bool
+		taskType     string
+		combined     bool
+		accepted     bool
+		accReason    sql.NullString
+		confidence   float64
 	)
-	if err := row.Scan(&id, &ts, &chatID, &mediaGroupID, &imgHash, &engName,
-		&js, &accepted, &acceptReason, &confirmationNeeded, &confidence); err != nil {
+
+	if err := row.Scan(&id, &createdAt, &chatID, &mediaGroupID, &imgHash, &engName,
+		&subject, &grade, &rawText, &question, &jsonBlob, &needConf, &taskType, &combined, &accepted, &accReason, &confidence); err != nil {
 		return nil, err
 	}
-	if maxAge > 0 && time.Since(ts) > maxAge {
-		return nil, ErrNotFound
-	}
-	var pr types.ParseResult
-	if err := json.Unmarshal(js, &pr); err != nil {
-		// если JSON поломан — считаем, что не найдено
+
+	if maxAge > 0 && time.Since(createdAt) > maxAge {
 		return nil, ErrNotFound
 	}
 
-	return &ParsedRow{
-		ID:                 id,
-		CreatedAt:          ts,
-		ChatID:             chatID,
-		MediaGroupID:       mediaGroupID,
-		ImageHash:          imgHash,
-		Engine:             engName,
-		Parse:              pr,
-		Accepted:           accepted,
-		AcceptReason:       acceptReason,
-		ConfirmationNeeded: confirmationNeeded,
-		Confidence:         confidence,
-
-		RawText:  pr.RawText,
-		Question: pr.Question,
-		TaskID:   "", // pr.TaskID,
-		Grade:    pr.Grade,
-		Subject:  pr.Subject,
-		TaskType: pr.TaskType,
+	return &ParsedTasks{
+		ID:                    id,
+		CreatedAt:             createdAt,
+		ChatID:                chatID,
+		MediaGroupID:          mediaGroupID,
+		ImageHash:             imgHash,
+		Engine:                engName,
+		Subject:               subject,
+		Grade:                 grade,
+		RawTaskText:           rawText,
+		Question:              question,
+		ResultJSON:            json.RawMessage(jsonBlob),
+		NeedsUserConfirmation: needConf,
+		TaskType:              taskType,
+		CombinedSubpoints:     combined,
+		Accepted:              accepted,
+		AcceptReason:          accReason.String,
+		Confidence:            confidence,
 	}, nil
 }
 
-// Upsert сохраняет PARSE (черновик или принятый). Если запись по (image_hash, engine)
-// существует — обновит все поля.
+// Upsert сохраняет PARSE (черновик или принятый).
+// Если запись по (image_hash, engine) существует — обновит все поля.
 func (r *ParseRepo) Upsert(
 	ctx context.Context,
-	chatID int64,
-	mediaGroupID, imageHash, engine string,
-	pr types.ParseResult,
-	accepted bool,
-	reason string,
+	pr ParsedTasks,
 ) error {
-	js, _ := json.Marshal(pr)
+
 	const q = `
 insert into parsed_tasks (
-  chat_id, media_group_id, image_hash, engine,
-  raw_text, question, result_json, confidence, confirmation_needed,
-  accepted, accept_reason
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-on conflict (image_hash, engine) do update
-set chat_id = excluded.chat_id,
-    media_group_id = excluded.media_group_id,
-    raw_text = excluded.raw_text,
-    question = excluded.question,
-    result_json = excluded.result_json,
-    confidence = excluded.confidence,
-    confirmation_needed = excluded.confirmation_needed,
-    accepted = excluded.accepted,
-    accept_reason = excluded.accept_reason`
+  chat_id,
+  media_group_id,
+  image_hash,
+  engine,
+  subject,
+  grade_hint,
+  raw_task_text,
+  question,
+  result_json,
+  needs_user_confirmation,
+  task_type,
+  combined_subpoints,
+  accepted,
+  accept_reason,
+  confidence
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+on conflict (image_hash, engine) do update set
+  chat_id = excluded.chat_id,
+  media_group_id = excluded.media_group_id,
+  subject = excluded.subject,
+  grade_hint = excluded.grade_hint,
+  raw_task_text = excluded.raw_task_text,
+  question = excluded.question,
+  result_json = excluded.result_json,
+  needs_user_confirmation = excluded.needs_user_confirmation,
+  task_type = excluded.task_type,
+  combined_subpoints = excluded.combined_subpoints,
+  accepted = excluded.accepted,
+  accept_reason = excluded.accept_reason,
+  confidence = excluded.confidence
+  `
 	_, err := r.DB.ExecContext(ctx, q,
-		chatID, mediaGroupID, imageHash, engine,
-		pr.RawText, pr.Question, js, pr.Confidence, pr.ConfirmationNeeded,
-		accepted, reason,
+		pr.ChatID,
+		pr.MediaGroupID,
+		pr.ImageHash,
+		pr.Engine,
+		pr.Subject,
+		pr.Grade,
+		pr.RawTaskText,
+		pr.Question,
+		pr.ResultJSON,
+		pr.NeedsUserConfirmation,
+		pr.TaskType,
+		pr.CombinedSubpoints,
+		pr.Accepted,
+		pr.AcceptReason,
+		pr.Confidence,
 	)
 	return err
 }
@@ -163,32 +191,43 @@ func (r *ParseRepo) MarkAccepted(ctx context.Context, imageHash, engine, reason 
 // Удобно при сценарии "Нет" + текстовая правка пользователя.
 func (r *ParseRepo) AcceptWithOverwrite(
 	ctx context.Context,
-	chatID int64,
-	mediaGroupID, imageHash, engine string,
-	pr types.ParseResult,
-	reason string,
+	pr ParsedTasks,
 ) error {
-	js, _ := json.Marshal(pr)
 	const q = `
 insert into parsed_tasks (
-  chat_id, media_group_id, image_hash, engine,
-  raw_text, question, result_json, confidence, confirmation_needed,
-  accepted, accept_reason
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10)
-on conflict (image_hash, engine) do update
-set chat_id = excluded.chat_id,
-    media_group_id = excluded.media_group_id,
-    raw_text = excluded.raw_text,
-    question = excluded.question,
-    result_json = excluded.result_json,
-    confidence = excluded.confidence,
-    confirmation_needed = excluded.confirmation_needed,
-    accepted = true,
-    accept_reason = excluded.accept_reason`
+  chat_id,
+  media_group_id,
+  image_hash,
+  engine,
+  subject,
+  grade_hint,
+  raw_task_text,
+  result_json,
+  needs_user_confirmation,
+  task_type,
+  combined_subpoints,
+  accepted,
+  accept_reason
+) values ($1,$2,$3,$4,$5,$6,$7,false,$8,$9,true,$10)
+on conflict (image_hash, engine) do update set
+  chat_id = excluded.chat_id,
+  media_group_id = excluded.media_group_id,
+  subject = excluded.subject,
+  raw_task_text = excluded.raw_task_text,
+  result_json = excluded.result_json,
+  needs_user_confirmation = false,
+  task_type = excluded.task_type,
+  combined_subpoints = excluded.combined_subpoints,
+  accepted = true,
+  accept_reason = excluded.accept_reason`
 	_, err := r.DB.ExecContext(ctx, q,
-		chatID, mediaGroupID, imageHash, engine,
-		pr.RawText, pr.Question, js, pr.Confidence, pr.ConfirmationNeeded,
-		reason,
+		pr.ChatID, pr.MediaGroupID, pr.ImageHash, pr.Engine,
+		sql.NullString{String: strings.ToLower(pr.Subject), Valid: pr.Subject != ""},
+		pr.RawTaskText,
+		pr.ResultJSON,
+		sql.NullString{String: pr.TaskType, Valid: pr.TaskType != ""},
+		true,
+		pr.AcceptReason,
 	)
 	return err
 }
@@ -210,82 +249,73 @@ func (r *ParseRepo) PurgeOlderThan(ctx context.Context, olderThan time.Duration)
 
 // FindLastConfirmed возвращает последнюю ПРИНЯТУЮ (accepted=true) запись по chat_id.
 // Удобно для шагов hint/check/analogue, где нужна подтверждённая формулировка.
-func (r *ParseRepo) FindLastConfirmed(ctx context.Context, chatID int64) (*ParsedRow, bool) {
+func (r *ParseRepo) FindLastConfirmed(ctx context.Context, chatID int64) (*ParsedTasks, bool) {
 	const q = `
-select id, created_at,
+select id,
+       created_at,
        coalesce(chat_id,0) as chat_id,
        coalesce(media_group_id,'') as media_group_id,
-       coalesce(image_hash,'') as image_hash,
-       coalesce(engine,'') as engine,
-       coalesce(raw_text,'') as raw_text,
-       coalesce(question,'') as question,
+       image_hash,
+       engine,
+       subject,
+       grade_hint,
+       raw_task_text,
+       question,
        result_json,
+       needs_user_confirmation,
+       task_type,
+       combined_subpoints,
        accepted,
-       coalesce(accept_reason,'') as accept_reason,
-       confirmation_needed,
-       coalesce(confidence,0) as confidence
+       accept_reason,
+       confidence
 from parsed_tasks
 where chat_id = $1 and accepted = true
 order by created_at desc
 limit 1`
+
 	row := r.DB.QueryRowContext(ctx, q, chatID)
 
 	var (
-		id           int64
-		ts           time.Time
-		cid          int64
-		mgid         string
-		imgHash      string
-		engine       string
-		rawTextField string
-		questionFld  string
-		jsonBlob     []byte
-		accepted     bool
-		reason       string
-		needConfirm  bool
-		conf         float64
+		id         int64
+		createdAt  time.Time
+		cid        int64
+		mgid       sql.NullString
+		imgHash    string
+		engine     string
+		subject    string
+		grade      int
+		rawText    string
+		question   string
+		jsonBlob   []byte
+		needConf   bool
+		taskType   string
+		combined   bool
+		accepted   bool
+		accReason  sql.NullString
+		confidence float64
 	)
-	if err := row.Scan(&id, &ts, &cid, &mgid, &imgHash, &engine,
-		&rawTextField, &questionFld, &jsonBlob, &accepted, &reason, &needConfirm, &conf); err != nil {
+
+	if err := row.Scan(&id, &createdAt, &cid, &mgid, &imgHash, &engine, &subject, &grade, &rawText, &question, &jsonBlob, &needConf, &taskType, &combined, &accepted, &accReason, &confidence); err != nil {
 		return nil, false
 	}
 
-	var pr types.ParseResult
-	if err := json.Unmarshal(jsonBlob, &pr); err != nil {
-		return nil, false
-	}
-
-	out := &ParsedRow{
-		ID:                 id,
-		CreatedAt:          ts,
-		ChatID:             cid,
-		MediaGroupID:       mgid,
-		ImageHash:          imgHash,
-		Engine:             engine,
-		Parse:              pr,
-		Accepted:           accepted,
-		AcceptReason:       reason,
-		ConfirmationNeeded: needConfirm,
-		Confidence:         conf,
-
-		RawText:  firstNonEmpty(rawTextField, pr.RawText),
-		Question: firstNonEmpty(questionFld, pr.Question),
-		// ShortEssence:   pr.ShortEssence,
-		// TaskID:         pr.TaskID,
-		Grade:    pr.Grade,
-		Subject:  pr.Subject,
-		TaskType: pr.TaskType,
-		// MethodTag:      pr.MethodTag,
-		// DifficultyHint: pr.DifficultyHint,
-		// Expected:       pr.Expected,
-	}
-	return out, true
-}
-
-// firstNonEmpty returns a if not empty, otherwise b
-func firstNonEmpty(a, b string) string {
-	if strings.TrimSpace(a) != "" {
-		return a
-	}
-	return b
+	return &ParsedTasks{
+		ID:                    id,
+		CreatedAt:             createdAt,
+		ChatID:                cid,
+		MediaGroupID:          mgid.String,
+		ImageHash:             imgHash,
+		Engine:                engine,
+		Subject:               subject,
+		Grade:                 grade,
+		RawTaskText:           rawText,
+		Question:              question,
+		ResultJSON:            json.RawMessage(jsonBlob),
+		NeedsUserConfirmation: needConf,
+		TaskType:              taskType,
+		CombinedSubpoints:     combined,
+		Accepted:              accepted,
+		AcceptReason:          accReason.String,
+		Confidence:            confidence,
+	}, true
 }

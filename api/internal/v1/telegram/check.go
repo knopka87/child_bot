@@ -9,8 +9,8 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
+	"child-bot/api/internal/v1/types"
 )
 
 // maybeCheckSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
@@ -21,10 +21,10 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 	grade := 0
 	var parseCtx json.RawMessage
 	if r.ParseRepo != nil {
-		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
-			subj = strings.TrimSpace(pr.Subject)
-			grade = pr.Grade
-			parseCtx, _ = json.Marshal(pr.Parse)
+		if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+			subj = strings.TrimSpace(pt.Subject)
+			grade = pt.Grade
+			parseCtx = pt.ResultJSON
 		}
 	}
 
@@ -71,7 +71,7 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 		}
 	}
 
-	llmName := r.EngManager.Get(chatID)
+	llmName := r.LlmManager.Get(chatID)
 	in := types.CheckSolutionInput{
 		UserIDAnon:   fmt.Sprint(chatID),
 		Subject:      subj,
@@ -82,7 +82,7 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 	}
 	r.sendDebug(chatID, "check_solution_input", in)
 	start := time.Now()
-	res, err := r.LLM.CheckSolution(ctx, llmName, in)
+	res, err := r.GetLLMClient().CheckSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
 	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{

@@ -20,10 +20,10 @@ import (
 
 	"child-bot/api/internal/config"
 	"child-bot/api/internal/llmclient"
-	"child-bot/api/internal/ocr"
+	"child-bot/api/internal/service"
 	"child-bot/api/internal/store"
-	"child-bot/api/internal/telegram"
 	"child-bot/api/internal/util"
+	"child-bot/api/internal/v1/telegram"
 )
 
 func main() {
@@ -61,12 +61,6 @@ func main() {
 		log.Printf("db connected: %s", safeDSNSummary(dsn))
 	}
 
-	parseRepo := store.NewParseRepo(db)
-	hintRepo := store.NewHintRepo(db)
-	metricsRepo := store.NewMetricsRepo(db)
-	historyRepo := store.NewHistoryRepo(db)
-	sessionRepo := store.NewSessionRepo(db)
-
 	// --- Telegram bot ---
 	bot, err := tgbotapi.NewBotAPI(cfg.TelegramBotToken)
 	if err != nil {
@@ -74,22 +68,30 @@ func main() {
 	}
 	bot.Debug = false
 
-	// Engines
+	var r service.TgRouter
+	llmClient := llmclient.New(cfg.LLMServerURL)
+	llmManager := service.NewLlmManager(cfg.DefaultLLM)
 
-	// Менеджер движков
-	manager := ocr.NewManager(cfg.DefaultLLM)
-	llm := llmclient.New(cfg.LLMServerURL)
+	parseRepo := store.NewParseRepo(db)
+	hintRepo := store.NewHintRepo(db)
+	metricsRepo := store.NewMetricsRepo(db)
+	historyRepo := store.NewHistoryRepo(db)
+	sessionRepo := store.NewSessionRepo(db)
 
-	r := &telegram.Router{
-		Bot:        bot,
-		EngManager: manager,
-		LLM:        llm,
-		// репозитории
-		ParseRepo: parseRepo,
-		HintRepo:  hintRepo,
-		Metrics:   metricsRepo,
-		History:   historyRepo,
-		Session:   sessionRepo,
+	switch cfg.TelegramBotVersion {
+	case "v2":
+	default:
+		r = &telegram.Router{
+			Bot:        bot,
+			LlmManager: llmManager,
+			LLMClient:  llmClient,
+			// репозитории
+			ParseRepo: parseRepo,
+			HintRepo:  hintRepo,
+			Metrics:   metricsRepo,
+			History:   historyRepo,
+			Session:   sessionRepo,
+		}
 	}
 
 	// --- HTTP mux (DefaultServeMux) ---
@@ -112,17 +114,17 @@ func main() {
 	// --- Choose mode: Webhook vs Polling ---
 	webhookURL := strings.TrimSpace(cfg.WebhookURL)
 	if webhookURL != "" {
-		startWebhookMode(addr, bot, r, webhookURL)
+		startWebhookMode(addr, bot, r, llmManager, webhookURL)
 	} else {
-		startPollingMode(addr, bot, r)
+		startPollingMode(addr, bot, r, llmManager)
 	}
 }
 
 // ---------------- Modes -----------------
 
-func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router, baseURL string) {
+func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llmManager *service.LlmManager, baseURL string) {
 	// секретный путь вебхука
-	path := "/webhook/" + shortHash(r.Bot.Token)
+	path := "/webhook/" + shortHash(r.GetToken())
 	public := strings.TrimRight(baseURL, "/") + path
 
 	wh, err := tgbotapi.NewWebhook(public)
@@ -139,7 +141,7 @@ func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router, bas
 
 	go func() {
 		for upd := range updates {
-			r.HandleUpdate(upd, r.EngManager.Get(util.GetChatIDByTgUpdate(upd)))
+			r.HandleUpdate(upd, llmManager.Get(util.GetChatIDByTgUpdate(upd)))
 		}
 		log.Printf("webhook updates channel closed")
 	}()
@@ -151,7 +153,7 @@ func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router, bas
 	}
 }
 
-func startPollingMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router) {
+func startPollingMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llmManager *service.LlmManager) {
 	// Запускаем HTTP server (healthz), хотя для polling он не обязателен
 	go func() {
 		log.Printf("health server listening on %s/healthz", addr)
@@ -163,7 +165,7 @@ func startPollingMode(addr string, bot *tgbotapi.BotAPI, r *telegram.Router) {
 	// Устойчивый поллинг с backoff без log.Fatal/os.Exit
 	ctx := context.Background()
 	runPolling(ctx, bot, func(upd tgbotapi.Update) {
-		r.HandleUpdate(upd, r.EngManager.Get(util.GetChatIDByTgUpdate(upd))) // engines менеджер внутри роутера
+		r.HandleUpdate(upd, llmManager.Get(util.GetChatIDByTgUpdate(upd))) // engines менеджер внутри роутера
 	})
 }
 

@@ -6,11 +6,12 @@ import (
 )
 
 type Config struct {
-	Port             string
-	WebhookURL       string
-	TelegramBotToken string
+	Port               string
+	WebhookURL         string
+	TelegramBotToken   string
+	TelegramBotVersion string
 
-	// LLM
+	// LLMClient
 	DefaultLLM   string
 	LLMServerURL string // например: https://llm.example.com  (без хвоста /)
 }
@@ -32,9 +33,10 @@ func getEnv(k, def string) string {
 
 func Load() *Config {
 	return &Config{
-		Port:             getEnv("PORT", "8080"),
-		WebhookURL:       getEnv("WEBHOOK_URL", ""),
-		TelegramBotToken: mustEnv("TELEGRAM_BOT_TOKEN"),
+		Port:               getEnv("PORT", "8080"),
+		WebhookURL:         getEnv("WEBHOOK_URL", ""),
+		TelegramBotToken:   mustEnv("TELEGRAM_BOT_TOKEN"),
+		TelegramBotVersion: getEnv("TELEGRAM_BOT_VERSION", "v1"),
 
 		DefaultLLM:   getEnv("DEFAULT_LLM", "gemini"),
 		LLMServerURL: mustEnv("LLM_SERVER_URL"),

@@ -66,7 +66,7 @@ func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	b.mu.Unlock()
 
 	if len(b.images) == 1 {
-		r.send(cid, r.PhotoAcceptedText(), nil)
+		r.send(cid, photoAcceptedText(), nil)
 	}
 }
 
@@ -209,4 +209,9 @@ func download(url string) ([]byte, error) {
 
 func httpClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
+}
+
+// PhotoAcceptedText — первый ответ после получения фото/первой страницы альбома.
+func photoAcceptedText() string {
+	return "Фото принято. Если задание на нескольких фото — просто пришлите их подряд, я склею страницы перед обработкой."
 }

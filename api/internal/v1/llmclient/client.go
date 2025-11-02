@@ -7,43 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
 
-	"child-bot/api/internal/ocr/types"
+	"child-bot/api/internal/llmclient"
+	"child-bot/api/internal/v1/types"
 )
 
 type Client struct {
-	base string
-	hc   *http.Client
+	client *llmclient.Client
 }
 
-func New(base string) *Client {
-	base = strings.TrimRight(base, "/")
-	return &Client{
-		base: base,
-		hc: &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-				DialContext: (&net.Dialer{
-					Timeout:   10 * time.Second,
-					KeepAlive: 30 * time.Second,
-				}).DialContext,
-				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
-				ResponseHeaderTimeout: 120 * time.Second, // ждём заголовки до 2 минут
-			},
-			Timeout: 0, // общий таймаут управляем per-request через ctx
-		},
-	}
+func New(client *llmclient.Client) *Client {
+	return &Client{client: client}
 }
 
 // Detect отправляет СЫРЫЕ данные 1-в-1 как входы метода Engine.Detect
-// и возвращает структуру DetectResult, которую должен вернуть LLM-сервис.
+// и возвращает структуру DetectResult, которую должен вернуть LLMClient-сервис.
 func (c *Client) Detect(ctx context.Context, llmName string, din types.DetectInput) (types.DetectResult, error) {
 	in := detectRequest{
 		LLMName:     llmName,
@@ -194,14 +175,14 @@ func (c *Client) post(ctx context.Context, path string, body interface{}, out in
 	pathWithTimeout := addTimeoutSec(path, timeoutSec)
 
 	buf, _ := json.Marshal(body)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.base+pathWithTimeout, bytes.NewReader(buf))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.client.Base+pathWithTimeout, bytes.NewReader(buf))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	if timeoutSec > 0 {
 		// Дружелюбный заголовок — сервер может читать либо header, либо query (?timeoutSec=)
 		req.Header.Set("X-Request-Timeout", fmt.Sprintf("%d", timeoutSec))
 	}
-	res, err := c.hc.Do(req)
+	res, err := c.client.HC.Do(req)
 	if err != nil {
 		return err
 	}

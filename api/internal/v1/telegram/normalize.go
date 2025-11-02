@@ -13,28 +13,28 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
+	"child-bot/api/internal/v1/types"
 )
 
 // lastParseMeta — извлекает метаданные последнего подтверждённого парсинга
 func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, grade int, ctx json.RawMessage) {
 	if r.ParseRepo != nil {
-		if pr, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
-			subject = pr.Subject
-			taskType = pr.TaskType
-			grade = pr.Grade
-			ctx, _ = json.Marshal(pr.Parse)
+		if pt, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
+			subject = pt.Subject
+			taskType = pt.TaskType
+			grade = pt.Grade
+			ctx = pt.ResultJSON
 		}
 	}
 	return
 }
 
-// normalizeText — отправляет текст ученика на нормализацию в LLM-прокси
+// normalizeText — отправляет текст ученика на нормализацию в LLMClient-прокси
 func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64, text string) {
 	setState(chatID, Normalize)
-	llmName := r.EngManager.Get(chatID)
+	llmName := r.LlmManager.Get(chatID)
 	shape := r.suggestSolutionShape(chatID)
 
 	text = strings.TrimSpace(text)
@@ -63,11 +63,11 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		ParseContext:  parseCtx,
 		Provider:      llmName,
 	}
-	util.PrintInfo("normalizeText", r.EngManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
+	util.PrintInfo("normalizeText", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
 	r.sendDebug(chatID, "normalize_input", in)
 
 	start := time.Now()
-	res, err := r.LLM.Normalize(ctx, llmName, in)
+	res, err := r.GetLLMClient().Normalize(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
@@ -128,7 +128,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 
 // normalizePhoto — скачивает фото из Telegram и отправляет на нормализацию
 func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
-	llmName := r.EngManager.Get(util.GetChatIDFromTgMessage(msg))
+	llmName := r.LlmManager.Get(util.GetChatIDFromTgMessage(msg))
 	chatID := util.GetChatIDFromTgMessage(msg)
 	subject, taskType, grade, parseCtx := r.lastParseMeta(chatID)
 
@@ -187,7 +187,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 	// util.PrintInfo("normalizePhoto", llmName, chatID, fmt.Sprintf("normalize_input: %v", in))
 	userID := util.GetUserIDFromTgMessage(msg)
 	start := time.Now()
-	res, err := r.LLM.Normalize(ctx, llmName, in)
+	res, err := r.GetLLMClient().Normalize(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
@@ -258,7 +258,7 @@ func (r *Router) suggestSolutionShape(chatID int64) string {
 	// Если данных нет — вернём дефолт: number.
 	if r.ParseRepo != nil {
 		if pr, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
-			util.PrintInfo("suggestSolutionShape", r.EngManager.Get(chatID), chatID, fmt.Sprintf("parsed_raw: %+v", pr))
+			util.PrintInfo("suggestSolutionShape", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("parsed_raw: %+v", pr))
 
 			subj := strings.ToLower(strings.TrimSpace(pr.Subject))
 			tt := strings.ToLower(strings.TrimSpace(pr.TaskType))
@@ -295,7 +295,7 @@ func (r *Router) suggestSolutionShape(chatID int64) string {
 func (r *Router) sendNormalizePreview(chatID int64, nr types.NormalizeResult) {
 	shape := strings.ToLower(strings.TrimSpace(nr.Shape))
 	val := ""
-	util.PrintInfo("sendNormalizePreview", r.EngManager.Get(chatID), chatID, fmt.Sprintf("normalize_result_value: %v", nr.Value))
+	util.PrintInfo("sendNormalizePreview", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("normalize_result_value: %v", nr.Value))
 	switch v := nr.Value.(type) {
 	case string:
 		val = v
