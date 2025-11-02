@@ -11,21 +11,29 @@ import (
 	"github.com/google/uuid"
 
 	"child-bot/api/internal/llmclient"
-	"child-bot/api/internal/ocr"
-	"child-bot/api/internal/ocr/types"
+	"child-bot/api/internal/service"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
+	llmclientv1 "child-bot/api/internal/v1/llmclient"
 )
 
 type Router struct {
 	Bot        *tgbotapi.BotAPI
-	EngManager *ocr.Manager
+	LlmManager *service.LlmManager
 	ParseRepo  *store.ParseRepo
 	HintRepo   *store.HintRepo
-	LLM        *llmclient.Client
+	LLMClient  *llmclient.Client
 	Metrics    *store.MetricsRepo
 	History    *store.HistoryRepo
 	Session    *store.SessionRepo
+}
+
+func (r *Router) GetToken() string {
+	return r.Bot.Token
+}
+
+func (r *Router) GetLLMClient() *llmclientv1.Client {
+	return llmclientv1.New(r.LLMClient)
 }
 
 func (r *Router) HandleCommand(upd tgbotapi.Update) {
@@ -37,9 +45,9 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 		r.send(cid, "✅ OK", nil)
 	case "engine":
 		args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/engine")))
-		cur := r.EngManager.Get(cid)
+		cur := r.LlmManager.Get(cid)
 		if len(args) == 0 {
-			r.send(cid, "Текущий LLM-провайдер: "+cur+
+			r.send(cid, "Текущий LLMClient-провайдер: "+cur+
 				"\nИспользование:\n/engine gemini\n/engine gpt", nil)
 			return
 		}
@@ -309,7 +317,7 @@ func (r *Router) send(chatID int64, text string, buttons []tgbotapi.InlineKeyboa
 		TaskSessionID: sid,
 		Direction:     "out",
 		EventType:     "tg_text",
-		Provider:      r.EngManager.Get(chatID),
+		Provider:      r.LlmManager.Get(chatID),
 		TgMessageID:   &m.MessageID,
 		Text:          text,
 		OK:            true,
@@ -359,7 +367,7 @@ func (r *Router) SendError(chatID int64, err error) {
 	r.send(chatID, fmt.Sprintf("Ошибка OCR: %v", err), nil)
 }
 
-// handleEngineCommand парсит команду /engine и переключает провайдера LLM для чата.
+// handleEngineCommand парсит команду /engine и переключает провайдера LLMClient для чата.
 // Поддерживаются только gemini и gpt.
 func (r *Router) handleEngineCommand(chatID int64, cmd string) {
 	args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(cmd, "/engine")))
@@ -370,49 +378,12 @@ func (r *Router) handleEngineCommand(chatID int64, cmd string) {
 	name := strings.ToLower(args[0])
 	switch name {
 	case "gemini", "google":
-		r.EngManager.Set(chatID, "gemini")
-		r.send(chatID, "✅ Провайдер LLM: gemini", nil)
+		r.LlmManager.Set(chatID, "gemini")
+		r.send(chatID, "✅ Провайдер LLMClient: gemini", nil)
 	case "gpt", "openai":
-		r.EngManager.Set(chatID, "gpt")
-		r.send(chatID, "✅ Провайдер LLM: gpt", nil)
+		r.LlmManager.Set(chatID, "gpt")
+		r.send(chatID, "✅ Провайдер LLMClient: gpt", nil)
 	default:
 		r.send(chatID, "Неизвестный провайдер. Доступны: gemini | gpt", nil)
 	}
-}
-
-// PhotoAcceptedText — первый ответ после получения фото/первой страницы альбома.
-func (r *Router) PhotoAcceptedText() string {
-	return "Фото принято. Если задание на нескольких фото — просто пришлите их подряд, я склею страницы перед обработкой."
-}
-
-// postUpdatePrompt sends UpdatePromptRequest to llm-proxy /api/prompt and reports the result back to the chat.
-func (r *Router) postUpdatePrompt(ctx context.Context, chatID int64, name, text string) {
-	provider := r.EngManager.Get(chatID)
-
-	// Build request payload
-	reqBody := types.UpdatePromptRequest{
-		Provider: provider,
-		Name:     name,
-		Text:     text,
-	}
-
-	out, err := r.LLM.UpdatePrompt(ctx, reqBody)
-	if err != nil {
-		r.sendDebug(chatID, "update prompt", err)
-	}
-
-	if err != nil {
-		// Ответ пришёл с ошибкой
-		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s': %v", reqBody.Name, reqBody.Provider, err), nil)
-		return
-	}
-	if !out.OK {
-		// Ответ пришёл, но ок == false — покажем пользователю
-		r.send(chatID, fmt.Sprintf("Не удалось обновить промпт '%s' для провайдера '%s' (путь: %s)", out.Name, out.Provider, out.Path), nil)
-		return
-	}
-
-	// Успех
-	msg := fmt.Sprintf("✅ Промпт обновлён.\nПровайдер: %s\nИмя: %s\nФайл: %s\nРазмер: %d байт\nОбновлён: %s", out.Provider, out.Name, out.Path, out.Size, out.Updated)
-	r.send(chatID, msg, nil)
 }

@@ -10,9 +10,9 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
+	"child-bot/api/internal/v1/types"
 )
 
 // TaskChoice хранит отображаемый номер варианта и краткое описание + индекс задачи
@@ -97,7 +97,7 @@ func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chat
 func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *int64, merged []byte, mediaGroupID string) {
 	setState(chatID, Detect)
 	mime := util.SniffMimeHTTP(merged)
-	llmName := r.EngManager.Get(chatID)
+	llmName := r.LlmManager.Get(chatID)
 
 	r.sendDebug(chatID, "mime", mime)
 	// DETECT через llmproxy
@@ -108,7 +108,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		GradeHint: 0,
 	}
 	start := time.Now()
-	dr, err := r.LLM.Detect(ctx, llmName, in)
+	dr, err := r.GetLLMClient().Detect(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
 	if err == nil {
 		dres = dr
@@ -159,7 +159,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
 		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.", b)
 	}
-	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
+	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
 
 	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{

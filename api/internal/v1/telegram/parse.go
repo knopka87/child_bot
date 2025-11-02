@@ -3,15 +3,16 @@ package telegram
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
+	"child-bot/api/internal/v1/types"
 )
 
 type selectionContext struct {
@@ -30,15 +31,17 @@ type parsePending struct {
 func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
 	setState(chatID, Parse)
 	imgHash := util.SHA256Hex(sc.Image)
-	llmName := r.EngManager.Get(chatID)
+	llmName := r.LlmManager.Get(chatID)
 
 	// 1) Проверка кэша: если уже было подтверждено ранее — используем сразу
 	if prRow, err := r.ParseRepo.FindByHash(ctx, imgHash, llmName, 30*24*time.Hour); err == nil && prRow.Accepted {
-		r.showTaskAndPrepareHints(chatID, sc, prRow.Parse, llmName)
+		var pr types.ParseResult
+		_ = json.Unmarshal(prRow.ResultJSON, &pr)
+		r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
 		return
 	}
 
-	// 2) Запрос к LLM.Parse по новой схеме (v1.2)
+	// 2) Запрос к LLMClient.Parse по новой схеме (v1.2)
 	in := types.ParseInput{
 		ImageB64: base64.StdEncoding.EncodeToString(sc.Image),
 		Options: types.ParseOptions{
@@ -51,7 +54,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		},
 	}
 	start := time.Now()
-	pr, err := r.LLM.Parse(ctx, llmName, in)
+	pr, err := r.GetLLMClient().Parse(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
 	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
@@ -101,10 +104,27 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 			"task_type":           pr.TaskType,
 		},
 	})
-	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("Received a response from LLM: %d", time.Since(start).Milliseconds()))
+	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
 
 	// 4) Сохраняем черновик PARSE в БД
-	if errP := r.ParseRepo.Upsert(ctx, chatID, sc.MediaGroupID, imgHash, llmName, pr, false, ""); errP != nil {
+	js, _ := json.Marshal(pr)
+	data := store.ParsedTasks{
+		CreatedAt:             time.Now(),
+		ChatID:                chatID,
+		MediaGroupID:          sc.MediaGroupID,
+		ImageHash:             imgHash,
+		Engine:                llmName,
+		Subject:               pr.Subject,
+		RawTaskText:           pr.RawText,
+		Question:              pr.Question,
+		ResultJSON:            js,
+		NeedsUserConfirmation: pr.ConfirmationNeeded,
+		TaskType:              pr.TaskType,
+		CombinedSubpoints:     false,
+		Accepted:              false,
+		AcceptReason:          "",
+	}
+	if errP := r.ParseRepo.Upsert(ctx, data); errP != nil {
 		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "error upsert parsed_tasks", errP)
 	}
 

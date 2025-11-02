@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -11,8 +12,8 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
+	"child-bot/api/internal/v1/types"
 )
 
 // --- ANALOGUE SOLUTION (v1.1) ----------------------------------------------
@@ -41,15 +42,15 @@ func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64) {
 	}
 }
 
-// runAnalogue — собирает вход из последнего подтверждённого парсинга и вызывает LLM-прокси
+// runAnalogue — собирает вход из последнего подтверждённого парсинга и вызывает LLMClient-прокси
 func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64) error {
 	in, err := r.buildAnalogueInput(ctx, chatID)
 	if err != nil {
 		return err
 	}
-	llmName := r.EngManager.Get(chatID)
+	llmName := r.LlmManager.Get(chatID)
 	start := time.Now()
-	ar, err := r.LLM.AnalogueSolution(ctx, llmName, in)
+	ar, err := r.GetLLMClient().AnalogueSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
 	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
@@ -99,23 +100,22 @@ func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64) (types.An
 	if r.ParseRepo == nil {
 		return types.AnalogueSolutionInput{}, errors.New("ParseRepo is not configured")
 	}
-	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID)
+	tasks, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID)
 	if !ok {
 		return types.AnalogueSolutionInput{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
 	}
 
+	var p types.ParseResult
+	_ = json.Unmarshal(tasks.ResultJSON, &p)
+
 	// Берём краткую суть, либо строим её из вопроса/сырого текста, удаляя числа/единицы
-	essence := strings.TrimSpace(pr.ShortEssence)
-	if essence == "" {
-		base := strings.TrimSpace(pr.Question)
-		if base == "" {
-			base = strings.TrimSpace(pr.RawText)
-		}
-		norm := stripNumbersUnits(base)
-		if norm == "" {
-			return types.AnalogueSolutionInput{}, errors.New("не удалось получить краткую суть задания")
-		}
-		essence = norm
+	base := strings.TrimSpace(tasks.Question)
+	if base == "" {
+		base = strings.TrimSpace(tasks.RawTaskText)
+	}
+	norm := stripNumbersUnits(base)
+	if norm == "" {
+		return types.AnalogueSolutionInput{}, errors.New("не удалось получить краткую суть задания")
 	}
 
 	sid, _ := r.getSession(chatID)
@@ -123,12 +123,10 @@ func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64) (types.An
 	in := types.AnalogueSolutionInput{
 		TaskID:              sid,
 		UserIDAnon:          fmt.Sprint(chatID),
-		Grade:               pr.Grade,
-		Subject:             pr.Subject,   // "math"|"russian"|...
-		TaskType:            pr.TaskType,  // если классификатор есть
-		MethodTag:           pr.MethodTag, // ключевой приём (если определён)
-		DifficultyHint:      pr.DifficultyHint,
-		OriginalTaskEssence: essence, // без чисел/единиц исходника
+		Grade:               tasks.Grade,
+		Subject:             tasks.Subject,  // "math"|"russian"|...
+		TaskType:            tasks.TaskType, // если классификатор есть
+		OriginalTaskEssence: norm,           // без чисел/единиц исходника
 		Locale:              "ru",
 	}
 	return in, nil

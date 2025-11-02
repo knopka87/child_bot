@@ -6,9 +6,9 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
-	"child-bot/api/internal/ocr/types"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
+	"child-bot/api/internal/v1/types"
 )
 
 func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
@@ -69,7 +69,7 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 	p := v.(*parsePending)
 
 	imgHash := util.SHA256Hex(p.Sc.Image)
-	llmName := r.EngManager.Get(chatID)
+	llmName := r.LlmManager.Get(chatID)
 
 	_ = r.ParseRepo.MarkAccepted(context.Background(), imgHash, llmName, "user_yes")
 	// убрать клавиатуру

@@ -4,7 +4,7 @@ import "encoding/json"
 
 // --- CHECK SOLUTION (v1.1) --------------------------------------------------
 // Структуры соответствуют инструкции CHECK_SOLUTION v1.1 и check.schema.json.
-// Они используются в llm_proxy/checksolution.go и в провайдерах LLM для
+// Они используются в llm_proxy/checksolution.go и в провайдерах LLMClient для
 // формирования и парсинга результата без утечки финальных ответов.
 
 // CheckSolutionInput — входные данные проверки решения

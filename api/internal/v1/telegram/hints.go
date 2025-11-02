@@ -1,0 +1,221 @@
+package telegram
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"child-bot/api/internal/store"
+	"child-bot/api/internal/util"
+	"child-bot/api/internal/v1/types"
+)
+
+type hintSession struct {
+	Image        []byte
+	Mime         string
+	MediaGroupID string
+	Parse        types.ParseResult
+	Detect       types.DetectResult
+	EngineName   string
+	NextLevel    int
+}
+
+func (r *Router) sendHint(chatID int64, msgID int, hs *hintSession) {
+	imgHash := util.SHA256Hex(hs.Image)
+	level := hs.NextLevel
+
+	// кэш подсказок
+	hc, err := r.HintRepo.Find(context.Background(), imgHash, hs.EngineName, level)
+	if err == nil && time.Since(hc.CreatedAt) <= 90*24*time.Hour {
+		var hr types.HintResult
+		_ = json.Unmarshal(hc.HintJson, &hr)
+		r.send(chatID, formatHint(level, hr), nil)
+	} else {
+		in := types.HintInput{
+			Level:            lvlToConst(level),
+			RawText:          hs.Parse.RawText,
+			Subject:          hs.Parse.Subject,
+			TaskType:         hs.Parse.TaskType,
+			Grade:            hs.Parse.Grade,
+			SolutionShape:    hs.Parse.SolutionShape,
+			TerminologyLevel: levelTerminology(level),
+		}
+		llmName := r.LlmManager.Get(chatID)
+		start := time.Now()
+		hrNew, err := r.GetLLMClient().Hint(context.Background(), llmName, in)
+		latency := time.Since(start).Milliseconds()
+		sid, _ := r.getSession(chatID)
+		_ = r.History.Insert(context.Background(), store.TimelineEvent{
+			ChatID:        chatID,
+			TaskSessionID: sid,
+			Direction:     "api",
+			EventType:     string(Hints),
+			Provider:      llmName,
+			OK:            err == nil,
+			LatencyMS:     &latency,
+			TgMessageID:   &msgID,
+			InputPayload:  in,
+			OutputPayload: hrNew,
+			Error:         err,
+		})
+		if err != nil {
+			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %s", level, err.Error()), b)
+			return
+		}
+
+		js, _ := json.Marshal(hrNew)
+		data := store.HintCache{
+			ImageHash: imgHash,
+			Engine:    llmName,
+			Level:     string(lvlToConst(level)),
+			HintJson:  js,
+			CreatedAt: time.Now(),
+		}
+		_ = r.HintRepo.Upsert(context.Background(), data)
+		r.send(chatID, formatHint(level, hrNew), nil)
+	}
+	// После того как отправили подсказку текстом:
+	// Отправляем новую клавиатуру с тремя кнопками под НОВЫМ сообщением
+	reply := tgbotapi.NewMessage(chatID, "Выберите дальнейшее действие:")
+	reply.ReplyMarkup = makeActionsKeyboard(level)
+	_, _ = r.Bot.Send(reply)
+}
+
+func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr types.ParseResult, llmName string) {
+	var b strings.Builder
+	b.WriteString("📄 *Текст задания:*\n```\n")
+	if strings.TrimSpace(pr.RawText) != "" {
+		b.WriteString(pr.RawText)
+	} else {
+		b.WriteString("(не удалось чётко переписать текст)")
+	}
+	b.WriteString("\n```\n")
+	if q := strings.TrimSpace(pr.Question); q != "" {
+		b.WriteString("\n*Вопрос:* " + q + "\n")
+	}
+
+	msg := tgbotapi.NewMessage(chatID, b.String())
+	msg.ParseMode = "Markdown"
+	msg.ReplyMarkup = makeActionsKeyboard(0)
+	_, _ = r.Bot.Send(msg)
+
+	// в этом месте бот ждёт дальнейших действий — снимем любые «узкие» режимы
+	clearMode(chatID)
+
+	hs := &hintSession{
+		Image: sc.Image, Mime: sc.Mime, MediaGroupID: sc.MediaGroupID,
+		Parse: pr, Detect: sc.Detect, EngineName: llmName, NextLevel: 1,
+	}
+	hintState.Store(chatID, hs)
+}
+
+func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string) {
+	v, ok := parseWait.Load(chatID)
+	if !ok {
+		return
+	}
+	p := v.(*parsePending)
+	parseWait.Delete(chatID)
+
+	llmName := r.LlmManager.Get(chatID)
+	imgHash := util.SHA256Hex(p.Sc.Image)
+
+	pr := p.PR
+	pr.RawText = corrected
+	pr.ConfirmationNeeded = false
+	pr.ConfirmationReason = "user_fix"
+
+	js, _ := json.Marshal(p.PR)
+	data := store.ParsedTasks{
+		CreatedAt:             time.Now(),
+		ChatID:                chatID,
+		MediaGroupID:          p.Sc.MediaGroupID,
+		ImageHash:             imgHash,
+		Engine:                llmName,
+		Subject:               p.PR.Subject,
+		Grade:                 p.PR.Grade,
+		RawTaskText:           p.PR.RawText,
+		Question:              p.PR.Question,
+		ResultJSON:            js,
+		NeedsUserConfirmation: p.PR.ConfirmationNeeded,
+		TaskType:              p.PR.TaskType,
+		CombinedSubpoints:     false,
+		Confidence:            p.PR.Confidence,
+		Accepted:              true,
+		AcceptReason:          "user_fix",
+	}
+	_ = r.ParseRepo.Upsert(context.Background(), data)
+	r.showTaskAndPrepareHints(chatID, &selectionContext{
+		Image: p.Sc.Image, Mime: p.Sc.Mime, MediaGroupID: p.Sc.MediaGroupID, Detect: p.Sc.Detect,
+	}, pr, llmName)
+}
+
+func formatHint(level int, hr types.HintResult) string {
+	var b strings.Builder
+
+	// Человеко-понятная подпись уровня в соответствии с промптом:
+	// L1 — наводящий вопрос, L2 — практический совет, L3 — общий алгоритм.
+	var ruTitle string
+	switch hr.HintTitle {
+	case types.HintL1:
+		ruTitle = "наводящий вопрос"
+	case types.HintL2:
+		ruTitle = "практический совет"
+	case types.HintL3:
+		ruTitle = "общий алгоритм"
+	default:
+		ruTitle = ""
+	}
+
+	if ruTitle != "" {
+		fmt.Fprintf(&b, "💡 *Подсказка L%d* — %s\n", level, ruTitle)
+	} else {
+		fmt.Fprintf(&b, "💡 *Подсказка L%d*\n", level)
+	}
+
+	// В соответствии со схемой и промптом ограничиваем количество выводимых шагов:
+	// L1: 1 шаг; L2: 1–2 шага; L3: 2–3 шага.
+	maxSteps := 3
+	switch hr.HintTitle {
+	case types.HintL1:
+		maxSteps = 1
+	case types.HintL2:
+		maxSteps = 2
+	case types.HintL3:
+		maxSteps = 3
+	}
+
+	shown := 0
+	for _, s := range hr.HintSteps {
+		if t := strings.TrimSpace(s); t != "" {
+			_, _ = fmt.Fprintf(&b, "• %s\n", safe(t))
+			shown++
+			if shown >= maxSteps {
+				break
+			}
+		}
+	}
+
+	msg := tgbotapi.NewMessage(0, "") // заглушка для ParseMode
+	_ = msg                           // просто, чтобы напомнить: используйте Markdown, поэтому экранируем
+	return markdown(b.String())
+}
+
+func safe(s string) string {
+	// лёгкая защита от Markdown-вставок
+	s = strings.ReplaceAll(s, "`", "'")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "*", "\\*")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	return s
+}
+
+func markdown(s string) string {
+	// Возвращаем как есть — в месте отправки задаём ParseMode=Markdown при необходимости
+	return s
+}
