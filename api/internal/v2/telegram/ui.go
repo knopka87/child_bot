@@ -15,22 +15,22 @@ func makeParseConfirmKeyboard() tgbotapi.InlineKeyboardMarkup {
 }
 
 // Три кнопки действий после подсказки/парсинга
-func makeActionsKeyboard(level int) tgbotapi.InlineKeyboardMarkup {
-	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 3)
+func makeActionsKeyboardRow(level int) []tgbotapi.InlineKeyboardButton {
+	rows := make([]tgbotapi.InlineKeyboardButton, 0, 4)
 	if level < 3 {
 		btnHint := tgbotapi.NewInlineKeyboardButtonData("Показать подсказку", "hint_next")
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnHint))
+		rows = append(rows, btnHint)
 	} else {
-		btnHint := tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution")
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnHint))
+		btnAnalogue := tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution")
+		rows = append(rows, btnAnalogue)
 	}
 
 	btnReady := tgbotapi.NewInlineKeyboardButtonData("Готов дать решение", "ready_solution")
 	btnNew := tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")
 	btnReport := tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnReady), tgbotapi.NewInlineKeyboardRow(btnNew), tgbotapi.NewInlineKeyboardRow(btnReport))
+	rows = append(rows, btnReady, btnNew, btnReport)
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return rows
 }
 
 // лёгкое экранирование для Markdown (если функции ещё нет)

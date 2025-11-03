@@ -86,9 +86,8 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 	}
 	// После того как отправили подсказку текстом:
 	// Отправляем новую клавиатуру с тремя кнопками под НОВЫМ сообщением
-	reply := tgbotapi.NewMessage(chatID, "Выберите дальнейшее действие:")
-	reply.ReplyMarkup = makeActionsKeyboard(level)
-	_, _ = r.Bot.Send(reply)
+	reply := makeActionsKeyboardRow(level)
+	r.send(chatID, "Выберите дальнейшее действие:", reply)
 }
 
 func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr types.ParseResponse, llmName string) {
@@ -100,10 +99,8 @@ func (r *Router) showTaskAndPrepareHints(chatID int64, sc *selectionContext, pr 
 		b.WriteString("(не удалось чётко переписать текст)")
 	}
 
-	msg := tgbotapi.NewMessage(chatID, b.String())
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = makeActionsKeyboard(0)
-	_, _ = r.Bot.Send(msg)
+	buttons := tgbotapi.NewInlineKeyboardRow(makeActionsKeyboardRow(0)...)
+	r.send(chatID, b.String(), buttons)
 
 	// в этом месте бот ждёт дальнейших действий — снимем любые «узкие» режимы
 	clearMode(chatID)

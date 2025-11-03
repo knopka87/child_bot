@@ -24,16 +24,16 @@ type TaskChoice struct {
 func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Load(chatID); return ok }
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
 
-func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *int64, merged []byte, mediaGroupID string) {
+func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *int64, image []byte, mediaGroupID string) {
 	setState(chatID, Detect)
-	mime := util.SniffMimeHTTP(merged)
+	mime := util.SniffMimeHTTP(image)
 	llmName := r.LlmManager.Get(chatID)
 
 	r.sendDebug(chatID, "mime", mime)
 	// DETECT через llmproxy
 	var dres types.DetectResponse
 	in := types.DetectRequest{
-		Image:    base64.StdEncoding.EncodeToString(merged),
+		Image:    base64.StdEncoding.EncodeToString(image),
 		Locale:   "ru-RU",
 		MaxTasks: 1,
 	}
@@ -97,7 +97,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	// без выбора — сразу PARSE
 	setState(chatID, DecideTasks)
 	r.send(chatID, "Изображение распознано, перехожу к парсингу.", nil)
-	sc := &selectionContext{Image: merged, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
+	sc := &selectionContext{Image: image, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
 	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, dres.SubjectHint, dres.GradeHint)
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Total time: %d", time.Since(start).Milliseconds()))
 }
