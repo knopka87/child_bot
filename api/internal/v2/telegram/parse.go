@@ -87,6 +87,9 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		return
 	}
 
+	r.sendDebug(chatID, "parse_req", in)
+	r.sendDebug(chatID, "parse_res", pr)
+
 	// 3) Метрики строго по новой структуре
 	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "parse",
@@ -110,7 +113,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		MediaGroupID:          sc.MediaGroupID,
 		ImageHash:             imgHash,
 		Engine:                llmName,
-		Subject:               pr.TaskStruct.Subject,
+		Subject:               pr.TaskStruct.GetSubject(),
 		RawTaskText:           pr.RawTaskText,
 		ResultJSON:            js,
 		NeedsUserConfirmation: pr.NeedsUserConfirmation,

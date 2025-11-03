@@ -135,6 +135,7 @@ func (r *Router) applyTextCorrectionThenShowHints(ctx context.Context, chatID in
 			Engine:            llmName,
 			RawTaskText:       corrected,
 			CombinedSubpoints: false,
+			ResultJSON:        make(json.RawMessage, 0),
 		}
 	}
 	pr.NeedsUserConfirmation = false
