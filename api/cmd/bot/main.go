@@ -23,7 +23,8 @@ import (
 	"child-bot/api/internal/service"
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
-	"child-bot/api/internal/v1/telegram"
+	t1 "child-bot/api/internal/v1/telegram"
+	t2 "child-bot/api/internal/v2/telegram"
 )
 
 func main() {
@@ -80,8 +81,18 @@ func main() {
 
 	switch cfg.TelegramBotVersion {
 	case "v2":
+		r = &t2.Router{
+			Bot:        bot,
+			LlmManager: llmManager,
+			ParseRepo:  parseRepo,
+			HintRepo:   hintRepo,
+			LLMClient:  llmClient,
+			Metrics:    metricsRepo,
+			History:    historyRepo,
+			Session:    sessionRepo,
+		}
 	default:
-		r = &telegram.Router{
+		r = &t1.Router{
 			Bot:        bot,
 			LlmManager: llmManager,
 			LLMClient:  llmClient,
