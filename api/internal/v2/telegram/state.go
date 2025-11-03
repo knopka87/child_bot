@@ -85,7 +85,7 @@ var States = map[State][]State{
 	Correct:         {AwaitingTask, CollectingPages},
 	Incorrect:       {Analogue, AwaitingTask, CollectingPages, Report},
 	Uncertain:       {Analogue, AwaitingTask, Report},
-	Analogue:        {AwaitingTask, CollectingPages, Report},
+	Analogue:        {AwaitingTask, CollectingPages, AwaitSolution, Report},
 }
 
 // canTransition проверяет, можно ли перейти из from в to.
