@@ -69,7 +69,8 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 			Error:         err,
 		})
 		if err != nil {
-			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+			b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %s", level, err.Error()), b)
 			return
 		}

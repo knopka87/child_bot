@@ -84,9 +84,10 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 			},
 		})
 
-		b := tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task"),
-			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 2)
+		b = append(b,
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")),
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
 		)
 		r.send(chatID, fmt.Sprintf("Не удалось нормализовать ответ: %v", err), b)
 		return
@@ -104,7 +105,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		},
 	})
 
-	r.sendNormalizePreview(chatID, res)
+	r.sendNormalizePreview(chatID)
 
 	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
 	r.checkSolution(ctx, chatID, userID, res)
@@ -151,7 +152,7 @@ func (r *Router) suggestSolutionShape(chatID int64) string {
 }
 
 // sendNormalizePreview — короткий текст для пользователя по NormalizeResult
-func (r *Router) sendNormalizePreview(chatID int64, nr types.NormalizeResponse) {
+func (r *Router) sendNormalizePreview(chatID int64) {
 	b := &strings.Builder{}
 	b.WriteString("✅ Принял ответ.")
 	r.send(chatID, b.String(), nil)

@@ -75,7 +75,8 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			})
 		}
 		log.Printf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err)
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.", b)
 	}
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
