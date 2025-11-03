@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -102,7 +103,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
 
 	// 4) Сохраняем черновик PARSE в БД
-	util.PrettyJSON(pr)
+	js, _ := json.Marshal(pr)
 	data := store.ParsedTasks{
 		CreatedAt:             time.Time{},
 		ChatID:                chatID,
@@ -111,6 +112,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		Engine:                llmName,
 		Subject:               pr.TaskStruct.Subject,
 		RawTaskText:           pr.RawTaskText,
+		ResultJSON:            js,
 		NeedsUserConfirmation: pr.NeedsUserConfirmation,
 		TaskType:              pr.TaskStruct.Type,
 		CombinedSubpoints:     pr.TaskStruct.CombinedSubpoints,
