@@ -52,7 +52,7 @@ func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	}
 
 	bi, _ := batches.LoadOrStore(key, &photoBatch{
-		ChatID: cid, Key: key, MediaGroupID: msg.MediaGroupID, images: make([][]byte, 0, 4),
+		ChatID: cid, Key: key, MediaGroupID: msg.MediaGroupID, images: make([][]byte, 0, 2),
 	})
 	b := bi.(*photoBatch)
 
@@ -89,12 +89,17 @@ func (r *Router) processBatch(key string, userID *int64) {
 		return
 	}
 
-	merged, err := combineAsOne(images)
-	if err != nil {
-		r.SendError(chatID, fmt.Errorf("склейка: %w", err))
-		return
+	var merged []byte
+	if len(images) == 1 {
+		merged = images[0]
+	} else {
+		var err error
+		merged, err = combineAsOne(images)
+		if err != nil {
+			r.SendError(chatID, fmt.Errorf("склейка: %w", err))
+			return
+		}
 	}
-
 	r.send(chatID, "Начинаю распознавание текста.", nil)
 	r.runDetectThenParse(ctx, chatID, userID, merged, mediaGroupID)
 }
