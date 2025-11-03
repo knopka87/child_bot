@@ -249,6 +249,11 @@ func extractImagesGeneric(payload any) []imageInfo {
 					out = append(out, imageInfo{Data: b, Mime: mimeStr, Name: curName})
 				}
 			}
+			if s := getString(t, "image"); s != "" {
+				if b, mimeStr := decodeMaybeDataURL(s, curMime); len(b) > 0 {
+					out = append(out, imageInfo{Data: b, Mime: mimeStr, Name: curName})
+				}
+			}
 			if s := getString(t, "image_b64"); s != "" {
 				if b, mimeStr := decodeMaybeDataURL(s, curMime); len(b) > 0 {
 					out = append(out, imageInfo{Data: b, Mime: mimeStr, Name: curName})
@@ -263,7 +268,7 @@ func extractImagesGeneric(payload any) []imageInfo {
 			// Nested structures
 			for kk, vv := range t {
 				// Avoid infinite recursion on already processed scalar keys
-				if kk == "photo_b64" || kk == "image_b64" || kk == "content" {
+				if kk == "photo_b64" || kk == "image_b64" || kk == "image" || kk == "content" {
 					continue
 				}
 				walk(kk, vv)
