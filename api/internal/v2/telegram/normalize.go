@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -52,8 +50,6 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		RawAnswerText: text,
 	}
 	util.PrintInfo("normalizeText", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
-	r.sendDebug(chatID, "normalize_input", in)
-
 	start := time.Now()
 	res, err := r.GetLLMClient().Normalize(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
@@ -92,6 +88,9 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		r.send(chatID, fmt.Sprintf("Не удалось нормализовать ответ: %v", err), b)
 		return
 	}
+
+	r.sendDebug(chatID, "normalize_input", in)
+	r.sendDebug(chatID, "normalize_req", res)
 
 	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "normalize",
@@ -156,26 +155,4 @@ func (r *Router) sendNormalizePreview(chatID int64) {
 	b := &strings.Builder{}
 	b.WriteString("✅ Принял ответ.")
 	r.send(chatID, b.String(), nil)
-}
-
-// downloadFileBytes — скачивает файл Telegram по fileID и возвращает bytes и mime
-func (r *Router) downloadFileBytes(fileID string) ([]byte, string, error) {
-	url, err := r.Bot.GetFileDirectURL(fileID)
-	if err != nil {
-		return nil, "", err
-	}
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", err
-	}
-	mime := resp.Header.Get("Content-Type")
-	if mime == "" {
-		mime = "image/jpeg"
-	}
-	return b, mime, nil
 }
