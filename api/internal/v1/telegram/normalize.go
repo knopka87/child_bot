@@ -225,6 +225,9 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 		return
 	}
 
+	r.sendDebug(chatID, "normalize_in", in)
+	r.sendDebug(chatID, "normalize_res", res)
+
 	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "normalize",
 		Provider:   llmName,
@@ -248,7 +251,14 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 	r.sendNormalizePreview(chatID, res)
 	if res.Success {
 		// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
+		r.send(chatID, "Начинаю проверку твоего ответа", nil)
 		r.maybeCheckSolution(ctx, chatID, userID, res)
+	} else {
+		b := tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task"),
+			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
+		)
+		r.send(chatID, "К сожалению, проверка твоего ответа невозможна", b)
 	}
 }
 
