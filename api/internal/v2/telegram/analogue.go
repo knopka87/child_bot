@@ -84,7 +84,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 			"solution_steps": len(ar.SolutionSteps),
 		},
 	})
-	r.sendAnalogueResult(chatID, ar)
+	r.sendAnalogueResult(chatID, ar, reason)
 
 	return nil
 }
@@ -112,7 +112,7 @@ func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64, reason ty
 }
 
 // sendAnalogueResult — формирует человекочитаемый вывод без раскрытия ответа исходника
-func (r *Router) sendAnalogueResult(chatID int64, ar types.AnalogueResponse) {
+func (r *Router) sendAnalogueResult(chatID int64, ar types.AnalogueResponse, reason types.AnalogueReason) {
 	var b strings.Builder
 
 	b.WriteString("Аналогичная задача\n\n")
@@ -122,10 +122,9 @@ func (r *Router) sendAnalogueResult(chatID int64, ar types.AnalogueResponse) {
 		b.WriteString("\n\n\n\n📘 Шаги решения\n\n")
 	}
 	for i, step := range ar.SolutionSteps {
-		b.WriteString(strconv.Itoa(i+1) + ".\n\n")
-		b.WriteString(step)
-		b.WriteString("\n\n")
+		b.WriteString(strconv.Itoa(i+1) + "." + step + "\n\n")
 	}
 
-	r.send(chatID, b.String(), nil)
+	button := makeActionsKeyboardRow(3, false)
+	r.send(chatID, b.String(), button)
 }

@@ -15,12 +15,12 @@ func makeParseConfirmKeyboard() tgbotapi.InlineKeyboardMarkup {
 }
 
 // Три кнопки действий после подсказки/парсинга
-func makeActionsKeyboardRow(level int) []tgbotapi.InlineKeyboardButton {
+func makeActionsKeyboardRow(level int, showAnalogue bool) []tgbotapi.InlineKeyboardButton {
 	rows := make([]tgbotapi.InlineKeyboardButton, 0, 4)
 	if level < 3 {
 		btnHint := tgbotapi.NewInlineKeyboardButtonData("Показать подсказку", "hint_next")
 		rows = append(rows, btnHint)
-	} else {
+	} else if showAnalogue {
 		btnAnalogue := tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution")
 		rows = append(rows, btnAnalogue)
 	}
