@@ -18,6 +18,13 @@ type TaskStruct struct {
 	CombinedSubpoints bool   `json:"combined_subpoints"` // по схеме: const=true (валидируется на уровне схемы)
 }
 
+func (ts *TaskStruct) GetSubject() string {
+	if ts.Subject == "math" || ts.Subject == "russian" {
+		return ts.Subject
+	}
+	return "generic"
+}
+
 // AnalogueReason — допустимые значения поля reason в запросе
 type AnalogueReason string
 
