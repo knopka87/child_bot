@@ -258,7 +258,11 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 			tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task"),
 			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
 		)
-		r.send(chatID, "К сожалению, проверка твоего ответа невозможна", b)
+		text := "К сожалению, проверка твоего ответа невозможна"
+		if res.NeedsUserActionMessage != nil {
+			text = *res.NeedsUserActionMessage
+		}
+		r.send(chatID, text, b)
 	}
 }
 
