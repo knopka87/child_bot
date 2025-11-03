@@ -20,6 +20,9 @@ func makeActionsKeyboard(level int) tgbotapi.InlineKeyboardMarkup {
 	if level < 3 {
 		btnHint := tgbotapi.NewInlineKeyboardButtonData("Показать подсказку", "hint_next")
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnHint))
+	} else {
+		btnHint := tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution")
+		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnHint))
 	}
 
 	btnReady := tgbotapi.NewInlineKeyboardButtonData("Готов дать решение", "ready_solution")
