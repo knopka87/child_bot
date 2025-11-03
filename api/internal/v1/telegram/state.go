@@ -76,7 +76,7 @@ var States = map[State][]State{
 	Parse:           {Hints, AwaitSolution, Confirm, NeedsRescan},
 	Confirm:         {Hints, AwaitSolution, AwaitingTask, Report},
 	AutoPick:        {Hints, AwaitSolution, AwaitingTask, Report},
-	Hints:           {AwaitSolution, AwaitingTask, Hints, Report},
+	Hints:           {AwaitSolution, AwaitingTask, Hints, Analogue, Report},
 	AwaitSolution:   {Normalize, Report},
 	Normalize:       {Check, Report, AwaitingTask},
 	Check:           {Correct, Incorrect, Uncertain, Report, AwaitingTask},
