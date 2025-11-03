@@ -2,8 +2,11 @@ package telegram
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -56,10 +59,10 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 	sid, _ := r.getSession(chatID)
 
 	in := types.OCRRequest{
-		Image:  string(data),
+		Image:  base64.StdEncoding.EncodeToString(data),
 		Locale: "ru_RU",
 	}
-	// util.PrintInfo("OCR", llmName, chatID, fmt.Sprintf("normalize_input: %v", in))
+	// util.PrintInfo("OCR", llmName, chatID, fmt.Sprintf("ocr_input: %v", in))
 	userID := util.GetUserIDFromTgMessage(msg)
 	start := time.Now()
 	res, err := r.GetLLMClient().OCR(ctx, llmName, in)
@@ -68,7 +71,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
-		EventType:     string(Normalize),
+		EventType:     string(OCR),
 		Provider:      llmName,
 		OK:            err == nil,
 		LatencyMS:     &latency,
@@ -119,6 +122,28 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		},
 	})
 
-	util.PrintInfo("OCR", llmName, chatID, fmt.Sprintf("normalize_photo: %+v", res))
+	util.PrintInfo("OCR", llmName, chatID, fmt.Sprintf("ocr_photo: %+v", res))
 	r.normalizeText(ctx, chatID, userID, res.RawAnswerText)
+}
+
+// downloadFileBytes — скачивает файл Telegram по fileID и возвращает bytes и mime
+func (r *Router) downloadFileBytes(fileID string) ([]byte, string, error) {
+	url, err := r.Bot.GetFileDirectURL(fileID)
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	mime := resp.Header.Get("Content-Type")
+	if mime == "" {
+		mime = "image/jpeg"
+	}
+	return b, mime, nil
 }

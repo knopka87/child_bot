@@ -254,7 +254,14 @@ func (r *Router) send(chatID int64, text string, buttons [][]tgbotapi.InlineKeyb
 }
 
 func (r *Router) sendDebug(chatID int64, name string, v any) {
-	if chatID != int64(255509524) {
+	find := false
+	for _, adminID := range adminsChatID {
+		if chatID == adminID {
+			find = true
+			break
+		}
+	}
+	if !find {
 		return
 	}
 

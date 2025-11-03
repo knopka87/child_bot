@@ -13,6 +13,7 @@ const (
 type HintRequest struct {
 	TaskStruct    TaskStruct `json:"task_struct"`
 	Level         HintLevel  `json:"level"`                    // "L1" | "L2" | "L3"
+	Grade         *int       `json:"grade"`                    // 1..4
 	PreviousHints []string   `json:"previous_hints,omitempty"` // max 2 (валидируется схемой)
 	Locale        string     `json:"locale,omitempty"`         // "ru-RU" | "en-US"
 }
