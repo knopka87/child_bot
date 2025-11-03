@@ -31,7 +31,10 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 	data, mime, err := r.downloadFileBytes(ph.FileID)
 	if err != nil {
 		util.PrintError("OCR", llmName, chatID, "не удалось получить фото", err)
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b,
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
+		)
 		r.send(chatID, fmt.Sprintf("Не удалось получить фото: %v", err), b)
 		return
 	}
@@ -92,7 +95,10 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		})
 
 		util.PrintError("OCR", llmName, chatID, "Не удалось нормализовать ответ (фото)", err)
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b,
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
+		)
 		r.send(chatID, "Не удалось нормализовать ответ (фото)", b)
 		return
 	}

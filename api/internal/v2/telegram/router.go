@@ -101,7 +101,8 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			// Запрещённый переход — сообщим пользователю
 			msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
 				friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
-			b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+			b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 			r.send(cid, msg, b)
 
 			return
@@ -112,7 +113,8 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		// Запрещённый переход — сообщим пользователю
 		msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
 			friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 		r.send(cid, msg, b)
 
 		if upd.Message != nil && upd.Message.Text != "" {
@@ -226,10 +228,10 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	r.send(cid, message, nil)
 }
 
-func (r *Router) send(chatID int64, text string, buttons []tgbotapi.InlineKeyboardButton) {
+func (r *Router) send(chatID int64, text string, buttons [][]tgbotapi.InlineKeyboardButton) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	if buttons != nil {
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(buttons)
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(buttons...)
 	}
 
 	m, _ := r.Bot.Send(msg)

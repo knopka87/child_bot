@@ -75,9 +75,10 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 			},
 		})
 
-		b := tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task"),
-			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 2)
+		b = append(b,
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")),
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
 		)
 		r.send(chatID, fmt.Sprintf("Не удалось проверить решение: %v", err), b)
 		r.offerAnalogueButton(chatID)

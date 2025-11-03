@@ -31,7 +31,8 @@ func (r *Router) offerAnalogueButton(chatID int64) {
 func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64, reason types.AnalogueReason) {
 	ctx := context.Background()
 	if err := r.runAnalogue(ctx, chatID, userID, reason, "ru_RU"); err != nil {
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 		r.send(chatID, "Не удалось подготовить аналогичное задание: "+err.Error(), b)
 	}
 }
