@@ -47,6 +47,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 
 	in := types.NormalizeRequest{
 		TaskStruct:    pr.TaskStruct,
+		RawTaskText:   pr.RawTaskText,
 		RawAnswerText: text,
 	}
 	util.PrintInfo("normalizeText", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
