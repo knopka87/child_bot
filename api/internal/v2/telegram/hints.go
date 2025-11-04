@@ -36,10 +36,11 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 		r.send(chatID, formatHint(level, hr), nil)
 	} else {
 		in := types.HintRequest{
-			Level:      lvlToConst(level),
-			Grade:      hs.Detect.GradeHint,
-			TaskStruct: hs.Parse.TaskStruct,
-			Locale:     "ru_RU",
+			RawTaskText: hs.Parse.RawTaskText,
+			Level:       lvlToConst(level),
+			Grade:       hs.Detect.GradeHint,
+			TaskStruct:  hs.Parse.TaskStruct,
+			Locale:      "ru_RU",
 		}
 		hintLevel := level - 1
 		for hintLevel > 0 {

@@ -106,8 +106,9 @@ func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64, reason ty
 			Type:              pr.TaskType,
 			CombinedSubpoints: pr.CombinedSubpoints,
 		},
-		Reason: reason,
-		Locale: locale,
+		Reason:      reason,
+		Locale:      locale,
+		RawTaskText: pr.RawTaskText,
 	}
 	return in, nil
 }

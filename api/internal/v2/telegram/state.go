@@ -81,7 +81,7 @@ var States = map[State][]State{
 	AwaitSolution:   {Normalize, OCR, Report},
 	OCR:             {Normalize, Report},
 	Normalize:       {Check, Report, AwaitingTask},
-	Check:           {Correct, Incorrect, Uncertain, Report, AwaitingTask},
+	Check:           {Correct, Incorrect, Uncertain, Report, AwaitingTask, Analogue},
 	Correct:         {AwaitingTask, CollectingPages},
 	Incorrect:       {Analogue, AwaitingTask, CollectingPages, Report},
 	Uncertain:       {Analogue, AwaitingTask, Report},
