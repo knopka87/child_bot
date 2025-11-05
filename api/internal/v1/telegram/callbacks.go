@@ -18,7 +18,6 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	// log
 	message := fmt.Sprintf("llmName: %s, chatID: %d, data: %s, message: %+v", llmName, cid, data, cb.Message)
 	util.PrintInfo("handleCallback", llmName, cid, message)
-	r.sendDebug(cid, "message", cb.Message)
 
 	sid, _ := r.getSession(cid)
 	_ = r.History.Insert(context.Background(), store.TimelineEvent{
