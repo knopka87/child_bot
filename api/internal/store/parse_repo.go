@@ -59,7 +59,7 @@ select pt.id,
        pt."accept_reason",
        pt.confidence
 from parsed_tasks pt 
-    left join task_sessions ts 
+    inner join task_sessions ts 
         ON pt.session_id = ts.session_id and ts.chat_id = pt.chat_id
 where pt.chat_id = $1
 limit 1`
