@@ -99,7 +99,6 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	mime := util.SniffMimeHTTP(merged)
 	llmName := r.LlmManager.Get(chatID)
 
-	r.sendDebug(chatID, "mime", mime)
 	// DETECT через llmproxy
 	var dres types.DetectResult
 	in := types.DetectInput{
