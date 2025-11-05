@@ -10,6 +10,7 @@ import (
 
 type ParsedTasks struct {
 	ID                    int64           `db:"id"`
+	SessionID             string          `db:"session_id"`
 	CreatedAt             time.Time       `db:"created_at"`
 	UpdatedAt             time.Time       `db:"created_at"`
 	ChatID                int64           `db:"chat_id"`
@@ -35,40 +36,41 @@ type ParseRepo struct{ DB *sql.DB }
 
 func NewParseRepo(db *sql.DB) *ParseRepo { return &ParseRepo{DB: db} }
 
-// FindByHash достаёт самую свежую запись по ключу (image_hash + engine).
+// FindByChatID достаёт самую свежую запись по ключу (image_hash + engine).
 // Если maxAge > 0 — проверяет "свежесть", иначе игнорирует возраст.
-func (r *ParseRepo) FindByHash(ctx context.Context, imageHash, engine string, maxAge time.Duration) (*ParsedTasks, error) {
+func (r *ParseRepo) FindByChatID(ctx context.Context, chatID int64) (*ParsedTasks, error) {
 	const q = `
-select id,
-       created_at,
-       updated_at,
-       coalesce(chat_id,0) as chat_id,
-       coalesce(media_group_id,'') as media_group_id,
-       image_hash,
-       engine,
-       subject,
-       grade_hint,
-       raw_task_text,
-       question,
-       result_json,
-       needs_user_confirmation,
-       task_type,
-       combined_subpoints,
-       accepted,
-       accept_reason,
-       confidence
-from parsed_tasks
-where image_hash = $1 and engine = $2
-order by updated_at desc
+select pt.id,
+       pt.created_at,
+       pt.updated_at,
+       pt.session_id,
+       coalesce(pt.media_group_id,'') as media_group_id,
+       pt.image_hash,
+       pt.engine,
+       pt.subject,
+       pt.grade_hint,
+       pt.raw_task_text,
+       pt.question,
+       pt.result_json,
+       pt.needs_user_confirmation,
+       pt.task_type,
+       pt.combined_subpoints,
+       pt.accepted,
+       pt."accept_reason",
+       pt.confidence
+from parsed_tasks pt 
+    left join task_sessions ts 
+        ON pt.session_id = ts.task_session_id and ts.chat_id = pt.chat_id
+where ts.chat_id = $1
 limit 1`
 
-	row := r.DB.QueryRowContext(ctx, q, imageHash, engine)
+	row := r.DB.QueryRowContext(ctx, q, chatID)
 
 	var (
 		id           int64
 		createdAt    time.Time
 		updatedAt    time.Time
-		chatID       int64
+		sessionID    string
 		mediaGroupID string
 		imgHash      string
 		engName      string
@@ -85,19 +87,16 @@ limit 1`
 		confidence   float64
 	)
 
-	if err := row.Scan(&id, &createdAt, &updatedAt, &chatID, &mediaGroupID, &imgHash, &engName,
+	if err := row.Scan(&id, &createdAt, &updatedAt, &sessionID, &mediaGroupID, &imgHash, &engName,
 		&subject, &grade, &rawText, &question, &jsonBlob, &needConf, &taskType, &combined, &accepted, &accReason, &confidence); err != nil {
 		return nil, err
-	}
-
-	if maxAge > 0 && time.Since(createdAt) > maxAge {
-		return nil, ErrNotFound
 	}
 
 	return &ParsedTasks{
 		ID:                    id,
 		CreatedAt:             createdAt,
 		UpdatedAt:             updatedAt,
+		SessionID:             sessionID,
 		ChatID:                chatID,
 		MediaGroupID:          mediaGroupID,
 		ImageHash:             imgHash,
@@ -126,6 +125,7 @@ func (r *ParseRepo) Upsert(
 	const q = `
 insert into parsed_tasks (
   chat_id,
+  session_id,
   media_group_id,
   image_hash,
   engine,
@@ -142,9 +142,10 @@ insert into parsed_tasks (
   confidence,
   created_at,
   updated_at
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17)
 on conflict (image_hash, engine) do update set
   chat_id = excluded.chat_id,
+  session_id = excluded.session_id,
   media_group_id = excluded.media_group_id,
   subject = excluded.subject,
   grade_hint = excluded.grade_hint,
@@ -212,72 +213,9 @@ func (r *ParseRepo) PurgeOlderThan(ctx context.Context, olderThan time.Duration)
 // FindLastConfirmed возвращает последнюю ПРИНЯТУЮ (accepted=true) запись по chat_id.
 // Удобно для шагов hint/check/analogue, где нужна подтверждённая формулировка.
 func (r *ParseRepo) FindLastConfirmed(ctx context.Context, chatID int64) (*ParsedTasks, bool) {
-	const q = `
-select id,
-       created_at,
-       coalesce(chat_id,0) as chat_id,
-       coalesce(media_group_id,'') as media_group_id,
-       image_hash,
-       engine,
-       subject,
-       grade_hint,
-       raw_task_text,
-       question,
-       result_json,
-       needs_user_confirmation,
-       task_type,
-       combined_subpoints,
-       accepted,
-       accept_reason,
-       confidence
-from parsed_tasks
-where chat_id = $1 and accepted = true
-order by updated_at desc
-limit 1`
-
-	row := r.DB.QueryRowContext(ctx, q, chatID)
-
-	var (
-		id         int64
-		createdAt  time.Time
-		cid        int64
-		mgid       sql.NullString
-		imgHash    string
-		engine     string
-		subject    string
-		grade      int
-		rawText    string
-		question   string
-		jsonBlob   []byte
-		needConf   bool
-		taskType   string
-		combined   bool
-		accepted   bool
-		accReason  sql.NullString
-		confidence float64
-	)
-
-	if err := row.Scan(&id, &createdAt, &cid, &mgid, &imgHash, &engine, &subject, &grade, &rawText, &question, &jsonBlob, &needConf, &taskType, &combined, &accepted, &accReason, &confidence); err != nil {
+	pr, err := r.FindByChatID(ctx, chatID)
+	if err != nil || !pr.Accepted {
 		return nil, false
 	}
-
-	return &ParsedTasks{
-		ID:                    id,
-		CreatedAt:             createdAt,
-		ChatID:                cid,
-		MediaGroupID:          mgid.String,
-		ImageHash:             imgHash,
-		Engine:                engine,
-		Subject:               subject,
-		Grade:                 grade,
-		RawTaskText:           rawText,
-		Question:              question,
-		ResultJSON:            json.RawMessage(jsonBlob),
-		NeedsUserConfirmation: needConf,
-		TaskType:              taskType,
-		CombinedSubpoints:     combined,
-		Accepted:              accepted,
-		AcceptReason:          accReason.String,
-		Confidence:            confidence,
-	}, true
+	return pr, true
 }

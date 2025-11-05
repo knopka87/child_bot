@@ -34,7 +34,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	llmName := r.LlmManager.Get(chatID)
 
 	// 1) Проверка кэша: если уже было подтверждено ранее — используем сразу
-	if prRow, err := r.ParseRepo.FindByHash(ctx, imgHash, llmName, 30*24*time.Hour); err == nil && prRow.Accepted {
+	if prRow, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
 		pr := types.ParseResponse{
 			RawTaskText: prRow.RawTaskText,
 			TaskStruct: types.TaskStruct{
@@ -108,8 +108,9 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	// 4) Сохраняем черновик PARSE в БД
 	js, _ := json.Marshal(pr)
 	data := store.ParsedTasks{
-		CreatedAt:             time.Time{},
+		CreatedAt:             time.Now(),
 		ChatID:                chatID,
+		SessionID:             sid,
 		MediaGroupID:          sc.MediaGroupID,
 		ImageHash:             imgHash,
 		Engine:                llmName,
