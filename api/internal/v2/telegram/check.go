@@ -42,7 +42,6 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 		NormAnswer: nr.NormAnswer,
 		NormTask:   nr.NormTask,
 	}
-	r.sendDebug(chatID, "check_solution_input", in)
 
 	start := time.Now()
 	res, err := r.GetLLMClient().CheckSolution(ctx, llmName, in)
@@ -84,6 +83,9 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 		r.offerAnalogueButton(chatID)
 		return
 	}
+
+	r.sendDebug(chatID, "check input", in)
+	r.sendDebug(chatID, "check res", res)
 
 	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "check",
