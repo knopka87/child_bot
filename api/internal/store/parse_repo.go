@@ -61,7 +61,7 @@ select pt.id,
 from parsed_tasks pt 
     left join task_sessions ts 
         ON pt.session_id = ts.session_id and ts.chat_id = pt.chat_id
-where ts.chat_id = $1
+where pt.chat_id = $1
 limit 1`
 
 	row := r.DB.QueryRowContext(ctx, q, chatID)
