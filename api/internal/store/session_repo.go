@@ -19,7 +19,7 @@ type TaskSession struct {
 	UpdatedAt time.Time
 }
 
-func (s *SessionRepo) Insert(ctx context.Context, ts TaskSession) error {
+func (s *SessionRepo) Upsert(ctx context.Context, ts TaskSession) error {
 	if ts.UpdatedAt.IsZero() {
 		ts.UpdatedAt = time.Now()
 	}
