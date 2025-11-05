@@ -162,6 +162,7 @@ on conflict (image_hash, engine) do update set
   `
 	_, err := r.DB.ExecContext(ctx, q,
 		pr.ChatID,
+		pr.SessionID,
 		pr.MediaGroupID,
 		pr.ImageHash,
 		pr.Engine,
