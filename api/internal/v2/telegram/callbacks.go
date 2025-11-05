@@ -73,14 +73,13 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 	parseWait.Delete(chatID)
 	p := v.(*parsePending)
 
-	imgHash := util.SHA256Hex(p.Sc.Image)
-	llmName := r.LlmManager.Get(chatID)
-
-	_ = r.ParseRepo.MarkAccepted(context.Background(), imgHash, llmName, "user_yes")
+	sid, _ := r.getSession(chatID)
+	_ = r.ParseRepo.MarkAcceptedBySession(context.Background(), sid, "user_yes")
 	// убрать клавиатуру
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, _ = r.Bot.Send(edit)
 	// продолжить
+	llmName := r.LlmManager.Get(chatID)
 	r.showTaskAndPrepareHints(chatID, p.Sc, p.PR, llmName)
 }
 
