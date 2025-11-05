@@ -17,7 +17,9 @@ import (
 // lastParseMeta — извлекает метаданные последнего подтверждённого парсинга
 func (r *Router) lastParseMeta(ctx context.Context, chatID int64) (subject string, taskType string, grade int, ctxParse json.RawMessage) {
 	pt, err := r.ParseRepo.FindByChatID(ctx, chatID)
-	r.sendDebug(chatID, "err", err)
+	if err != nil {
+		r.sendDebug(chatID, "err", err.Error())
+	}
 	r.sendDebug(chatID, "pt", pt)
 	if err == nil && pt.Accepted {
 		subject = pt.Subject
