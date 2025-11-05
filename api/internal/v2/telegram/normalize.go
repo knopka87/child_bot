@@ -15,13 +15,14 @@ import (
 )
 
 // lastParseMeta — извлекает метаданные последнего подтверждённого парсинга
-func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, grade int, ctx json.RawMessage) {
+func (r *Router) lastParseMeta(ctx context.Context, chatID int64) (subject string, taskType string, grade int, ctxParse json.RawMessage) {
 	if r.ParseRepo != nil {
-		if pt, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
+		if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+			r.sendDebug(chatID, "pt", pt)
 			subject = pt.Subject
 			taskType = pt.TaskType
 			grade = pt.Grade
-			ctx = pt.ResultJSON
+			ctxParse = pt.ResultJSON
 		}
 	}
 	return
@@ -38,12 +39,13 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		return
 	}
 
-	_, _, _, parseCtx := r.lastParseMeta(chatID)
+	_, _, _, parseCtx := r.lastParseMeta(ctx, chatID)
+
+	r.sendDebug(chatID, "parse context", parseCtx)
 
 	var pr types.ParseResponse
 	_ = json.Unmarshal(parseCtx, &pr)
-
-	sid, _ := r.getSession(chatID)
+	r.sendDebug(chatID, "parse response", pr)
 
 	in := types.NormalizeRequest{
 		TaskStruct:    pr.TaskStruct,
@@ -54,6 +56,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	start := time.Now()
 	res, err := r.GetLLMClient().Normalize(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
+	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
