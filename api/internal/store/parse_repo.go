@@ -12,7 +12,7 @@ type ParsedTasks struct {
 	ID                    int64           `db:"id"`
 	SessionID             string          `db:"session_id"`
 	CreatedAt             time.Time       `db:"created_at"`
-	UpdatedAt             time.Time       `db:"created_at"`
+	UpdatedAt             time.Time       `db:"updated_at"`
 	ChatID                int64           `db:"chat_id"`
 	MediaGroupID          string          `db:"media_group_id"`
 	ImageHash             string          `db:"image_hash"`
@@ -36,7 +36,7 @@ type ParseRepo struct{ DB *sql.DB }
 
 func NewParseRepo(db *sql.DB) *ParseRepo { return &ParseRepo{DB: db} }
 
-// FindByChatID достаёт самую свежую запись по ключу (image_hash + engine).
+// FindByChatID достаёт самую свежую запись по chat_id (ориентируясь на updated_at).
 // Если maxAge > 0 — проверяет "свежесть", иначе игнорирует возраст.
 func (r *ParseRepo) FindByChatID(ctx context.Context, chatID int64) (*ParsedTasks, error) {
 	const q = `
@@ -143,11 +143,12 @@ insert into parsed_tasks (
   created_at,
   updated_at
 ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17)
-on conflict (image_hash, engine) do update set
+on conflict (session_id) do update set
   chat_id = excluded.chat_id,
-  session_id = excluded.session_id,
   media_group_id = excluded.media_group_id,
   subject = excluded.subject,
+  image_hash = excluded.image_hash,
+  engine = excluded.engine,
   grade_hint = excluded.grade_hint,
   raw_task_text = excluded.raw_task_text,
   question = excluded.question,
@@ -182,10 +183,10 @@ on conflict (image_hash, engine) do update set
 	return err
 }
 
-// MarkAccepted помечает существующую запись как принятую (без изменения JSON).
-func (r *ParseRepo) MarkAccepted(ctx context.Context, imageHash, engine, reason string) error {
-	const q = `update parsed_tasks set accepted=true, accept_reason=$3, updated_at=NOW() where image_hash=$1 and engine=$2`
-	res, err := r.DB.ExecContext(ctx, q, imageHash, engine, reason)
+// MarkAcceptedBySession помечает запись как принятую по session_id.
+func (r *ParseRepo) MarkAcceptedBySession(ctx context.Context, sessionID, reason string) error {
+	const q = `update parsed_tasks set accepted=true, accept_reason=$2, updated_at=NOW() where session_id=$1`
+	res, err := r.DB.ExecContext(ctx, q, sessionID, reason)
 	if err != nil {
 		return err
 	}

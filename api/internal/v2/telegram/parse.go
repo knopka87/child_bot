@@ -137,7 +137,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 
 	// 7) Иначе — автоподтверждение и переход к подсказкам
 	setState(chatID, AutoPick)
-	_ = r.ParseRepo.MarkAccepted(ctx, imgHash, llmName, "auto")
+	_ = r.ParseRepo.MarkAcceptedBySession(ctx, sid, "auto")
 	r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
 	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("total time: %d", time.Since(start).Milliseconds()))
 }
