@@ -131,9 +131,11 @@ func (r *Router) applyTextCorrectionThenShowHints(chatID int64, corrected string
 	pr.ConfirmationReason = "user_fix"
 
 	js, _ := json.Marshal(p.PR)
+	sid, _ := r.getSession(chatID)
 	data := store.ParsedTasks{
 		CreatedAt:             time.Now(),
 		ChatID:                chatID,
+		SessionID:             sid,
 		MediaGroupID:          p.Sc.MediaGroupID,
 		ImageHash:             imgHash,
 		Engine:                llmName,

@@ -128,9 +128,11 @@ func (r *Router) applyTextCorrectionThenShowHints(ctx context.Context, chatID in
 
 	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID)
 	if !ok {
+		sid, _ := r.getSession(chatID)
 		pr = &store.ParsedTasks{
 			CreatedAt:         time.Now(),
 			ChatID:            chatID,
+			SessionID:         sid,
 			ImageHash:         imgHash,
 			Engine:            llmName,
 			RawTaskText:       corrected,
