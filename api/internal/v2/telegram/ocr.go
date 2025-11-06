@@ -19,10 +19,6 @@ import (
 func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 	llmName := r.LlmManager.Get(util.GetChatIDFromTgMessage(msg))
 	chatID := util.GetChatIDFromTgMessage(msg)
-	// _, _, _, parseCtx := r.lastParseMeta(ctx, chatID)
-
-	// var pr types.ParseResponse
-	// _ = json.Unmarshal(parseCtx, &pr)
 
 	if len(msg.Photo) == 0 {
 		util.PrintInfo("OCR", llmName, chatID, "not found photo")

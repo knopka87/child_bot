@@ -60,7 +60,7 @@ select pt.id,
        pt.confidence
 from parsed_tasks pt 
     inner join task_sessions ts 
-        ON pt.session_id = ts.task_session_id and ts.chat_id = pt.chat_id
+        ON pt.session_id = ts.session_id and ts.chat_id = pt.chat_id
 where pt.chat_id = $1
 order by pt.updated_at desc
 limit 1`
