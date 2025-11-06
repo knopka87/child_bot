@@ -60,8 +60,9 @@ select pt.id,
        pt.confidence
 from parsed_tasks pt 
     inner join task_sessions ts 
-        ON pt.session_id = ts.session_id and ts.chat_id = pt.chat_id
+        ON pt.session_id = ts.task_session_id and ts.chat_id = pt.chat_id
 where pt.chat_id = $1
+order by pt.updated_at desc
 limit 1`
 
 	row := r.DB.QueryRowContext(ctx, q, chatID)
@@ -115,8 +116,7 @@ limit 1`
 	}, nil
 }
 
-// Upsert сохраняет PARSE (черновик или принятый).
-// Если запись по (image_hash, engine) существует — обновит все поля.
+// Upsert сохраняет PARSE (черновик или принятый). .
 func (r *ParseRepo) Upsert(
 	ctx context.Context,
 	pr ParsedTasks,
