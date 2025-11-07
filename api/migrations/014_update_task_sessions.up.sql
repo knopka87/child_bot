@@ -1,0 +1,1 @@
+TRUNCATE parsed_tasks;
