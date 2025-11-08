@@ -18,6 +18,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	// log
 	message := fmt.Sprintf("llmName: %s, chatID: %d, data: %s, message: %+v", llmName, cid, data, cb.Message)
 	util.PrintInfo("handleCallback", llmName, cid, message)
+	// r.sendDebug(cid, "message", cb.Message)
 
 	sid, _ := r.getSession(cid)
 	_ = r.History.Insert(context.Background(), store.TimelineEvent{
@@ -46,7 +47,11 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		r.send(cid, "Подбираю похожую задачу. Ожидайте.", nil)
 		userID := util.GetUserIDFromTgCB(cb)
-		r.HandleAnalogueCallback(cid, userID)
+		if getState(cid) == Incorrect || getState(cid) == Uncertain {
+			r.HandleAnalogueCallback(cid, userID, types.ReasonAfterIncorrect)
+		} else {
+			r.HandleAnalogueCallback(cid, userID, types.ReasonAfter3Hints)
+		}
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		resetContext(cid)
@@ -60,7 +65,8 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 func (r *Router) onParseYes(chatID int64, msgID int) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 		r.send(chatID, "Контекст подтверждения не найден.", b)
 		return
 	}
@@ -80,7 +86,8 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 func (r *Router) onParseNo(chatID int64, msgID int) {
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, _ = r.Bot.Send(edit)
-	b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+	b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+	b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 	r.send(chatID, "Напишите, пожалуйста, текст задания так, как он должен быть прочитан (без ответа). Это поможет дать корректные подсказки.", b)
 	// остаёмся в состоянии parseWait — следующий текст примем как корректировку
 }
@@ -88,7 +95,8 @@ func (r *Router) onParseNo(chatID int64, msgID int) {
 func (r *Router) onHintNext(chatID int64, msgID int) {
 	v, ok := hintState.Load(chatID)
 	if !ok {
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.", b)
 		return
 	}
@@ -96,20 +104,36 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 	if hs.NextLevel > 3 {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
-		r.send(chatID, "Все подсказки уже показаны.", b)
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution"),
+			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
+		))
+		r.send(chatID, "Все подсказки уже показаны. Могу показать аналогичную задачу", b)
 		return
 	}
 
 	_ = hideKeyboard(chatID, msgID, r)
 
-	r.sendHint(chatID, msgID, hs)
+	r.sendHint(context.Background(), chatID, msgID, hs)
 
 	hs.NextLevel++
 	if hs.NextLevel > 3 {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
 	}
+}
+
+func (r *Router) GetHintLevel(chatID int64) int {
+	v, ok := hintState.Load(chatID)
+	if !ok {
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.", b)
+		return 0
+	}
+	hs := v.(*hintSession)
+	return hs.NextLevel - 1
 }
 
 func lvlToConst(n int) types.HintLevel {
@@ -120,17 +144,6 @@ func lvlToConst(n int) types.HintLevel {
 		return types.HintL2
 	default:
 		return types.HintL3
-	}
-}
-
-func levelTerminology(n int) string {
-	switch n {
-	case 1:
-		return "none"
-	case 2:
-		return "light"
-	default:
-		return "teacher"
 	}
 }
 

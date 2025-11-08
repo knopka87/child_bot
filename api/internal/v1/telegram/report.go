@@ -19,7 +19,7 @@ import (
 )
 
 // Developer/admin chat to receive reports.
-var adminReportChatID = []int64{
+var adminsChatID = []int64{
 	255509524,
 	310452272,
 }
@@ -167,7 +167,7 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 
 	// 8) Send to admin
 	doc := tgbotapi.FilePath(zipPath)
-	for _, cid := range adminReportChatID {
+	for _, cid := range adminsChatID {
 		msg := tgbotapi.NewDocument(cid, doc)
 		msg.Caption = fmt.Sprintf("Отчёт по сессии\nchatID=%d\nsession=%s\nsteps=%d", chatID, sid, len(events))
 		if _, err := r.Bot.Send(msg); err != nil {
@@ -185,8 +185,8 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 
 // sendErrorToAdmin sends an error message to admin and returns the same error.
 func (r *Router) sendErrorToAdmin(err error, userMsg string) error {
-	for _, cid := range adminReportChatID {
-		adm := tgbotapi.NewMessage(cid, fmt.Sprintf("report error: %v", err))
+	for _, cid := range adminsChatID {
+		adm := tgbotapi.NewMessage(cid, fmt.Sprintf("report error: %v\n\n%s", err, userMsg))
 		_, _ = r.Bot.Send(adm)
 	}
 	return err
@@ -249,6 +249,11 @@ func extractImagesGeneric(payload any) []imageInfo {
 					out = append(out, imageInfo{Data: b, Mime: mimeStr, Name: curName})
 				}
 			}
+			if s := getString(t, "image"); s != "" {
+				if b, mimeStr := decodeMaybeDataURL(s, curMime); len(b) > 0 {
+					out = append(out, imageInfo{Data: b, Mime: mimeStr, Name: curName})
+				}
+			}
 			if s := getString(t, "image_b64"); s != "" {
 				if b, mimeStr := decodeMaybeDataURL(s, curMime); len(b) > 0 {
 					out = append(out, imageInfo{Data: b, Mime: mimeStr, Name: curName})
@@ -263,7 +268,7 @@ func extractImagesGeneric(payload any) []imageInfo {
 			// Nested structures
 			for kk, vv := range t {
 				// Avoid infinite recursion on already processed scalar keys
-				if kk == "photo_b64" || kk == "image_b64" || kk == "content" {
+				if kk == "photo_b64" || kk == "image_b64" || kk == "image" || kk == "content" {
 					continue
 				}
 				walk(kk, vv)

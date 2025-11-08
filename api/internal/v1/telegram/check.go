@@ -13,79 +13,40 @@ import (
 	"child-bot/api/internal/v1/types"
 )
 
-// maybeCheckSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
-func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *int64, nr types.NormalizeResult) {
+// checkSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
+func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64, nr types.NormalizeResponse) {
 	setState(chatID, Check)
-	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
-	subj := "math"
-	grade := 0
 	sid, _ := r.getSession(chatID)
-	var parseCtx json.RawMessage
+
+	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
+	subj := "generic"
 	if r.ParseRepo != nil {
-		if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
-			subj = strings.TrimSpace(pt.Subject)
-			grade = pt.Grade
-			parseCtx = pt.ResultJSON
+		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
+			if s := strings.TrimSpace(pr.Subject); s != "" {
+				subj = s
+			}
 		}
 	}
 
-	// 1) Пытаемся взять ожидаемое решение из БД
+	// 1) Определим ветку проверки из предмета/контекста
+	branch := r.detectCheckBranch(subj)
+
+	// 2) Пытаемся взять ожидаемое решение (внутренний JSON) из БД
 	exp, ok := r.getExpectedForChat(ctx, chatID)
-	if !ok {
-		// 2) Фолбэк: строим «policy-only» ожидание по данным нормализации ученика
-		shape := strings.TrimSpace(nr.Shape)
-		if shape == "" && nr.ShapeDetected != nil {
-			shape = strings.TrimSpace(*nr.ShapeDetected)
-		}
-		if shape == "" {
-			shape = "number"
-		}
-
-		var units *types.UnitsExpectedSpec
-		if nr.Units != nil {
-			policy := "optional"
-			if nr.Units.Kept != nil && *nr.Units.Kept {
-				policy = "required"
-			}
-			primary := ""
-			if nr.Units.Canonical != nil {
-				primary = strings.TrimSpace(*nr.Units.Canonical)
-			}
-			alts := []string{}
-			if nr.Units.Detected != nil {
-				det := strings.TrimSpace(*nr.Units.Detected)
-				if det != "" && det != primary {
-					alts = append(alts, det)
-				}
-			}
-			units = &types.UnitsExpectedSpec{
-				Policy:          policy,  // требуем/не требуем единицы
-				ExpectedPrimary: primary, // если нормализация вывела канон. единицу
-				Alternatives:    alts,    // допустимые альтернативы
-			}
-		}
-
-		exp = types.ExpectedSolution{
-			Shape: shape,
-			Units: units,
-			// Number/String/List/Steps — не задаём без эталона, чтобы не «подгонять» под ответ
-		}
+	if !ok || len(exp) == 0 {
+		// 3) Фолбэк: передаём пустой объект — модель проведёт policy‑only проверку
+		exp = json.RawMessage(`{}`)
 	}
 
 	llmName := r.LlmManager.Get(chatID)
-	in := types.CheckSolutionInput{
-		UserIDAnon:   fmt.Sprint(chatID),
-		Subject:      subj,
-		Grade:        grade,
-		Student:      nr,
-		Expected:     exp,
-		ParseContext: parseCtx,
+	in := types.CheckRequest{
+		NormAnswer: nr.NormAnswer,
+		NormTask:   nr.NormTask,
 	}
-	r.sendDebug(chatID, "check_solution_input", in)
+
 	start := time.Now()
 	res, err := r.GetLLMClient().CheckSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
@@ -109,18 +70,22 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 			UserIDAnon: userID,
 			Details: map[string]any{
 				"subject": subj,
-				"grade":   grade,
+				"branch":  branch,
 			},
 		})
 
-		b := tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task"),
-			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 2)
+		b = append(b,
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")),
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
 		)
 		r.send(chatID, fmt.Sprintf("Не удалось проверить решение: %v", err), b)
 		r.offerAnalogueButton(chatID)
 		return
 	}
+
+	r.sendDebug(chatID, "check input", in)
+	r.sendDebug(chatID, "check res", res)
 
 	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "check",
@@ -130,148 +95,74 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 		ChatID:     &chatID,
 		UserIDAnon: userID,
 		Details: map[string]any{
-			"subject": subj,
-			"grade":   grade,
-			"verdict": res.Verdict,
+			"subject":    subj,
+			"confidence": res.Confidence,
+			"is_correct": res.IsCorrect,
 		},
 	})
 
-	r.sendCheckResult(chatID, res)
+	r.sendCheckResponse(chatID, res)
 }
 
-// getExpectedForChat — извлекает ожидаемое решение из вашей БД для текущей задачи чата
-func (r *Router) getExpectedForChat(ctx context.Context, chatID int64) (types.ExpectedSolution, bool) {
+// getExpectedForChat — извлекает ожидаемое решение (внутренний эталон JSON) для текущей задачи чата
+func (r *Router) getExpectedForChat(ctx context.Context, chatID int64) (json.RawMessage, bool) {
+	// Если в ParseRepo хранится сырой JSON эталона, раскомментируйте:
 	// if r.ParseRepo != nil {
 	// 	if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
-	// 		return pr.Expected, true
+	// 		// Возможные варианты поля в модели парсинга:
+	// 		// 1) pr.ExpectedSolution []byte / json.RawMessage
+	// 		// 2) pr.Expected json.RawMessage
+	// 		// 3) pr.ExpectedObject (структура) — тогда нужно: b, _ := json.Marshal(pr.ExpectedObject); return json.RawMessage(b), true
+	// 		if len(pr.ExpectedSolution) > 0 {
+	// 			return pr.ExpectedSolution, true
+	// 		}
+	// 		if len(pr.Expected) > 0 {
+	// 			return pr.Expected, true
+	// 		}
 	// 	}
 	// }
-	var exp types.ExpectedSolution
-	return exp, false
+	return nil, false
 }
 
-// sendCheckResult — вывод краткого результата проверки
-func (r *Router) sendCheckResult(chatID int64, cr types.CheckSolutionResult) {
+// detectCheckBranch — маппинг предмета/контекста к ветке проверки схемы
+func (r *Router) detectCheckBranch(subject string) string {
+	s := strings.ToLower(strings.TrimSpace(subject))
+	if strings.Contains(s, "мат") || s == "math" || s == "математика" {
+		return "math_branch"
+	}
+	if strings.Contains(s, "рус") || s == "russian" || s == "русский язык" {
+		return "ru_branch"
+	}
+	return "generic_branch"
+}
+
+// sendCheckResponse — вывод краткого результата проверки (с учётом новой схемы v1.2)
+func (r *Router) sendCheckResponse(chatID int64, cr types.CheckResponse) {
 	var b strings.Builder
 
-	// 1) Вердикт
-	switch strings.ToLower(strings.TrimSpace(cr.Verdict)) {
-	case "correct":
+	if cr.IsCorrect {
 		setState(chatID, Correct)
 		b.WriteString("✅ Задача решена верно\n")
-	case "incorrect":
+	} else {
 		setState(chatID, Incorrect)
-		b.WriteString("⚠️ Похоже, есть ошибка\n")
-	case "uncertain":
-		setState(chatID, Uncertain)
-		b.WriteString("🤔 Пока не уверен в оценке\n")
-	default:
-		setState(chatID, Uncertain)
-		b.WriteString("Результат проверки получен\n")
+		b.WriteString("⚠️ Похоже, есть неточности в решении\n")
+	}
+
+	if cr.Feedback != "" {
+		b.WriteString("\n" + cr.Feedback + "\n")
 	}
 
 	if getState(chatID) == Correct {
-		b.WriteString("\nДавай перейдём к решению следующей задачи.")
+		b.WriteString("\n\nГотов двигаться дальше — присылай следующую задачу.")
 		clearMode(chatID)
 		r.clearSession(chatID)
 	} else {
-		// 2) Короткая подсказка от проверки (без раскрытия ответа)
-		if s := strings.TrimSpace(cr.ShortHint); s != "" {
-			b.WriteString("Подсказка: ")
-			b.WriteString(s)
-			b.WriteString("\n")
-		}
-		// 3) Коды причин (если есть) — компактно
-		if len(cr.ReasonCodes) > 0 {
-			b.WriteString("Причины: ")
-			b.WriteString(strings.Join(cr.ReasonCodes, ", "))
-			b.WriteString("\n")
-		}
-		// 4) Диагностическая сводка (без чисел/конкретных значений)
-		c := cr.Comparison
-
-		// Единицы измерения
-		if u := c.Units; u != nil {
-			b.WriteString("Единицы: ")
-			if u.Applied != nil && strings.TrimSpace(*u.Applied) != "" {
-				// конверсия применена, без конкретных значений
-				b.WriteString("конверсия применена\n")
-			} else {
-				// просто констатируем наличие/отсутствие
-				if u.Detected != nil && strings.TrimSpace(*u.Detected) != "" {
-					b.WriteString("указаны\n")
-				} else {
-					b.WriteString("не указаны\n")
-				}
-			}
-		}
-
-		// Числовая проверка
-		if nd := c.NumberDiff; nd != nil {
-			if nd.WithinTolerance {
-				b.WriteString("Числовая проверка: в допустимых пределах\n")
-			} else {
-				// не раскрываем значения/форматы
-				b.WriteString("Числовая проверка: требуется пересмотр\n")
-			}
-		}
-
-		// Словесная проверка (для русского языка)
-		if sm := c.StringMatch; sm != nil {
-			mode := strings.TrimSpace(sm.Mode)
-			if mode == "" {
-				mode = "по тексту"
-			}
-			b.WriteString("Словесная сверка: ")
-			b.WriteString(mode)
-			b.WriteString("\n")
-		}
-
-		// Списки
-		if lm := c.ListMatch; lm != nil {
-			if lm.Extra > 0 || len(lm.Missing) > 0 {
-				b.WriteString("Список: проверь комплектность и лишние элементы\n")
-			} else if lm.Total > 0 {
-				b.WriteString("Список: ок\n")
-			}
-		}
-
-		// Шаги решения
-		if st := c.StepsMatch; st != nil {
-			if !st.OrderOK || len(st.Missing) > 0 || len(st.ExtraSteps) > 0 {
-				b.WriteString("Шаги решения: проверь порядок и полноту\n")
-			} else {
-				b.WriteString("Шаги решения: ок\n")
-			}
-		}
-
-		// 5) Короткая «озвучиваемая» фраза (до 140 символов)
-		if s := strings.TrimSpace(cr.SpeakableMessage); s != "" {
-			b.WriteString("\n")
-			b.WriteString(s)
-		}
-
-		// 6) Рекомендованное следующее действие от модели
-		if code := strings.TrimSpace(cr.NextActionCode); code != "" {
-			var tip string
-			switch code {
-			case "ask_retry":
-				tip = "→ Попробуй ещё раз: перепроверь и пришли новое фото решения."
-			case "ask_rephoto":
-				tip = "→ Пересними фото решения: чётко, без теней и бликов."
-			case "ask_clarify_units":
-				tip = "→ Уточни единицы измерения рядом с ответом."
-			}
-			if tip != "" {
-				b.WriteString("\n")
-				b.WriteString(tip)
-			}
-		}
+		b.WriteString("\nЕсли нужно — могу подобрать похожее задание для тренировки.")
 	}
 
 	r.send(chatID, b.String(), nil)
 
-	// 7) При ошибке или неуверенности предлагаем «Похожее задание»
+	// Предлагаем «Похожее задание», если решение не подтверждено
 	if getState(chatID) != Correct {
 		r.offerAnalogueButton(chatID)
 	}

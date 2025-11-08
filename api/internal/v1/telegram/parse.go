@@ -19,16 +19,16 @@ type selectionContext struct {
 	Image        []byte
 	Mime         string
 	MediaGroupID string
-	Detect       types.DetectResult
+	Detect       types.DetectResponse
 }
 
 type parsePending struct {
 	Sc  *selectionContext
-	PR  types.ParseResult
+	PR  types.ParseResponse
 	LLM string // "gemini"|"gpt"
 }
 
-func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, selectedIdx int, selectedBrief string) {
+func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, subjectHint types.Subject, gradeHint *int) {
 	setState(chatID, Parse)
 	imgHash := util.SHA256Hex(sc.Image)
 	llmName := r.LlmManager.Get(chatID)
@@ -36,23 +36,25 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 
 	// 1) Проверка кэша: если уже было подтверждено ранее — используем сразу
 	if prRow, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
-		var pr types.ParseResult
-		_ = json.Unmarshal(prRow.ResultJSON, &pr)
+		pr := types.ParseResponse{
+			RawTaskText: prRow.RawTaskText,
+			TaskStruct: types.TaskStruct{
+				Subject:           prRow.Subject,
+				Type:              prRow.TaskType,
+				CombinedSubpoints: prRow.CombinedSubpoints,
+			},
+			NeedsUserConfirmation: prRow.NeedsUserConfirmation,
+		}
 		r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
 		return
 	}
 
-	// 2) Запрос к LLMClient.Parse по новой схеме (v1.2)
-	in := types.ParseInput{
-		ImageB64: base64.StdEncoding.EncodeToString(sc.Image),
-		Options: types.ParseOptions{
-			SubjectHint:       "",
-			ChatID:            chatID,
-			MediaGroupID:      sc.MediaGroupID,
-			ImageHash:         imgHash,
-			SelectedTaskIndex: selectedIdx,
-			SelectedTaskBrief: selectedBrief,
-		},
+	// 2) Запрос к LLMClient.Parse
+	in := types.ParseRequest{
+		Image:       base64.StdEncoding.EncodeToString(sc.Image),
+		Locale:      "ru_RU",
+		SubjectHint: &subjectHint,
+		GradeHint:   gradeHint,
 	}
 	start := time.Now()
 	pr, err := r.GetLLMClient().Parse(ctx, llmName, in)
@@ -85,6 +87,9 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		return
 	}
 
+	r.sendDebug(chatID, "parse_req", in)
+	r.sendDebug(chatID, "parse_res", pr)
+
 	// 3) Метрики строго по новой структуре
 	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "parse",
@@ -94,14 +99,8 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		ChatID:     &chatID,
 		UserIDAnon: userID,
 		Details: map[string]any{
-			"rescan_reason":       pr.RescanReason,
-			"confirmation_reason": pr.ConfirmationReason,
-			"grade":               pr.Grade,
-			"solution_shape":      pr.SolutionShape,
-			"needs_rescan":        pr.NeedsRescan,
-			"confidence":          pr.Confidence,
-			"subject":             pr.Subject,
-			"task_type":           pr.TaskType,
+			"need_user_confirmation": pr.NeedsUserConfirmation,
+			"task_type":              pr.TaskStruct.Type,
 		},
 	})
 	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
@@ -115,34 +114,21 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		MediaGroupID:          sc.MediaGroupID,
 		ImageHash:             imgHash,
 		Engine:                llmName,
-		Subject:               pr.Subject,
-		RawTaskText:           pr.RawText,
-		Question:              pr.Question,
+		Subject:               pr.TaskStruct.GetSubject(),
+		RawTaskText:           pr.RawTaskText,
 		ResultJSON:            js,
-		NeedsUserConfirmation: pr.ConfirmationNeeded,
-		TaskType:              pr.TaskType,
-		CombinedSubpoints:     false,
-		Accepted:              false,
+		NeedsUserConfirmation: pr.NeedsUserConfirmation,
+		TaskType:              pr.TaskStruct.Type,
+		CombinedSubpoints:     pr.TaskStruct.CombinedSubpoints,
+		Accepted:              !pr.NeedsUserConfirmation,
 		AcceptReason:          "",
 	}
 	if errP := r.ParseRepo.Upsert(ctx, data); errP != nil {
 		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "error upsert parsed_tasks", errP)
 	}
 
-	// 5) Если нужен рескан — сообщаем и выходим
-	if pr.NeedsRescan {
-		setState(chatID, NeedsRescan)
-		msg := pr.RescanReason
-		if strings.TrimSpace(msg) == "" {
-			msg = "Нужно переснять фото: постарайтесь сделать его чётким, без бликов и поближе к задаче."
-		}
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
-		r.send(chatID, "ℹ️ "+msg, b)
-		return
-	}
-
 	// 6) Если требуется подтверждение — спрашиваем пользователя
-	if pr.ConfirmationNeeded {
+	if pr.NeedsUserConfirmation {
 		setState(chatID, Confirm)
 		r.askParseConfirmation(chatID, pr)
 		parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
@@ -157,18 +143,13 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 }
 
 // Показ запроса подтверждения распознанного текста
-func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResult) {
+func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse) {
 	var b strings.Builder
 	b.WriteString("Я так прочитал задание. Всё верно?\n")
-	if s := strings.TrimSpace(pr.RawText); s != "" {
+	if s := strings.TrimSpace(pr.RawTaskText); s != "" {
 		b.WriteString("```\n")
 		b.WriteString(s)
 		b.WriteString("\n```\n")
-	}
-	if q := strings.TrimSpace(pr.Question); q != "" {
-		b.WriteString("\nВопрос: ")
-		b.WriteString(esc(q))
-		b.WriteString("\n")
 	}
 
 	msg := tgbotapi.NewMessage(chatID, b.String())
