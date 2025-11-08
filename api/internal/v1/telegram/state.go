@@ -55,6 +55,7 @@ var (
 	Confirm         State = "confirm"
 	AnalogueTask    State = "analogue_task"
 	AwaitSolution   State = "await_solution"
+	OCR             State = "ocr"
 	Normalize       State = "normalize"
 	Check           State = "check"
 	Correct         State = "correct"
@@ -73,14 +74,15 @@ var States = map[State][]State{
 	DecideTasks:     {Parse, AskChoice},
 	AskChoice:       {Report, AnalyzeChoice},
 	AnalyzeChoice:   {Parse, AwaitingTask, AnalyzeChoice, Report},
-	Parse:           {Hints, AwaitSolution, Confirm, NeedsRescan},
-	Confirm:         {Hints, AwaitSolution, AwaitingTask, Report},
-	AutoPick:        {Hints, AwaitSolution, AwaitingTask, Report},
-	Hints:           {AwaitSolution, AwaitingTask, Hints, Analogue, Report},
-	AwaitSolution:   {Normalize, Report},
+	Parse:           {Hints, AwaitSolution, Confirm, NeedsRescan, Report},
+	Confirm:         {Hints, AwaitSolution, AwaitingTask, CollectingPages, Report},
+	AutoPick:        {Hints, AwaitSolution, AwaitingTask, CollectingPages, Report},
+	Hints:           {AwaitSolution, AwaitingTask, Analogue, Hints, Report},
+	AwaitSolution:   {Normalize, OCR, Report},
+	OCR:             {Normalize, Report},
 	Normalize:       {Check, Report, AwaitingTask},
-	Check:           {Correct, Incorrect, Uncertain, Report, AwaitingTask},
-	Correct:         {AwaitingTask, CollectingPages},
+	Check:           {Correct, Incorrect, Uncertain, Report, AwaitingTask, Analogue},
+	Correct:         {AwaitingTask, CollectingPages, Report},
 	Incorrect:       {Analogue, AwaitingTask, CollectingPages, Report},
 	Uncertain:       {Analogue, AwaitingTask, Report},
 	Analogue:        {AwaitingTask, CollectingPages, AwaitSolution, Report},
@@ -156,6 +158,8 @@ func friendlyState(s State) string {
 		return "Подтверждение"
 	case AwaitSolution:
 		return "Жду решение"
+	case OCR:
+		return "Парсинг ответа"
 	case Normalize:
 		return "Нормализация ответа"
 	case Check:

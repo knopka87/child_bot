@@ -2,10 +2,7 @@ package telegram
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,9 +13,7 @@ import (
 	"child-bot/api/internal/v1/types"
 )
 
-// --- ANALOGUE SOLUTION (v1.1) ----------------------------------------------
 // По кнопке «Похожее задание» генерируем аналог по тем же приёмам, но с другими данными.
-// Основано на инструкции ANALOGUE_SOLUTION v1.1.
 
 // offerAnalogueButton — показывает кнопку для вызова аналога
 func (r *Router) offerAnalogueButton(chatID int64) {
@@ -33,18 +28,19 @@ func (r *Router) offerAnalogueButton(chatID int64) {
 }
 
 // HandleAnalogueCallback — публичный помощник для существующего handleCallback
-// Вызовите его из вашего обработчика, когда callback.Data == "ANALOGUE".
-func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64) {
+func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64, reason types.AnalogueReason) {
 	ctx := context.Background()
-	if err := r.runAnalogue(ctx, chatID, userID); err != nil {
-		b := tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"))
+	if err := r.runAnalogue(ctx, chatID, userID, reason, "ru_RU"); err != nil {
+		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
 		r.send(chatID, "Не удалось подготовить аналогичное задание: "+err.Error(), b)
 	}
 }
 
 // runAnalogue — собирает вход из последнего подтверждённого парсинга и вызывает LLMClient-прокси
-func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64) error {
-	in, err := r.buildAnalogueInput(ctx, chatID)
+func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, reason types.AnalogueReason, locale string) error {
+	sid, _ := r.getSession(chatID)
+	in, err := r.buildAnalogueInput(ctx, sid, reason, locale)
 	if err != nil {
 		return err
 	}
@@ -52,7 +48,6 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64) e
 	start := time.Now()
 	ar, err := r.GetLLMClient().AnalogueSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
@@ -87,7 +82,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64) e
 		ChatID:     &chatID,
 		UserIDAnon: userID,
 		Details: map[string]any{
-			"has_minichecks": len(ar.MiniChecks) > 0,
+			"solution_steps": len(ar.SolutionSteps),
 		},
 	})
 	r.sendAnalogueResult(chatID, ar)
@@ -96,101 +91,42 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64) e
 }
 
 // buildAnalogueInput — конструирует вход для ANALOGUE из данных последнего парсинга
-func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64) (types.AnalogueSolutionInput, error) {
+func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason types.AnalogueReason, locale string) (types.AnalogueRequest, error) {
 	if r.ParseRepo == nil {
-		return types.AnalogueSolutionInput{}, errors.New("ParseRepo is not configured")
+		return types.AnalogueRequest{}, errors.New("ParseRepo is not configured")
 	}
-	sid, _ := r.getSession(chatID)
-	tasks, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
+	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
 	if !ok {
-		return types.AnalogueSolutionInput{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
+		return types.AnalogueRequest{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
 	}
 
-	var p types.ParseResult
-	_ = json.Unmarshal(tasks.ResultJSON, &p)
-
-	// Берём краткую суть, либо строим её из вопроса/сырого текста, удаляя числа/единицы
-	base := strings.TrimSpace(tasks.Question)
-	if base == "" {
-		base = strings.TrimSpace(tasks.RawTaskText)
-	}
-	norm := stripNumbersUnits(base)
-	if norm == "" {
-		return types.AnalogueSolutionInput{}, errors.New("не удалось получить краткую суть задания")
-	}
-
-	in := types.AnalogueSolutionInput{
-		TaskID:              sid,
-		UserIDAnon:          fmt.Sprint(chatID),
-		Grade:               tasks.Grade,
-		Subject:             tasks.Subject,  // "math"|"russian"|...
-		TaskType:            tasks.TaskType, // если классификатор есть
-		OriginalTaskEssence: norm,           // без чисел/единиц исходника
-		Locale:              "ru",
+	in := types.AnalogueRequest{
+		TaskStruct: types.TaskStruct{
+			Subject:           pr.Subject,
+			Type:              pr.TaskType,
+			CombinedSubpoints: pr.CombinedSubpoints,
+		},
+		Reason:      reason,
+		Locale:      locale,
+		RawTaskText: pr.RawTaskText,
 	}
 	return in, nil
 }
 
-var reNums = regexp.MustCompile(`(?i)(\d+[\d\s./,:-]*\d*|\d+)`)
-var reUnits = regexp.MustCompile(`(?i)(см|мм|м|кг|г|л|мл|ч|мин|сек|%|грн|руб|р\.|км)\.?`)
-
-// stripNumbersUnits — удаляет из текста числа и типичные единицы/знаки, чтобы
-// получить краткую суть без утечки исходных данных (см. anti‑leak в v1.1)
-func stripNumbersUnits(s string) string {
-	out := reNums.ReplaceAllString(s, "N")
-	out = reUnits.ReplaceAllString(out, "U")
-	out = strings.TrimSpace(strings.Join(strings.Fields(out), " "))
-	return out
-}
-
 // sendAnalogueResult — формирует человекочитаемый вывод без раскрытия ответа исходника
-func (r *Router) sendAnalogueResult(chatID int64, ar types.AnalogueSolutionResult) {
+func (r *Router) sendAnalogueResult(chatID int64, ar types.AnalogueResponse) {
 	var b strings.Builder
-	if t := strings.TrimSpace(ar.AnalogyTitle); t != "" {
-		b.WriteString("📘 ")
-		b.WriteString(t)
-		b.WriteString("\n\n")
-	}
-	if t := strings.TrimSpace(ar.AnalogyTask); t != "" {
-		b.WriteString("Похожее задание:\n")
-		b.WriteString(t)
-		b.WriteString("\n\n")
-	}
+
+	b.WriteString("Аналогичная задача\n\n")
+	b.WriteString(ar.ExampleTask)
+
 	if len(ar.SolutionSteps) > 0 {
-		b.WriteString("Как решать (тот же приём):\n")
-		for i, s := range ar.SolutionSteps {
-			b.WriteString(strconv.Itoa(i + 1))
-			b.WriteString(". ")
-			b.WriteString(strings.TrimSpace(s))
-			b.WriteString("\n")
-		}
+		b.WriteString("\n\n\n\n📘 Шаги решения\n\n")
 	}
-	if len(ar.TransferBridge) > 0 {
-		b.WriteString("\nМостик переноса:\n")
-		b.WriteString(ar.TransferBridge)
+	for i, step := range ar.SolutionSteps {
+		b.WriteString(strconv.Itoa(i+1) + "." + step + "\n\n")
 	}
-	if s := strings.TrimSpace(ar.TransferCheck); s != "" {
-		b.WriteString("\n\nПроверь себя: ")
-		b.WriteString(s)
-	}
-	// Мини‑проверки: показываем без ответов
-	if len(ar.MiniChecks) > 0 {
-		b.WriteString("\n\nМини‑проверки:\n")
-		for _, mc := range ar.MiniChecks {
-			p := strings.TrimSpace(mc.Prompt)
-			if p == "" && mc.Raw != "" {
-				p = mc.Raw
-			}
-			if p != "" {
-				b.WriteString("— ")
-				b.WriteString(p)
-				b.WriteString("\n")
-			}
-		}
-	}
-	// Короткая подсказка по безопасности/антилику
-	if !ar.LeakGuardPassed || !ar.Safety.NoOriginalAnswerLeak {
-		b.WriteString("\n(Замечание: аналог без ссылок на исходные данные, ответы не раскрываются.)")
-	}
-	r.send(chatID, b.String(), nil)
+
+	button := makeActionsKeyboardRow(3, false)
+	r.send(chatID, b.String(), button)
 }
