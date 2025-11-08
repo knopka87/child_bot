@@ -67,7 +67,7 @@ var (
 var States = map[State][]State{
 	AwaitingTask:    {CollectingPages, AwaitingTask, Report},
 	CollectingPages: {Detect, Report, AwaitingTask},
-	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks},
+	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks, Report},
 	NeedsRescan:     {AwaitingTask, CollectingPages, Report},
 	NotATask:        {AwaitingTask, CollectingPages, Report},
 	Inappropriate:   {AwaitingTask, CollectingPages, Report},
