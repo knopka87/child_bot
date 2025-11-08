@@ -100,7 +100,8 @@ func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64) (types.An
 	if r.ParseRepo == nil {
 		return types.AnalogueSolutionInput{}, errors.New("ParseRepo is not configured")
 	}
-	tasks, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID)
+	sid, _ := r.getSession(chatID)
+	tasks, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
 	if !ok {
 		return types.AnalogueSolutionInput{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
 	}
@@ -117,8 +118,6 @@ func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64) (types.An
 	if norm == "" {
 		return types.AnalogueSolutionInput{}, errors.New("не удалось получить краткую суть задания")
 	}
-
-	sid, _ := r.getSession(chatID)
 
 	in := types.AnalogueSolutionInput{
 		TaskID:              sid,

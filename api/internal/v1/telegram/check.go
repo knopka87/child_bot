@@ -19,9 +19,10 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "math"
 	grade := 0
+	sid, _ := r.getSession(chatID)
 	var parseCtx json.RawMessage
 	if r.ParseRepo != nil {
-		if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+		if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
 			subj = strings.TrimSpace(pt.Subject)
 			grade = pt.Grade
 			parseCtx = pt.ResultJSON
@@ -84,7 +85,7 @@ func (r *Router) maybeCheckSolution(ctx context.Context, chatID int64, userID *i
 	start := time.Now()
 	res, err := r.GetLLMClient().CheckSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	sid, _ := r.getSession(chatID)
+
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,

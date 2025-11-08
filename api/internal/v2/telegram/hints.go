@@ -125,10 +125,10 @@ func (r *Router) applyTextCorrectionThenShowHints(ctx context.Context, chatID in
 
 	llmName := r.LlmManager.Get(chatID)
 	imgHash := util.SHA256Hex(p.Sc.Image)
+	sid, _ := r.getSession(chatID)
 
-	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID)
+	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
 	if !ok {
-		sid, _ := r.getSession(chatID)
 		pr = &store.ParsedTasks{
 			CreatedAt:         time.Now(),
 			ChatID:            chatID,

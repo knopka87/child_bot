@@ -39,7 +39,8 @@ func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64, reason type
 
 // runAnalogue — собирает вход из последнего подтверждённого парсинга и вызывает LLMClient-прокси
 func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, reason types.AnalogueReason, locale string) error {
-	in, err := r.buildAnalogueInput(ctx, chatID, reason, locale)
+	sid, _ := r.getSession(chatID)
+	in, err := r.buildAnalogueInput(ctx, sid, reason, locale)
 	if err != nil {
 		return err
 	}
@@ -47,7 +48,6 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 	start := time.Now()
 	ar, err := r.GetLLMClient().AnalogueSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
@@ -91,11 +91,11 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 }
 
 // buildAnalogueInput — конструирует вход для ANALOGUE из данных последнего парсинга
-func (r *Router) buildAnalogueInput(ctx context.Context, chatID int64, reason types.AnalogueReason, locale string) (types.AnalogueRequest, error) {
+func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason types.AnalogueReason, locale string) (types.AnalogueRequest, error) {
 	if r.ParseRepo == nil {
 		return types.AnalogueRequest{}, errors.New("ParseRepo is not configured")
 	}
-	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID)
+	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
 	if !ok {
 		return types.AnalogueRequest{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
 	}

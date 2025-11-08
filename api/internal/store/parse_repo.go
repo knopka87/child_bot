@@ -36,14 +36,14 @@ type ParseRepo struct{ DB *sql.DB }
 
 func NewParseRepo(db *sql.DB) *ParseRepo { return &ParseRepo{DB: db} }
 
-// FindByChatID достаёт самую свежую запись по chat_id (ориентируясь на updated_at).
+// FindBySessionID достаёт самую свежую запись по chat_id (ориентируясь на updated_at).
 // Если maxAge > 0 — проверяет "свежесть", иначе игнорирует возраст.
-func (r *ParseRepo) FindByChatID(ctx context.Context, chatID int64) (*ParsedTasks, error) {
+func (r *ParseRepo) FindBySessionID(ctx context.Context, sid string) (*ParsedTasks, error) {
 	const q = `
 select pt.id,
        pt.created_at,
        pt.updated_at,
-       pt.session_id,
+       pt.chat_id,
        coalesce(pt.media_group_id,'') as media_group_id,
        pt.image_hash,
        pt.engine,
@@ -59,19 +59,16 @@ select pt.id,
        pt."accept_reason",
        pt.confidence
 from parsed_tasks pt 
-    inner join task_sessions ts 
-        ON pt.session_id = ts.session_id and ts.chat_id = pt.chat_id
-where pt.chat_id = $1
-order by pt.updated_at desc
+where pt.session_id = $1
 limit 1`
 
-	row := r.DB.QueryRowContext(ctx, q, chatID)
+	row := r.DB.QueryRowContext(ctx, q, sid)
 
 	var (
 		id           int64
 		createdAt    time.Time
 		updatedAt    time.Time
-		sessionID    string
+		chatID       int64
 		mediaGroupID string
 		imgHash      string
 		engName      string
@@ -88,7 +85,7 @@ limit 1`
 		confidence   float64
 	)
 
-	if err := row.Scan(&id, &createdAt, &updatedAt, &sessionID, &mediaGroupID, &imgHash, &engName,
+	if err := row.Scan(&id, &createdAt, &updatedAt, &chatID, &mediaGroupID, &imgHash, &engName,
 		&subject, &grade, &rawText, &question, &jsonBlob, &needConf, &taskType, &combined, &accepted, &accReason, &confidence); err != nil {
 		return nil, err
 	}
@@ -97,7 +94,7 @@ limit 1`
 		ID:                    id,
 		CreatedAt:             createdAt,
 		UpdatedAt:             updatedAt,
-		SessionID:             sessionID,
+		SessionID:             sid,
 		ChatID:                chatID,
 		MediaGroupID:          mediaGroupID,
 		ImageHash:             imgHash,
@@ -214,8 +211,8 @@ func (r *ParseRepo) PurgeOlderThan(ctx context.Context, olderThan time.Duration)
 
 // FindLastConfirmed возвращает последнюю ПРИНЯТУЮ (accepted=true) запись по chat_id.
 // Удобно для шагов hint/check/analogue, где нужна подтверждённая формулировка.
-func (r *ParseRepo) FindLastConfirmed(ctx context.Context, chatID int64) (*ParsedTasks, bool) {
-	pr, err := r.FindByChatID(ctx, chatID)
+func (r *ParseRepo) FindLastConfirmed(ctx context.Context, sid string) (*ParsedTasks, bool) {
+	pr, err := r.FindBySessionID(ctx, sid)
 	if err != nil || !pr.Accepted {
 		return nil, false
 	}

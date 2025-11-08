@@ -15,8 +15,8 @@ import (
 )
 
 // lastParseMeta — извлекает метаданные последнего подтверждённого парсинга
-func (r *Router) lastParseMeta(ctx context.Context, chatID int64) (subject string, taskType string, grade int, ctxParse json.RawMessage) {
-	if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+func (r *Router) lastParseMeta(ctx context.Context, sid string) (subject string, taskType string, grade int, ctxParse json.RawMessage) {
+	if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
 		subject = pt.Subject
 		taskType = pt.TaskType
 		grade = pt.Grade
@@ -37,7 +37,8 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		return
 	}
 
-	_, _, _, parseCtx := r.lastParseMeta(ctx, chatID)
+	sid, _ := r.getSession(chatID)
+	_, _, _, parseCtx := r.lastParseMeta(ctx, sid)
 
 	r.sendDebug(chatID, "parse context", parseCtx)
 
@@ -54,7 +55,6 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	start := time.Now()
 	res, err := r.GetLLMClient().Normalize(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
@@ -111,45 +111,6 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
 	r.checkSolution(ctx, chatID, userID, res)
 	clearMode(chatID)
-}
-
-// suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
-func (r *Router) suggestSolutionShape(chatID int64) string {
-	// Попробуем вывести форму ответа на основе последнего подтверждённого парсинга.
-	// Если данных нет — вернём дефолт: number.
-	if r.ParseRepo != nil {
-		if pr, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
-			util.PrintInfo("suggestSolutionShape", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("parsed_raw: %+v", pr))
-
-			subj := strings.ToLower(strings.TrimSpace(pr.Subject))
-			tt := strings.ToLower(strings.TrimSpace(pr.TaskType))
-
-			// Простая эвристика по предмету/типу задания
-			// Русский язык — чаще всего ожидаем строку (слово/фразу)
-			if subj == "russian" || subj == "ru" || subj == "русский" {
-				if strings.Contains(tt, "list") || strings.Contains(tt, "спис") {
-					return "list"
-				}
-				if strings.Contains(tt, "steps") || strings.Contains(tt, "шаг") {
-					return "steps"
-				}
-				return "string"
-			}
-
-			// Математика/прочее
-			if strings.Contains(tt, "list") || strings.Contains(tt, "спис") || strings.Contains(tt, "перечис") {
-				return "list"
-			}
-			if strings.Contains(tt, "steps") || strings.Contains(tt, "шаг") || strings.Contains(tt, "пошаг") {
-				return "steps"
-			}
-			if strings.Contains(tt, "word") || strings.Contains(tt, "слово") {
-				return "string"
-			}
-			return "number"
-		}
-	}
-	return "number"
 }
 
 // sendNormalizePreview — короткий текст для пользователя по NormalizeResult
