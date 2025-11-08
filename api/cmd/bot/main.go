@@ -84,12 +84,13 @@ func main() {
 		r = &t2.Router{
 			Bot:        bot,
 			LlmManager: llmManager,
-			ParseRepo:  parseRepo,
-			HintRepo:   hintRepo,
 			LLMClient:  llmClient,
-			Metrics:    metricsRepo,
-			History:    historyRepo,
-			Session:    sessionRepo,
+
+			ParseRepo: parseRepo,
+			HintRepo:  hintRepo,
+			Metrics:   metricsRepo,
+			History:   historyRepo,
+			Session:   sessionRepo,
 		}
 	default:
 		r = &t1.Router{

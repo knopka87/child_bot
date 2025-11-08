@@ -35,6 +35,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	case "hint_next":
 		r.onHintNext(cid, cb.Message.MessageID)
 	case "parse_yes":
+		r.send(cid, "кнопка нажата", nil)
 		r.onParseYes(cid, cb.Message.MessageID)
 	case "parse_no":
 		r.onParseNo(cid, cb.Message.MessageID)
