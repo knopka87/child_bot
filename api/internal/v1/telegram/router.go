@@ -90,6 +90,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// r.sendDebug(cid, "telegram_message", upd)
 	message := fmt.Sprintf("telegram message: %+v", upd)
 	// util.PrintInfo("HandleUpdate", llmName, cid, message)
+	r.sendDebug(cid, "message", message)
 
 	cur := getState(cid)
 	// r.sendDebug(cid, "last_state", cur)
