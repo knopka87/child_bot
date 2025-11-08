@@ -32,9 +32,10 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	setState(chatID, Parse)
 	imgHash := util.SHA256Hex(sc.Image)
 	llmName := r.LlmManager.Get(chatID)
+	sid, _ := r.getSession(chatID)
 
 	// 1) Проверка кэша: если уже было подтверждено ранее — используем сразу
-	if prRow, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+	if prRow, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
 		pr := types.ParseResponse{
 			RawTaskText: prRow.RawTaskText,
 			TaskStruct: types.TaskStruct{
@@ -58,7 +59,6 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	start := time.Now()
 	pr, err := r.GetLLMClient().Parse(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,

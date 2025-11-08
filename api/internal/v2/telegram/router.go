@@ -118,15 +118,16 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		r.send(cid, msg, b)
 
 		if upd.Message != nil && upd.Message.Text != "" {
-			sid := r.ensureSession(cid)
-			_ = r.History.Insert(context.Background(), store.TimelineEvent{
-				ChatID:        cid,
-				TaskSessionID: sid,
-				Direction:     "in",
-				EventType:     string(cur),
-				Text:          upd.Message.Text,
-				TgMessageID:   &upd.Message.MessageID,
-			})
+			if sid, ok := r.getSession(cid); ok {
+				_ = r.History.Insert(context.Background(), store.TimelineEvent{
+					ChatID:        cid,
+					TaskSessionID: sid,
+					Direction:     "in",
+					EventType:     string(cur),
+					Text:          upd.Message.Text,
+					TgMessageID:   &upd.Message.MessageID,
+				})
+			}
 		}
 		return
 	}

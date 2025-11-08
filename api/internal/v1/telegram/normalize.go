@@ -19,9 +19,9 @@ import (
 )
 
 // lastParseMeta — извлекает метаданные последнего подтверждённого парсинга
-func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, grade int, ctx json.RawMessage) {
+func (r *Router) lastParseMeta(sid string) (subject string, taskType string, grade int, ctx json.RawMessage) {
 	if r.ParseRepo != nil {
-		if pt, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
+		if pt, ok := r.ParseRepo.FindLastConfirmed(context.Background(), sid); ok {
 			subject = pt.Subject
 			taskType = pt.TaskType
 			grade = pt.Grade
@@ -35,7 +35,8 @@ func (r *Router) lastParseMeta(chatID int64) (subject string, taskType string, g
 func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64, text string) {
 	setState(chatID, Normalize)
 	llmName := r.LlmManager.Get(chatID)
-	shape := r.suggestSolutionShape(chatID)
+	sid, _ := r.getSession(chatID)
+	shape := r.suggestSolutionShape(chatID, sid)
 
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -43,14 +44,12 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		return
 	}
 
-	subject, taskType, grade, parseCtx := r.lastParseMeta(chatID)
+	subject, taskType, grade, parseCtx := r.lastParseMeta(sid)
 
 	var userIDAnon string
 	if userID != nil {
 		userIDAnon = fmt.Sprint(*userID)
 	}
-
-	sid, _ := r.getSession(chatID)
 
 	in := types.NormalizeInput{
 		TaskID:        sid,
@@ -130,7 +129,8 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 	llmName := r.LlmManager.Get(util.GetChatIDFromTgMessage(msg))
 	chatID := util.GetChatIDFromTgMessage(msg)
-	subject, taskType, grade, parseCtx := r.lastParseMeta(chatID)
+	sid, _ := r.getSession(chatID)
+	subject, taskType, grade, parseCtx := r.lastParseMeta(sid)
 
 	if len(msg.Photo) == 0 {
 		util.PrintInfo("normalizePhoto", llmName, chatID, "not found photo")
@@ -160,8 +160,7 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 		}
 	}
 
-	shape := r.suggestSolutionShape(chatID)
-	sid, _ := r.getSession(chatID)
+	shape := r.suggestSolutionShape(chatID, sid)
 
 	in := types.NormalizeInput{
 		TaskID: sid,
@@ -267,11 +266,11 @@ func (r *Router) normalizePhoto(ctx context.Context, msg tgbotapi.Message) {
 }
 
 // suggestSolutionShape — простая эвристика: если по парсингу известна форма — берём её, иначе number
-func (r *Router) suggestSolutionShape(chatID int64) string {
+func (r *Router) suggestSolutionShape(chatID int64, sid string) string {
 	// Попробуем вывести форму ответа на основе последнего подтверждённого парсинга.
 	// Если данных нет — вернём дефолт: number.
 	if r.ParseRepo != nil {
-		if pr, ok := r.ParseRepo.FindLastConfirmed(context.Background(), chatID); ok {
+		if pr, ok := r.ParseRepo.FindLastConfirmed(context.Background(), sid); ok {
 			util.PrintInfo("suggestSolutionShape", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("parsed_raw: %+v", pr))
 
 			subj := strings.ToLower(strings.TrimSpace(pr.Subject))

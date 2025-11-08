@@ -16,11 +16,12 @@ import (
 // checkSolution — если есть ожидаемое решение для текущей задачи, проверяем ответ
 func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64, nr types.NormalizeResponse) {
 	setState(chatID, Check)
+	sid, _ := r.getSession(chatID)
 
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "generic"
 	if r.ParseRepo != nil {
-		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
 			if s := strings.TrimSpace(pr.Subject); s != "" {
 				subj = s
 			}
@@ -46,7 +47,6 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 	start := time.Now()
 	res, err := r.GetLLMClient().CheckSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	sid, _ := r.getSession(chatID)
 	_ = r.History.Insert(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
