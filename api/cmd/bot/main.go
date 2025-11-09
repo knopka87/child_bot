@@ -166,6 +166,16 @@ func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llm
 }
 
 func startPollingMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llmManager *service.LlmManager) {
+	// Ensure webhook is fully disabled before using getUpdates (polling).
+	// Otherwise Telegram returns: "Conflict: can't use getUpdates method while webhook is active".
+	{
+		// DropPendingUpdates to avoid replaying stale updates if webhook was previously active
+		whDel := tgbotapi.DeleteWebhookConfig{DropPendingUpdates: true}
+		if _, err := bot.Request(whDel); err != nil {
+			log.Printf("failed to delete webhook before polling: %v", err)
+		}
+	}
+
 	// Запускаем HTTP server (healthz), хотя для polling он не обязателен
 	go func() {
 		log.Printf("health server listening on %s/healthz", addr)
@@ -223,6 +233,9 @@ func runPolling(ctx context.Context, bot *tgbotapi.BotAPI, handle func(tgbotapi.
 		u := tgbotapi.NewUpdate(offset)
 		u.Timeout = 30 // long polling timeout (sec)
 
+		// Explicitly request both message and callback_query updates (others can be added on demand)
+		u.AllowedUpdates = []string{"message", "callback_query"}
+
 		updates, err := bot.GetUpdates(u)
 		if err != nil {
 			d := retryDelayFromError(err)
@@ -235,6 +248,10 @@ func runPolling(ctx context.Context, bot *tgbotapi.BotAPI, handle func(tgbotapi.
 			log.Printf("polling error: %v; retry in %v", err, d)
 			time.Sleep(d)
 			continue
+		}
+
+		if len(updates) > 0 {
+			log.Printf("polling: received %d updates (offset=%d)", len(updates), offset)
 		}
 
 		for _, upd := range updates {

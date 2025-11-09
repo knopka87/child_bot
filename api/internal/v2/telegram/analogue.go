@@ -108,6 +108,7 @@ func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason type
 		},
 		Reason:      reason,
 		Locale:      locale,
+		Grade:       pr.Grade,
 		RawTaskText: pr.RawTaskText,
 	}
 	return in, nil

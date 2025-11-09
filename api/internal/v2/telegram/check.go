@@ -20,10 +20,12 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "generic"
+	grade := 2
 	if r.ParseRepo != nil {
 		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
 			if s := strings.TrimSpace(pr.Subject); s != "" {
 				subj = s
+				grade = pr.Grade
 			}
 		}
 	}
@@ -42,6 +44,7 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 	in := types.CheckRequest{
 		NormAnswer: nr.NormAnswer,
 		NormTask:   nr.NormTask,
+		Grade:      grade,
 	}
 
 	start := time.Now()
