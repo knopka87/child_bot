@@ -10,6 +10,7 @@ type AnalogueRequest struct {
 	Reason      AnalogueReason `json:"reason"`
 	Locale      string         `json:"locale,omitempty"` // "ru-RU" | "en-US"
 	RawTaskText string         `json:"raw_task_text"`
+	Grade       int            `json:"grade"` // 1..4
 }
 
 // TaskStruct — структура задачи из запроса
@@ -17,13 +18,6 @@ type TaskStruct struct {
 	Subject           string `json:"subject"`            // "math" | "russian" | "generic"
 	Type              string `json:"type,omitempty"`     // произвольная метка, например "arithmetic", "grammar"
 	CombinedSubpoints bool   `json:"combined_subpoints"` // по схеме: const=true (валидируется на уровне схемы)
-}
-
-func (ts *TaskStruct) GetSubject() string {
-	if ts.Subject == "math" || ts.Subject == "russian" {
-		return ts.Subject
-	}
-	return "generic"
 }
 
 // AnalogueReason — допустимые значения поля reason в запросе
