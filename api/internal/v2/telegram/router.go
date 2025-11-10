@@ -88,8 +88,22 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	cid := util.GetChatIDByTgUpdate(upd)
 
 	// r.sendDebug(cid, "telegram_message", upd)
-	message := fmt.Sprintf("telegram message: %+v", upd)
-	// util.PrintInfo("HandleUpdate", llmName, cid, message)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		// сразу показать индикатор
+		_, _ = r.Bot.Send(tgbotapi.NewChatAction(cid, tgbotapi.ChatTyping))
+		for {
+			select {
+			case <-ticker.C:
+				_, _ = r.Bot.Send(tgbotapi.NewChatAction(cid, tgbotapi.ChatTyping))
+			case <-done:
+				return
+			}
+		}
+	}()
 
 	cur := getState(cid)
 	// r.sendDebug(cid, "last_state", cur)
@@ -190,10 +204,10 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	}
 
 	// 6) Команды (в т.ч. /engine)
-	if upd.Message.IsCommand() && strings.HasPrefix(upd.Message.Text, "/engine") {
-		r.handleEngineCommand(cid, upd.Message.Text)
-		return
-	}
+	// if upd.Message.IsCommand() && strings.HasPrefix(upd.Message.Text, "/engine") {
+	// 	r.handleEngineCommand(cid, upd.Message.Text)
+	// 	return
+	// }
 	if upd.Message.IsCommand() {
 		r.HandleCommand(upd)
 		return
@@ -218,7 +232,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	}
 
 	// 8) Остальное — игнорируем
-	message = "Не смог понять, что Вы от меня хотите."
+	message := "Не смог понять, что Вы от меня хотите."
 	switch getMode(cid) {
 	case "await_solution":
 		message += " Я жду от вас фото с решением."
