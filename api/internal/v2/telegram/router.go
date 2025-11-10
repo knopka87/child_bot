@@ -40,47 +40,48 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 	cid := util.GetChatIDByTgUpdate(upd)
 	switch upd.Message.Command() {
 	case "start":
-		r.send(cid, "Пришли фото задачи — верну распознанный текст и подскажу, с чего начать.\nКоманды: /health", nil)
+		resetContext(cid)
+		r.send(cid, "👋 Ура, мы начинаем!\n\n\nПогнали! 🎒\nСкидывай своё задание — и разберёмся вместе! 🤓", nil)
 	case "health":
 		r.send(cid, "✅ OK", nil)
-	case "engine":
-		args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/engine")))
-		cur := r.LlmManager.Get(cid)
-		if len(args) == 0 {
-			r.send(cid, "Текущий LLMClient-провайдер: "+cur+
-				"\nИспользование:\n/engine gemini\n/engine gpt", nil)
-			return
-		}
-		// применим через общий обработчик ниже
-		r.handleEngineCommand(cid, upd.Message.Text)
-		return
-	case "hintL1":
-		// Everything after the subcommand is treated as the prompt text
-		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL1"))
-		if rest == "" {
-			r.send(cid, "Использование: /hintL1  <текст промпта>", nil)
-			return
-		}
-		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
-		return
-	case "hintL2":
-		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL2"))
-		if rest == "" {
-			r.send(cid, "Использование: /hintL2  <текст промпта>", nil)
-			return
-		}
-		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
-		return
-	case "hintL3":
-		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL3"))
-		if rest == "" {
-			r.send(cid, "Использование: /hintL3  <текст промпта>", nil)
-			return
-		}
-		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
-		return
+	// case "engine":
+	// 	args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/engine")))
+	// 	cur := r.LlmManager.Get(cid)
+	// 	if len(args) == 0 {
+	// 		r.send(cid, "Текущий LLMClient-провайдер: "+cur+
+	// 			"\nИспользование:\n/engine gemini\n/engine gpt", nil)
+	// 		return
+	// 	}
+	// 	// применим через общий обработчик ниже
+	// 	r.handleEngineCommand(cid, upd.Message.Text)
+	// 	return
+	// case "hintL1":
+	// 	// Everything after the subcommand is treated as the prompt text
+	// 	rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL1"))
+	// 	if rest == "" {
+	// 		r.send(cid, "Использование: /hintL1  <текст промпта>", nil)
+	// 		return
+	// 	}
+	// 	r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
+	// 	return
+	// case "hintL2":
+	// 	rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL2"))
+	// 	if rest == "" {
+	// 		r.send(cid, "Использование: /hintL2  <текст промпта>", nil)
+	// 		return
+	// 	}
+	// 	r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
+	// 	return
+	// case "hintL3":
+	// 	rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL3"))
+	// 	if rest == "" {
+	// 		r.send(cid, "Использование: /hintL3  <текст промпта>", nil)
+	// 		return
+	// 	}
+	// 	r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
+	// 	return
 	default:
-		r.send(cid, "Неизвестная команда", nil)
+		r.send(cid, "Неизвестная команда. Я знаю только команду /start", nil)
 	}
 }
 
@@ -92,7 +93,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
-		ticker := time.NewTicker(4 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		// сразу показать индикатор
 		_, _ = r.Bot.Send(tgbotapi.NewChatAction(cid, tgbotapi.ChatTyping))
