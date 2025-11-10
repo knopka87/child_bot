@@ -114,7 +114,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		MediaGroupID:          sc.MediaGroupID,
 		ImageHash:             imgHash,
 		Engine:                llmName,
-		Subject:               pr.TaskStruct.GetSubject(),
+		Subject:               pr.TaskStruct.Subject,
 		RawTaskText:           pr.RawTaskText,
 		ResultJSON:            js,
 		NeedsUserConfirmation: pr.NeedsUserConfirmation,
