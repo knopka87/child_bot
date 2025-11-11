@@ -169,14 +169,16 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 			return Hints, true
 		case "parse_yes":
 			return Hints, true
-		case "parse_no":
-			return AwaitingTask, true
+		case "dont_like_hint":
+			return Hints, true
 		case "ready_solution":
 			return AwaitSolution, true
 		case "new_task":
 			return AwaitingTask, true
 		case "report":
 			return Report, true
+		case "grade1", "grade2", "grade3", "grade4":
+			return AwaitingTask, true
 		default:
 			return cur, false
 		}
@@ -218,6 +220,12 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 	if s := strings.TrimSpace(upd.Message.Text); s != "" {
 		if cur == AwaitSolution {
 			return Normalize, true // текстовое решение → нормализация
+		}
+		if cur == Report {
+			return Report, true
+		}
+		if cur == AwaitGrade {
+			return AwaitingTask, true
 		}
 		// Иначе текст вне контекста: останемся, где были
 		return cur, false
