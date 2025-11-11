@@ -31,7 +31,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		util.PrintError("OCR", llmName, chatID, "не удалось получить фото", err)
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
 		b = append(b,
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")),
 		)
 		r.send(chatID, fmt.Sprintf("Не удалось получить фото: %v", err), b)
 		return
@@ -62,7 +62,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 	start := time.Now()
 	res, err := r.GetLLMClient().OCR(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
@@ -76,7 +76,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		Error:         err,
 	})
 	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "ocr",
 			Provider:   llmName,
 			OK:         false,
@@ -95,13 +95,13 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		util.PrintError("OCR", llmName, chatID, "Не удалось нормализовать ответ (фото)", err)
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
 		b = append(b,
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")),
 		)
 		r.send(chatID, "Не удалось нормализовать ответ (фото)", b)
 		return
 	}
 
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "ocr",
 		Provider:   llmName,
 		OK:         true,

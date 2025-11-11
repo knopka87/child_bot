@@ -44,7 +44,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		r.sendDebug(chatID, "detect_req", in)
 		r.sendDebug(chatID, "detect_res", dres)
 
-		errM := r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		errM := r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "detect",
 			Provider:   llmName,
 			OK:         true,
@@ -62,26 +62,24 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			util.PrintError("runDetectThenParse", llmName, chatID, "error insert metrics", errM)
 		}
 	} else {
-		if r.Metrics != nil {
-			_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
-				Stage:      "detect",
-				Provider:   llmName,
-				OK:         false,
-				DurationMS: latency,
-				ChatID:     &chatID,
-				UserIDAnon: userID,
-				Error:      err.Error(),
-			})
-		}
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
+			Stage:      "detect",
+			Provider:   llmName,
+			OK:         false,
+			DurationMS: latency,
+			ChatID:     &chatID,
+			UserIDAnon: userID,
+			Error:      err.Error(),
+		})
 		log.Printf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err)
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.", b)
 	}
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
 
 	sid, _ := r.getSession(chatID)
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Provider:      llmName,

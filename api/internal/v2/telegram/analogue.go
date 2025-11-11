@@ -3,37 +3,20 @@ package telegram
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/v2/types"
 )
 
-// По кнопке «Похожее задание» генерируем аналог по тем же приёмам, но с другими данными.
-
-// offerAnalogueButton — показывает кнопку для вызова аналога
-func (r *Router) offerAnalogueButton(chatID int64) {
-	kb := tgbotapi.NewInlineKeyboardMarkup(
-		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution"),
-		},
-	)
-	msg := tgbotapi.NewMessage(chatID, "Если нужно, покажу похожее задание тем же приёмом (без ответа исходной задачи).")
-	msg.ReplyMarkup = kb
-	_, _ = r.Bot.Send(msg)
-}
-
 // HandleAnalogueCallback — публичный помощник для существующего handleCallback
 func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64, reason types.AnalogueReason) {
 	ctx := context.Background()
 	if err := r.runAnalogue(ctx, chatID, userID, reason, "ru_RU"); err != nil {
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
-		r.send(chatID, "Не удалось подготовить аналогичное задание: "+err.Error(), b)
+		r.sendError(chatID, err)
 	}
 }
 
@@ -48,7 +31,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 	start := time.Now()
 	ar, err := r.GetLLMClient().AnalogueSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
@@ -61,7 +44,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 		Error:         err,
 	})
 	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "analogue",
 			Provider:   llmName,
 			OK:         false,
@@ -74,7 +57,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 		return err
 	}
 
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "analogue",
 		Provider:   llmName,
 		OK:         true,
@@ -92,12 +75,17 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 
 // buildAnalogueInput — конструирует вход для ANALOGUE из данных последнего парсинга
 func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason types.AnalogueReason, locale string) (types.AnalogueRequest, error) {
-	if r.ParseRepo == nil {
-		return types.AnalogueRequest{}, errors.New("ParseRepo is not configured")
+	if r.Store == nil {
+		return types.AnalogueRequest{}, errors.New("store is not configured")
 	}
-	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
+	pr, ok := r.Store.FindLastConfirmedParse(ctx, sid)
 	if !ok {
 		return types.AnalogueRequest{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
+	}
+
+	grade := pr.Grade
+	if user, err := r.Store.FindUserByChatID(ctx, pr.ChatID); err != nil && user.Grade != nil {
+		grade = *user.Grade
 	}
 
 	in := types.AnalogueRequest{
@@ -108,7 +96,7 @@ func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason type
 		},
 		Reason:      reason,
 		Locale:      locale,
-		Grade:       pr.Grade,
+		Grade:       grade,
 		RawTaskText: pr.RawTaskText,
 	}
 	return in, nil
@@ -118,16 +106,16 @@ func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason type
 func (r *Router) sendAnalogueResult(chatID int64, ar types.AnalogueResponse) {
 	var b strings.Builder
 
-	b.WriteString("Аналогичная задача\n\n")
 	b.WriteString(ar.ExampleTask)
 
 	if len(ar.SolutionSteps) > 0 {
-		b.WriteString("\n\n\n\n📘 Шаги решения\n\n")
+		b.WriteString(StepSolutionText)
 	}
 	for i, step := range ar.SolutionSteps {
-		b.WriteString(strconv.Itoa(i+1) + "." + step + "\n\n")
+		b.WriteString(strconv.Itoa(i+1) + ". " + step + "\n\n")
 	}
 
-	button := makeActionsKeyboardRow(3, false)
-	r.send(chatID, b.String(), button)
+	text := fmt.Sprintf(AnalogueTaskText, b.String())
+
+	r.send(chatID, text, makeAnalogueButtons())
 }

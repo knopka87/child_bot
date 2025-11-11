@@ -21,7 +21,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	// r.sendDebug(cid, "message", cb.Message)
 
 	sid, _ := r.getSession(cid)
-	_ = r.History.Insert(context.Background(), store.TimelineEvent{
+	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 		ChatID:        cid,
 		TaskSessionID: sid,
 		Direction:     "button",
@@ -44,7 +44,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		setMode(cid, "await_solution")
 		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.", nil)
-	case "analogue_solution":
+	case "analogue_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		r.send(cid, "Подбираю похожую задачу. Ожидайте.", nil)
 		userID := util.GetUserIDFromTgCB(cb)
@@ -67,7 +67,7 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 		r.send(chatID, "Контекст подтверждения не найден.", b)
 		return
 	}
@@ -75,7 +75,7 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 	p := v.(*parsePending)
 
 	sid, _ := r.getSession(chatID)
-	_ = r.ParseRepo.MarkAcceptedBySession(context.Background(), sid, "user_yes")
+	_ = r.Store.MarkAcceptedParseBySID(context.Background(), sid, "user_yes")
 	// убрать клавиатуру
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, _ = r.Bot.Send(edit)
@@ -88,7 +88,7 @@ func (r *Router) onParseNo(chatID int64, msgID int) {
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, _ = r.Bot.Send(edit)
 	b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-	b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+	b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 	r.send(chatID, "Напишите, пожалуйста, текст задания так, как он должен быть прочитан (без ответа). Это поможет дать корректные подсказки.", b)
 	// остаёмся в состоянии parseWait — следующий текст примем как корректировку
 }
@@ -97,7 +97,7 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 	v, ok := hintState.Load(chatID)
 	if !ok {
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.", b)
 		return
 	}
@@ -107,8 +107,8 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		_, _ = r.Bot.Send(edit)
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
 		b = append(b, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution"),
-			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
+			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_task"),
+			tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report"),
 		))
 		r.send(chatID, "Все подсказки уже показаны. Могу показать аналогичную задачу", b)
 		return
@@ -129,7 +129,7 @@ func (r *Router) GetHintLevel(chatID int64) int {
 	v, ok := hintState.Load(chatID)
 	if !ok {
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.", b)
 		return 0
 	}

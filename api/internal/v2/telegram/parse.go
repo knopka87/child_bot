@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
 	"child-bot/api/internal/v2/types"
@@ -28,38 +26,27 @@ type parsePending struct {
 	LLM string // "gemini"|"gpt"
 }
 
-func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, subjectHint types.Subject, gradeHint *int) {
+func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, subjectHint types.Subject, gradeHint *int64) {
 	setState(chatID, Parse)
 	imgHash := util.SHA256Hex(sc.Image)
 	llmName := r.LlmManager.Get(chatID)
 	sid, _ := r.getSession(chatID)
 
-	// 1) Проверка кэша: если уже было подтверждено ранее — используем сразу
-	if prRow, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
-		pr := types.ParseResponse{
-			RawTaskText: prRow.RawTaskText,
-			TaskStruct: types.TaskStruct{
-				Subject:           prRow.Subject,
-				Type:              prRow.TaskType,
-				CombinedSubpoints: prRow.CombinedSubpoints,
-			},
-			NeedsUserConfirmation: prRow.NeedsUserConfirmation,
-		}
-		r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
-		return
+	grade := gradeHint
+	if user, err := r.Store.FindUserByChatID(ctx, chatID); err == nil && user.Grade != nil {
+		grade = user.Grade
 	}
 
-	// 2) Запрос к LLMClient.Parse
 	in := types.ParseRequest{
 		Image:       base64.StdEncoding.EncodeToString(sc.Image),
 		Locale:      "ru_RU",
 		SubjectHint: &subjectHint,
-		GradeHint:   gradeHint,
+		GradeHint:   grade,
 	}
 	start := time.Now()
 	pr, err := r.GetLLMClient().Parse(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
@@ -72,7 +59,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		Error:         err,
 	})
 	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "parse",
 			Provider:   llmName,
 			OK:         false,
@@ -83,7 +70,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		})
 
 		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "parse", err)
-		r.SendError(chatID, fmt.Errorf("parse: %w", err))
+		r.sendError(chatID, fmt.Errorf("parse: %w", err))
 		return
 	}
 
@@ -91,7 +78,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	r.sendDebug(chatID, "parse_res", pr)
 
 	// 3) Метрики строго по новой структуре
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "parse",
 		Provider:   llmName,
 		OK:         true,
@@ -123,37 +110,23 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		Accepted:              !pr.NeedsUserConfirmation,
 		AcceptReason:          "",
 	}
-	if errP := r.ParseRepo.Upsert(ctx, data); errP != nil {
+	if errP := r.Store.UpsertParse(ctx, data); errP != nil {
 		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "error upsert parsed_tasks", errP)
 	}
 
-	// 6) Если требуется подтверждение — спрашиваем пользователя
-	if pr.NeedsUserConfirmation {
-		setState(chatID, Confirm)
-		r.askParseConfirmation(chatID, pr)
-		parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
-		return
-	}
-
-	// 7) Иначе — автоподтверждение и переход к подсказкам
-	setState(chatID, AutoPick)
-	_ = r.ParseRepo.MarkAcceptedBySession(ctx, sid, "auto")
-	r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
-	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("total time: %d", time.Since(start).Milliseconds()))
+	r.askParseConfirmation(chatID, pr)
+	parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
 }
 
 // Показ запроса подтверждения распознанного текста
 func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse) {
 	var b strings.Builder
-	b.WriteString("Я так прочитал задание. Всё верно?\n")
 	if s := strings.TrimSpace(pr.RawTaskText); s != "" {
 		b.WriteString("```\n")
 		b.WriteString(s)
 		b.WriteString("\n```\n")
 	}
 
-	msg := tgbotapi.NewMessage(chatID, b.String())
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = makeParseConfirmKeyboard()
-	_, _ = r.Bot.Send(msg)
+	text := fmt.Sprintf(TaskViewText, b.String())
+	r.sendMarkdown(chatID, text, makeParseConfirmButtons())
 }

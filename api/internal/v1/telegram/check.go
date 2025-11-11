@@ -20,11 +20,9 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "generic"
-	if r.ParseRepo != nil {
-		if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
-			if s := strings.TrimSpace(pr.Subject); s != "" {
-				subj = s
-			}
+	if pr, ok := r.Store.FindLastConfirmedParse(ctx, sid); ok {
+		if s := strings.TrimSpace(pr.Subject); s != "" {
+			subj = s
 		}
 	}
 
@@ -47,7 +45,7 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 	start := time.Now()
 	res, err := r.GetLLMClient().CheckSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
@@ -60,7 +58,7 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 		Error:         err,
 	})
 	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "check",
 			Provider:   llmName,
 			OK:         false,
@@ -77,7 +75,7 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 2)
 		b = append(b,
 			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")),
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")),
 		)
 		r.send(chatID, fmt.Sprintf("Не удалось проверить решение: %v", err), b)
 		r.offerAnalogueButton(chatID)
@@ -87,7 +85,7 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 	r.sendDebug(chatID, "check input", in)
 	r.sendDebug(chatID, "check res", res)
 
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "check",
 		Provider:   llmName,
 		OK:         true,
@@ -108,7 +106,7 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 func (r *Router) getExpectedForChat(ctx context.Context, chatID int64) (json.RawMessage, bool) {
 	// Если в ParseRepo хранится сырой JSON эталона, раскомментируйте:
 	// if r.ParseRepo != nil {
-	// 	if pr, ok := r.ParseRepo.FindLastConfirmed(ctx, chatID); ok {
+	// 	if pr, ok := r.Store.FindLastConfirmedParseParse(ctx, chatID); ok {
 	// 		// Возможные варианты поля в модели парсинга:
 	// 		// 1) pr.ExpectedSolution []byte / json.RawMessage
 	// 		// 2) pr.Expected json.RawMessage
