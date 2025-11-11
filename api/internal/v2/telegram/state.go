@@ -54,6 +54,7 @@ var (
 )
 
 var States = map[State][]State{
+	AwaitGrade:      {AwaitGrade, Report},
 	AwaitingTask:    {CollectingPages, AwaitingTask, Report},
 	CollectingPages: {Detect, Report, AwaitingTask},
 	Detect:          {Parse, Report},
