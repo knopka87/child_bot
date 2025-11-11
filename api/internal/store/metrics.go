@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -43,11 +42,7 @@ func (e *MetricEvent) UserIDStr() string {
 	return strconv.FormatInt(*e.UserIDAnon, 10)
 }
 
-type MetricsRepo struct{ db *sql.DB }
-
-func NewMetricsRepo(db *sql.DB) *MetricsRepo { return &MetricsRepo{db: db} }
-
-func (r *MetricsRepo) InsertEvent(ctx context.Context, ev MetricEvent) error {
+func (s *Store) InsertEvent(ctx context.Context, ev MetricEvent) error {
 	if ev.CreatedAt.IsZero() {
 		ev.CreatedAt = time.Now()
 	}
@@ -70,7 +65,7 @@ func (r *MetricsRepo) InsertEvent(ctx context.Context, ev MetricEvent) error {
 	    chat_id, user_id_anon, task_id, correlation_id, request_id, details
 	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13);
 	`
-	_, err := r.db.ExecContext(ctx, q,
+	_, err := s.DB.ExecContext(ctx, q,
 		ev.CreatedAt,
 		ev.Stage,
 		ev.Provider,

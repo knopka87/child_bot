@@ -173,7 +173,7 @@ func friendlyState(s State) string {
 	case Analogue:
 		return "Похожее задание"
 	case Report:
-		return "Сообщить об ошибке"
+		return "📝 Сообщить об ошибке"
 	default:
 		return string(s)
 	}
@@ -212,7 +212,7 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 	// 1) Callback-и
 	if upd.CallbackQuery != nil {
 		switch strings.ToLower(strings.TrimSpace(upd.CallbackQuery.Data)) {
-		case "analogue_solution", "analogue":
+		case "analogue_task", "analogue":
 			return Analogue, true
 		case "hint_next":
 			return Hints, true

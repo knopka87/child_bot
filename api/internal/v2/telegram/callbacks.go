@@ -21,7 +21,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	// r.sendDebug(cid, "message", cb.Message)
 
 	sid, _ := r.getSession(cid)
-	_ = r.History.Insert(context.Background(), store.TimelineEvent{
+	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 		ChatID:        cid,
 		TaskSessionID: sid,
 		Direction:     "button",
@@ -36,18 +36,18 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		r.onHintNext(cid, cb.Message.MessageID)
 	case "parse_yes":
 		r.onParseYes(cid, cb.Message.MessageID)
-	case "parse_no":
-		r.onParseNo(cid, cb.Message.MessageID)
+	case "dont_like_hint":
+		r.onDontLikeHint(cid, cb.Message.MessageID)
 	case "ready_solution":
 		// Скрыть старые кнопки у сообщения с колбэком
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		setMode(cid, "await_solution")
-		r.send(cid, "Отлично! Жду фото с вашим решением. Пришлите, пожалуйста, снимок решения — я проверю без раскрытия ответа.", nil)
-	case "analogue_solution":
+		r.send(cid, CheckAnswerClick, makeCheckAnswerClickButtons())
+	case "analogue_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		r.send(cid, "Подбираю похожую задачу. Ожидайте.", nil)
+		r.send(cid, AnalogueTaskWaitingText, nil)
 		userID := util.GetUserIDFromTgCB(cb)
-		if getState(cid) == Incorrect || getState(cid) == Uncertain {
+		if getState(cid) == Incorrect {
 			r.HandleAnalogueCallback(cid, userID, types.ReasonAfterIncorrect)
 		} else {
 			r.HandleAnalogueCallback(cid, userID, types.ReasonAfter3Hints)
@@ -55,61 +55,60 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		resetContext(cid)
-		r.send(cid, "Хорошо! Жду фото новой задачи.", nil)
+		r.send(cid, NewTaskText, nil)
 	case "report":
-		resetContext(cid)
-		_ = r.SendSessionReport(context.Background(), cid)
+		setState(cid, Report)
+		r.send(cid, ReportText, nil)
+	case "grade1":
+		r.updateGradeUser(cid, 1)
+	case "grade2":
+		r.updateGradeUser(cid, 2)
+	case "grade3":
+		r.updateGradeUser(cid, 3)
+	case "grade4":
+		r.updateGradeUser(cid, 4)
 	}
 }
 
 func (r *Router) onParseYes(chatID int64, msgID int) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
-		r.send(chatID, "Контекст подтверждения не найден.", b)
+		r.send(chatID, ErrorText, makeErrorButtons())
 		return
 	}
 	parseWait.Delete(chatID)
 	p := v.(*parsePending)
 
 	sid, _ := r.getSession(chatID)
-	_ = r.ParseRepo.MarkAcceptedBySession(context.Background(), sid, "user_yes")
-	// убрать клавиатуру
-	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
-	_, _ = r.Bot.Send(edit)
-	// продолжить
+	_ = r.Store.MarkAcceptedParseBySID(context.Background(), sid, "user_yes")
+
 	llmName := r.LlmManager.Get(chatID)
-	r.showTaskAndPrepareHints(chatID, p.Sc, p.PR, llmName)
+	hs := &hintSession{
+		Image: p.Sc.Image, Mime: p.Sc.Mime, MediaGroupID: p.Sc.MediaGroupID,
+		Parse: p.PR, Detect: p.Sc.Detect, EngineName: llmName, NextLevel: 1,
+	}
+	hintState.Store(chatID, hs)
+
+	r.onHintNext(chatID, msgID)
+
 }
 
-func (r *Router) onParseNo(chatID int64, msgID int) {
-	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
-	_, _ = r.Bot.Send(edit)
-	b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-	b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
-	r.send(chatID, "Напишите, пожалуйста, текст задания так, как он должен быть прочитан (без ответа). Это поможет дать корректные подсказки.", b)
-	// остаёмся в состоянии parseWait — следующий текст примем как корректировку
+func (r *Router) onDontLikeHint(chatID int64, msgID int) {
+	r.send(chatID, DontLikeHint, nil)
+	r.onHintNext(chatID, msgID)
 }
 
 func (r *Router) onHintNext(chatID int64, msgID int) {
 	v, ok := hintState.Load(chatID)
 	if !ok {
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
-		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.", b)
+		r.send(chatID, HintNotFoundText, makeErrorButtons())
 		return
 	}
 	hs := v.(*hintSession)
 	if hs.NextLevel > 3 {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution"),
-			tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report"),
-		))
-		r.send(chatID, "Все подсказки уже показаны. Могу показать аналогичную задачу", b)
+		r.send(chatID, HintFinishText, makeFinishHintButtons())
 		return
 	}
 
@@ -122,18 +121,18 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
 	}
+	hintState.Store(chatID, hs)
 }
 
-func (r *Router) GetHintLevel(chatID int64) int {
-	v, ok := hintState.Load(chatID)
-	if !ok {
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
-		r.send(chatID, "Подсказки недоступны: сначала пришлите фото задания.", b)
-		return 0
+func (r *Router) updateGradeUser(cid, grade int64) {
+	user := store.User{
+		ID:    cid,
+		Grade: &grade,
 	}
-	hs := v.(*hintSession)
-	return hs.NextLevel - 1
+	_ = r.Store.UpsertUser(context.Background(), user)
+	userState.Store(cid, user)
+	setState(cid, AwaitingTask)
+	r.send(cid, StartMessageText, nil)
 }
 
 func lvlToConst(n int) types.HintLevel {
@@ -156,7 +155,6 @@ func hideKeyboard(chatID int64, msgID int, r *Router) error {
 func resetContext(cid int64) {
 	// Сброс контекстов
 	hintState.Delete(cid)
-	pendingChoice.Delete(cid)
 	pendingCtx.Delete(cid)
 	parseWait.Delete(cid)
 	setMode(cid, "await_new_task")

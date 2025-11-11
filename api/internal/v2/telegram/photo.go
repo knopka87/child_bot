@@ -36,13 +36,13 @@ func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	ph := msg.Photo[len(msg.Photo)-1]
 	file, err := r.Bot.GetFile(tgbotapi.FileConfig{FileID: ph.FileID})
 	if err != nil {
-		r.SendError(cid, err)
+		r.sendError(cid, err)
 		return
 	}
 	url := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", r.Bot.Token, file.FilePath)
 	imgBytes, err := download(url)
 	if err != nil {
-		r.SendError(cid, err)
+		r.sendError(cid, err)
 		return
 	}
 
@@ -64,10 +64,6 @@ func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	userID := util.GetUserIDFromTgMessage(msg)
 	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, userID) })
 	b.mu.Unlock()
-
-	if len(b.images) == 1 {
-		r.send(cid, photoAcceptedText(), nil)
-	}
 }
 
 func (r *Router) processBatch(key string, userID *int64) {
@@ -96,11 +92,11 @@ func (r *Router) processBatch(key string, userID *int64) {
 		var err error
 		merged, err = combineAsOne(images)
 		if err != nil {
-			r.SendError(chatID, fmt.Errorf("склейка: %w", err))
+			r.sendError(chatID, fmt.Errorf("склейка: %w", err))
 			return
 		}
 	}
-	r.send(chatID, "Начинаю распознавание текста.", nil)
+	r.send(chatID, GetPhotoText, nil)
 	r.runDetectThenParse(ctx, chatID, userID, merged, mediaGroupID)
 }
 
@@ -214,9 +210,4 @@ func download(url string) ([]byte, error) {
 
 func httpClient() *http.Client {
 	return &http.Client{Timeout: 60 * time.Second}
-}
-
-// PhotoAcceptedText — первый ответ после получения фото/первой страницы альбома.
-func photoAcceptedText() string {
-	return "Фото принято. Если задание на нескольких фото — просто пришлите их подряд, я склею страницы перед обработкой."
 }

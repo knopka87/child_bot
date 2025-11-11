@@ -25,11 +25,11 @@ type hintSession struct {
 }
 
 func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hintSession) {
-	imgHash := util.SHA256Hex(hs.Image)
 	level := hs.NextLevel
+	sid, _ := r.getSession(chatID)
 
 	// кэш подсказок
-	hc, err := r.HintRepo.Find(ctx, imgHash, hs.EngineName, level)
+	hc, err := r.Store.FindHintBySID(ctx, sid, level)
 	if err == nil && time.Since(hc.CreatedAt) <= 90*24*time.Hour {
 		var hr types.HintResponse
 		_ = json.Unmarshal(hc.HintJson, &hr)
@@ -44,7 +44,7 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 		}
 		hintLevel := level - 1
 		for hintLevel > 0 {
-			h, err := r.HintRepo.Find(ctx, imgHash, hs.EngineName, hintLevel)
+			h, err := r.Store.FindHintBySID(ctx, sid, hintLevel)
 			if err == nil {
 				var hr types.HintResponse
 				_ = json.Unmarshal(h.HintJson, &hr)
@@ -56,8 +56,7 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 		start := time.Now()
 		hrNew, err := r.GetLLMClient().Hint(context.Background(), llmName, in)
 		latency := time.Since(start).Milliseconds()
-		sid, _ := r.getSession(chatID)
-		_ = r.History.Insert(context.Background(), store.TimelineEvent{
+		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 			ChatID:        chatID,
 			TaskSessionID: sid,
 			Direction:     "api",
@@ -72,19 +71,19 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 		})
 		if err != nil {
 			b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 			r.send(chatID, fmt.Sprintf("Не удалось получить подсказку L%d: %s", level, err.Error()), b)
 			return
 		}
 		js, _ := json.Marshal(hrNew)
 		data := store.HintCache{
+			SessionID: sid,
 			CreatedAt: time.Now(),
 			Engine:    llmName,
 			HintJson:  js,
 			Level:     string(lvlToConst(level)),
-			ImageHash: imgHash,
 		}
-		_ = r.HintRepo.Upsert(context.Background(), data)
+		_ = r.Store.UpsertHint(context.Background(), data)
 		r.send(chatID, formatHint(level, hrNew), nil)
 	}
 	// После того как отправили подсказку текстом:
@@ -127,7 +126,7 @@ func (r *Router) applyTextCorrectionThenShowHints(ctx context.Context, chatID in
 	imgHash := util.SHA256Hex(p.Sc.Image)
 	sid, _ := r.getSession(chatID)
 
-	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
+	pr, ok := r.Store.FindLastConfirmedParse(ctx, sid)
 	if !ok {
 		pr = &store.ParsedTasks{
 			CreatedAt:         time.Now(),
@@ -144,7 +143,7 @@ func (r *Router) applyTextCorrectionThenShowHints(ctx context.Context, chatID in
 	pr.Accepted = true
 	pr.AcceptReason = "user_fix"
 
-	_ = r.ParseRepo.Upsert(ctx, *pr)
+	_ = r.Store.UpsertParse(ctx, *pr)
 
 	r.showTaskAndPrepareHints(chatID, &selectionContext{
 		Image: p.Sc.Image, Mime: p.Sc.Mime, MediaGroupID: p.Sc.MediaGroupID, Detect: p.Sc.Detect,

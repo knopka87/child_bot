@@ -15,8 +15,8 @@ import (
 )
 
 // lastParseMeta — извлекает метаданные последнего подтверждённого парсинга
-func (r *Router) lastParseMeta(ctx context.Context, sid string) (subject string, taskType string, grade int, ctxParse json.RawMessage) {
-	if pt, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
+func (r *Router) lastParseMeta(ctx context.Context, sid string) (subject string, taskType string, grade int64, ctxParse json.RawMessage) {
+	if pt, ok := r.Store.FindLastConfirmedParse(ctx, sid); ok {
 		subject = pt.Subject
 		taskType = pt.TaskType
 		grade = pt.Grade
@@ -55,7 +55,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	start := time.Now()
 	res, err := r.GetLLMClient().Normalize(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
@@ -68,7 +68,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		Error:         err,
 	})
 	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "normalize",
 			Provider:   llmName,
 			OK:         false,
@@ -85,7 +85,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 2)
 		b = append(b,
 			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")),
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")),
+			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")),
 		)
 		r.send(chatID, fmt.Sprintf("Не удалось нормализовать ответ: %v", err), b)
 		return
@@ -94,7 +94,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	r.sendDebug(chatID, "normalize_input", in)
 	r.sendDebug(chatID, "normalize_req", res)
 
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "normalize",
 		Provider:   llmName,
 		OK:         true,

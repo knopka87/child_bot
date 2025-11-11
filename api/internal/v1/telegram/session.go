@@ -14,7 +14,7 @@ var sessionByChat sync.Map // chatID(int64) -> string (UUID)
 // helpers
 func (r *Router) setSession(cid int64, sid string) {
 	sessionByChat.Store(cid, sid)
-	_ = r.Session.Upsert(context.Background(), store.TaskSession{
+	_ = r.Store.UpsertSession(context.Background(), store.TaskSession{
 		ChatID:    cid,
 		SessionID: sid,
 	})
@@ -24,7 +24,7 @@ func (r *Router) getSession(cid int64) (string, bool) {
 		return v.(string), true
 	}
 
-	if s, err := r.Session.Find(context.Background(), cid); err == nil && s.SessionID != "" {
+	if s, err := r.Store.FindSession(context.Background(), cid); err == nil && s.SessionID != "" {
 		return s.SessionID, true
 	}
 

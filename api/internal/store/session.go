@@ -7,19 +7,13 @@ import (
 	"time"
 )
 
-type SessionRepo struct{ DB *sql.DB }
-
-func NewSessionRepo(db *sql.DB) *SessionRepo {
-	return &SessionRepo{DB: db}
-}
-
 type TaskSession struct {
 	ChatID    int64
 	SessionID string
 	UpdatedAt time.Time
 }
 
-func (s *SessionRepo) Upsert(ctx context.Context, ts TaskSession) error {
+func (s *Store) UpsertSession(ctx context.Context, ts TaskSession) error {
 	if ts.UpdatedAt.IsZero() {
 		ts.UpdatedAt = time.Now()
 	}
@@ -36,7 +30,7 @@ func (s *SessionRepo) Upsert(ctx context.Context, ts TaskSession) error {
 	return err
 }
 
-func (s *SessionRepo) Find(ctx context.Context, chatID int64) (TaskSession, error) {
+func (s *Store) FindSession(ctx context.Context, chatID int64) (TaskSession, error) {
 	const q = `SELECT session_id, updated_at
 				FROM task_sessions
 				WHERE chat_id=$1`

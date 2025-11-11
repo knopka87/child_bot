@@ -18,7 +18,7 @@ type ParsedTasks struct {
 	ImageHash             string          `db:"image_hash"`
 	Engine                string          `db:"engine"`
 	Subject               string          `db:"subject"`
-	Grade                 int             `db:"grade_hint"`
+	Grade                 int64           `db:"grade_hint"`
 	RawTaskText           string          `db:"raw_task_text"`
 	Question              string          `db:"question"`
 	ResultJSON            json.RawMessage `db:"result_json"`
@@ -32,13 +32,9 @@ type ParsedTasks struct {
 
 var ErrNotFound = sql.ErrNoRows
 
-type ParseRepo struct{ DB *sql.DB }
-
-func NewParseRepo(db *sql.DB) *ParseRepo { return &ParseRepo{DB: db} }
-
-// FindBySessionID достаёт самую свежую запись по chat_id (ориентируясь на updated_at).
+// FindParseBySID достаёт самую свежую запись по chat_id (ориентируясь на updated_at).
 // Если maxAge > 0 — проверяет "свежесть", иначе игнорирует возраст.
-func (r *ParseRepo) FindBySessionID(ctx context.Context, sid string) (*ParsedTasks, error) {
+func (s *Store) FindParseBySID(ctx context.Context, sid string) (*ParsedTasks, error) {
 	const q = `
 select pt.id,
        pt.created_at,
@@ -62,7 +58,7 @@ from parsed_tasks pt
 where pt.session_id = $1
 limit 1`
 
-	row := r.DB.QueryRowContext(ctx, q, sid)
+	row := s.DB.QueryRowContext(ctx, q, sid)
 
 	var (
 		id           int64
@@ -73,7 +69,7 @@ limit 1`
 		imgHash      string
 		engName      string
 		subject      string
-		grade        int
+		grade        int64
 		rawText      string
 		question     string
 		jsonBlob     []byte
@@ -113,8 +109,8 @@ limit 1`
 	}, nil
 }
 
-// Upsert сохраняет PARSE (черновик или принятый). .
-func (r *ParseRepo) Upsert(
+// UpsertParse сохраняет PARSE (черновик или принятый). .
+func (s *Store) UpsertParse(
 	ctx context.Context,
 	pr ParsedTasks,
 ) error {
@@ -158,7 +154,7 @@ on conflict (session_id) do update set
   confidence = excluded.confidence,
   updated_at = NOW()
   `
-	_, err := r.DB.ExecContext(ctx, q,
+	_, err := s.DB.ExecContext(ctx, q,
 		pr.ChatID,
 		pr.SessionID,
 		pr.MediaGroupID,
@@ -180,10 +176,10 @@ on conflict (session_id) do update set
 	return err
 }
 
-// MarkAcceptedBySession помечает запись как принятую по session_id.
-func (r *ParseRepo) MarkAcceptedBySession(ctx context.Context, sessionID, reason string) error {
+// MarkAcceptedParseBySID помечает запись как принятую по session_id.
+func (s *Store) MarkAcceptedParseBySID(ctx context.Context, sessionID, reason string) error {
 	const q = `update parsed_tasks set accepted=true, accept_reason=$2, updated_at=NOW() where session_id=$1`
-	res, err := r.DB.ExecContext(ctx, q, sessionID, reason)
+	res, err := s.DB.ExecContext(ctx, q, sessionID, reason)
 	if err != nil {
 		return err
 	}
@@ -194,14 +190,14 @@ func (r *ParseRepo) MarkAcceptedBySession(ctx context.Context, sessionID, reason
 	return nil
 }
 
-// PurgeOlderThan удаляет очень старые записи-кэши, чтобы не раздувать БД.
-func (r *ParseRepo) PurgeOlderThan(ctx context.Context, olderThan time.Duration) (int64, error) {
+// PurgeOlderParseThan удаляет очень старые записи-кэши, чтобы не раздувать БД.
+func (s *Store) PurgeOlderParseThan(ctx context.Context, olderThan time.Duration) (int64, error) {
 	if olderThan <= 0 {
 		return 0, errors.New("olderThan must be > 0")
 	}
 	cutoff := time.Now().Add(-olderThan)
 	const q = `delete from parsed_tasks where created_at < $1`
-	res, err := r.DB.ExecContext(ctx, q, cutoff)
+	res, err := s.DB.ExecContext(ctx, q, cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -209,10 +205,10 @@ func (r *ParseRepo) PurgeOlderThan(ctx context.Context, olderThan time.Duration)
 	return aff, nil
 }
 
-// FindLastConfirmed возвращает последнюю ПРИНЯТУЮ (accepted=true) запись по chat_id.
+// FindLastConfirmedParse возвращает последнюю ПРИНЯТУЮ (accepted=true) запись по chat_id.
 // Удобно для шагов hint/check/analogue, где нужна подтверждённая формулировка.
-func (r *ParseRepo) FindLastConfirmed(ctx context.Context, sid string) (*ParsedTasks, bool) {
-	pr, err := r.FindBySessionID(ctx, sid)
+func (s *Store) FindLastConfirmedParse(ctx context.Context, sid string) (*ParsedTasks, bool) {
+	pr, err := s.FindParseBySID(ctx, sid)
 	if err != nil || !pr.Accepted {
 		return nil, false
 	}

@@ -35,7 +35,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	sid, _ := r.getSession(chatID)
 
 	// 1) Проверка кэша: если уже было подтверждено ранее — используем сразу
-	if prRow, ok := r.ParseRepo.FindLastConfirmed(ctx, sid); ok {
+	if prRow, ok := r.Store.FindLastConfirmedParse(ctx, sid); ok {
 		pr := types.ParseResponse{
 			RawTaskText: prRow.RawTaskText,
 			TaskStruct: types.TaskStruct{
@@ -59,7 +59,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	start := time.Now()
 	pr, err := r.GetLLMClient().Parse(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
@@ -72,7 +72,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		Error:         err,
 	})
 	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "parse",
 			Provider:   llmName,
 			OK:         false,
@@ -91,7 +91,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	r.sendDebug(chatID, "parse_res", pr)
 
 	// 3) Метрики строго по новой структуре
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "parse",
 		Provider:   llmName,
 		OK:         true,
@@ -123,7 +123,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		Accepted:              !pr.NeedsUserConfirmation,
 		AcceptReason:          "",
 	}
-	if errP := r.ParseRepo.Upsert(ctx, data); errP != nil {
+	if errP := r.Store.UpsertParse(ctx, data); errP != nil {
 		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "error upsert parsed_tasks", errP)
 	}
 
@@ -137,7 +137,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 
 	// 7) Иначе — автоподтверждение и переход к подсказкам
 	setState(chatID, AutoPick)
-	_ = r.ParseRepo.MarkAcceptedBySession(ctx, sid, "auto")
+	_ = r.Store.MarkAcceptedParseBySID(ctx, sid, "auto")
 	r.showTaskAndPrepareHints(chatID, sc, pr, llmName)
 	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("total time: %d", time.Since(start).Milliseconds()))
 }

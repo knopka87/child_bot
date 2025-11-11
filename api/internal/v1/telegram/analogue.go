@@ -19,7 +19,7 @@ import (
 func (r *Router) offerAnalogueButton(chatID int64) {
 	kb := tgbotapi.NewInlineKeyboardMarkup(
 		[]tgbotapi.InlineKeyboardButton{
-			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_solution"),
+			tgbotapi.NewInlineKeyboardButtonData("Похожее задание", "analogue_task"),
 		},
 	)
 	msg := tgbotapi.NewMessage(chatID, "Если нужно, покажу похожее задание тем же приёмом (без ответа исходной задачи).")
@@ -32,7 +32,7 @@ func (r *Router) HandleAnalogueCallback(chatID int64, userID *int64, reason type
 	ctx := context.Background()
 	if err := r.runAnalogue(ctx, chatID, userID, reason, "ru_RU"); err != nil {
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 		r.send(chatID, "Не удалось подготовить аналогичное задание: "+err.Error(), b)
 	}
 }
@@ -48,7 +48,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 	start := time.Now()
 	ar, err := r.GetLLMClient().AnalogueSolution(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
-	_ = r.History.Insert(ctx, store.TimelineEvent{
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "api",
@@ -61,7 +61,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 		Error:         err,
 	})
 	if err != nil {
-		_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "analogue",
 			Provider:   llmName,
 			OK:         false,
@@ -74,7 +74,7 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 		return err
 	}
 
-	_ = r.Metrics.InsertEvent(ctx, store.MetricEvent{
+	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "analogue",
 		Provider:   llmName,
 		OK:         true,
@@ -92,10 +92,10 @@ func (r *Router) runAnalogue(ctx context.Context, chatID int64, userID *int64, r
 
 // buildAnalogueInput — конструирует вход для ANALOGUE из данных последнего парсинга
 func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason types.AnalogueReason, locale string) (types.AnalogueRequest, error) {
-	if r.ParseRepo == nil {
+	if r.Store == nil {
 		return types.AnalogueRequest{}, errors.New("ParseRepo is not configured")
 	}
-	pr, ok := r.ParseRepo.FindLastConfirmed(ctx, sid)
+	pr, ok := r.Store.FindLastConfirmedParse(ctx, sid)
 	if !ok {
 		return types.AnalogueRequest{}, errors.New("нет подтверждённого задания — пришлите фото и подтвердите распознавание")
 	}

@@ -33,7 +33,7 @@ type imageFile struct {
 // SendSessionReport builds a ZIP report for the current task session of chatID
 // and sends it to the admin report chat. The report contains human-readable
 // Markdown with all steps from timeline_events and extracted images (task & answer).
-func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
+func (r *Router) SendSessionReport(ctx context.Context, chatID int64, text string) error {
 	// 1) Resolve session id
 	sid, ok := r.getSession(chatID)
 	if !ok || sid == "" {
@@ -42,7 +42,7 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 	}
 
 	// 2) Load history events
-	events, err := r.History.FindALLRecordsBySessionID(ctx, sid)
+	events, err := r.Store.FindALLHistoryBySID(ctx, sid)
 	if err != nil {
 		return r.sendErrorToAdmin(err, "Не удалось получить историю для отчёта.")
 	}
@@ -64,13 +64,26 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 	zw := zip.NewWriter(out)
 	defer zw.Close()
 
+	username := ""
+	if chat, err := r.Store.FindChatByID(ctx, chatID); err == nil && chat.Username != nil {
+		username = *chat.Username
+	}
+	var grade *int64
+	if g, err := r.Store.FindUserByChatID(ctx, chatID); err == nil && g.Grade != nil {
+		grade = g.Grade
+	}
+
 	// 4) Build README.md (Markdown) + collect images
 	var md bytes.Buffer
 	_, _ = fmt.Fprintf(&md, "# Отчёт по сессии\n\n")
-	_, _ = fmt.Fprintf(&md, "- Пользователь (chatID): **%d**\n", chatID)
+	_, _ = fmt.Fprintf(&md, "- Пользователь (chatID): **%s (%d)**\n", username, chatID)
+	if grade != nil {
+		_, _ = fmt.Fprintf(&md, "- Класс: **%d**\n", *grade)
+	}
 	_, _ = fmt.Fprintf(&md, "- Session ID: **%s**\n", sid)
 	_, _ = fmt.Fprintf(&md, "- Временная зона сервера (UTC): **%s**\n", now.Format(time.RFC3339))
-	_, _ = fmt.Fprintf(&md, "- Количество шагов: **%d**\n\n", len(events))
+	_, _ = fmt.Fprintf(&md, "- Количество шагов: **%d**\n", len(events))
+	_, _ = fmt.Fprintf(&md, "- Feedback от пользователя: \n%s\n\n", text)
 
 	_, _ = fmt.Fprintf(&md, "## Шаги\n\n")
 
@@ -169,7 +182,7 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 	doc := tgbotapi.FilePath(zipPath)
 	for _, cid := range adminsChatID {
 		msg := tgbotapi.NewDocument(cid, doc)
-		msg.Caption = fmt.Sprintf("Отчёт по сессии\nchatID=%d\nsession=%s\nsteps=%d", chatID, sid, len(events))
+		msg.Caption = fmt.Sprintf("Отчёт по сессии\nUsername=%s\nchatID=%d\nsession=%s\nsteps=%d", username, chatID, sid, len(events))
 		if _, err := r.Bot.Send(msg); err != nil {
 			return r.sendErrorToAdmin(err, "Не удалось отправить отчёт в Telegram.")
 		}

@@ -42,7 +42,7 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 	}
 
 	// 2) Load history events
-	events, err := r.History.FindALLRecordsBySessionID(ctx, sid)
+	events, err := r.Store.FindALLHistoryBySID(ctx, sid)
 	if err != nil {
 		return r.sendErrorToAdmin(err, "Не удалось получить историю для отчёта.")
 	}

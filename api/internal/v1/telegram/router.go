@@ -19,12 +19,8 @@ import (
 type Router struct {
 	Bot        *tgbotapi.BotAPI
 	LlmManager *service.LlmManager
-	ParseRepo  *store.ParseRepo
-	HintRepo   *store.HintRepo
 	LLMClient  *llmclient.Client
-	Metrics    *store.MetricsRepo
-	History    *store.HistoryRepo
-	Session    *store.SessionRepo
+	Store      *store.Store
 }
 
 func (r *Router) GetToken() string {
@@ -103,7 +99,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
 				friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
 			b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 			r.send(cid, msg, b)
 
 			return
@@ -115,12 +111,12 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
 			friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Сообщить об ошибке", "report")))
+		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
 		r.send(cid, msg, b)
 
 		if upd.Message != nil && upd.Message.Text != "" {
 			if sid, ok := r.getSession(cid); ok {
-				_ = r.History.Insert(context.Background(), store.TimelineEvent{
+				_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 					ChatID:        cid,
 					TaskSessionID: sid,
 					Direction:     "in",
@@ -148,7 +144,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// 3) Если ждём текстовую правку после «Нет» — приоритетно принимаем её
 	if r.hasPendingCorrection(cid) && upd.Message.Text != "" {
 		sid, _ := r.getSession(cid)
-		_ = r.History.Insert(context.Background(), store.TimelineEvent{
+		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 			ChatID:        cid,
 			TaskSessionID: sid,
 			Direction:     "in",
@@ -175,7 +171,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			return
 		case AwaitingTask:
 			sid, _ := r.getSession(cid)
-			_ = r.History.Insert(context.Background(), store.TimelineEvent{
+			_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 				ChatID:        cid,
 				TaskSessionID: sid,
 				Direction:     "in",
@@ -243,7 +239,7 @@ func (r *Router) send(chatID int64, text string, buttons [][]tgbotapi.InlineKeyb
 	if textLen := len(text); textLen > 4000 {
 		text = text[:4000] + "…"
 	}
-	_ = r.History.Insert(context.Background(), store.TimelineEvent{
+	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
 		Direction:     "out",

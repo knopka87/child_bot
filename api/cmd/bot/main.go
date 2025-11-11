@@ -73,11 +73,7 @@ func main() {
 	llmClient := llmclient.New(cfg.LLMServerURL)
 	llmManager := service.NewLlmManager(cfg.DefaultLLM)
 
-	parseRepo := store.NewParseRepo(db)
-	hintRepo := store.NewHintRepo(db)
-	metricsRepo := store.NewMetricsRepo(db)
-	historyRepo := store.NewHistoryRepo(db)
-	sessionRepo := store.NewSessionRepo(db)
+	st := store.NewStore(db)
 
 	switch cfg.TelegramBotVersion {
 	case "v2":
@@ -85,24 +81,14 @@ func main() {
 			Bot:        bot,
 			LlmManager: llmManager,
 			LLMClient:  llmClient,
-
-			ParseRepo: parseRepo,
-			HintRepo:  hintRepo,
-			Metrics:   metricsRepo,
-			History:   historyRepo,
-			Session:   sessionRepo,
+			Store:      st,
 		}
 	default:
 		r = &t1.Router{
 			Bot:        bot,
 			LlmManager: llmManager,
 			LLMClient:  llmClient,
-			// репозитории
-			ParseRepo: parseRepo,
-			HintRepo:  hintRepo,
-			Metrics:   metricsRepo,
-			History:   historyRepo,
-			Session:   sessionRepo,
+			Store:      st,
 		}
 	}
 

@@ -8,12 +8,6 @@ import (
 	"time"
 )
 
-type HistoryRepo struct{ DB *sql.DB }
-
-func NewHistoryRepo(db *sql.DB) *HistoryRepo {
-	return &HistoryRepo{DB: db}
-}
-
 type TimelineEvent struct {
 	ChatID        int64
 	TaskSessionID string // A unique identifier for a specific task session.
@@ -30,7 +24,7 @@ type TimelineEvent struct {
 	CreatedAt     time.Time
 }
 
-func (r *HistoryRepo) Insert(ctx context.Context, e TimelineEvent) error {
+func (s *Store) InsertHistory(ctx context.Context, e TimelineEvent) error {
 	var inb, outb []byte
 	if e.InputPayload != nil {
 		inb, _ = json.Marshal(e.InputPayload)
@@ -46,7 +40,7 @@ func (r *HistoryRepo) Insert(ctx context.Context, e TimelineEvent) error {
 		e.CreatedAt = time.Now()
 	}
 
-	_, err := r.DB.ExecContext(ctx, `
+	_, err := s.DB.ExecContext(ctx, `
     INSERT INTO timeline_events
       (chat_id, task_session_id, direction, event_type, provider, ok, latency_ms,
        tg_message_id, text, input_payload, output_payload, error)
@@ -58,7 +52,7 @@ func (r *HistoryRepo) Insert(ctx context.Context, e TimelineEvent) error {
 	return err
 }
 
-func (r *HistoryRepo) FindALLRecordsBySessionID(ctx context.Context, sid string) ([]TimelineEvent, error) {
+func (s *Store) FindALLHistoryBySID(ctx context.Context, sid string) ([]TimelineEvent, error) {
 	const q = `SELECT
 	    chat_id,
 	    task_session_id,
@@ -77,7 +71,7 @@ func (r *HistoryRepo) FindALLRecordsBySessionID(ctx context.Context, sid string)
 	  WHERE task_session_id = $1
 	  ORDER BY created_at`
 
-	rows, err := r.DB.QueryContext(ctx, q, sid)
+	rows, err := s.DB.QueryContext(ctx, q, sid)
 	if err != nil {
 		return nil, err
 	}
