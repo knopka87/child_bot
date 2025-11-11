@@ -54,7 +54,7 @@ var (
 )
 
 var States = map[State][]State{
-	AwaitGrade:      {AwaitGrade, Report},
+	AwaitGrade:      {AwaitingTask, Report},
 	AwaitingTask:    {CollectingPages, AwaitingTask, Report},
 	CollectingPages: {Detect, Report, AwaitingTask},
 	Detect:          {Parse, Report},
@@ -101,6 +101,8 @@ func setState(chatID int64, s State) {
 
 func friendlyState(s State) string {
 	switch s {
+	case AwaitGrade:
+		return "Укажите класс"
 	case AwaitingTask:
 		return "Жду фото задачи"
 	case CollectingPages:
