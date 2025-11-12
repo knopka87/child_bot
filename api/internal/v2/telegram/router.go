@@ -56,15 +56,34 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	cur := getState(cid)
 
 	if cur != AwaitGrade {
-		if _, ok := userState.Load(cid); !ok {
+		if _, ok := userInfo.Load(cid); !ok {
 			user, err := r.Store.FindUserByChatID(ctx, cid)
 			if err != nil || user.Grade == nil {
 				setState(cid, AwaitGrade)
 				r.send(cid, GradePreviewText, makeGradeListButtons())
 				return
 			}
-			userState.Store(cid, user)
+			userInfo.Store(cid, user)
 		}
+	}
+
+	_, ok := chatInfo.Load(cid)
+	if !ok {
+		chat, err := r.Store.FindChatByID(ctx, cid)
+		if err != nil {
+			chat = store.Chat{
+				ID: cid,
+			}
+			if upd.Message != nil && upd.Message.Chat != nil {
+				chat.Type = &upd.Message.Chat.Type
+				chat.Username = &upd.Message.Chat.UserName
+				chat.FirstName = &upd.Message.Chat.FirstName
+				chat.LastName = &upd.Message.Chat.LastName
+			}
+			chatInfo.Store(cid, chat)
+			_ = r.Store.UpsertChat(ctx, chat)
+		}
+		chatInfo.Store(cid, chat)
 	}
 
 	// r.sendDebug(cid, "last_state", cur)

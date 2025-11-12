@@ -18,8 +18,9 @@ var (
 	parseWait  sync.Map // chatID -> *parsePending
 	hintState  sync.Map // chatID -> *hintSession
 	chatMode   sync.Map // chatID -> string: "", "await_solution", "await_new_task"
-	chatState  sync.Map // chatID ->
-	userState  sync.Map // chatID -> User
+	chatState  sync.Map // chatID -> State
+	userInfo   sync.Map // chatID -> User
+	chatInfo   sync.Map // chatID -> Chat
 )
 
 // хелперы
