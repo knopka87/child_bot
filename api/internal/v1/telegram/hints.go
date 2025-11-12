@@ -29,7 +29,8 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 	sid, _ := r.getSession(chatID)
 
 	// кэш подсказок
-	hc, err := r.Store.FindHintBySID(ctx, sid, level)
+	hintLevel := lvlToConst(level)
+	hc, err := r.Store.FindHintBySID(ctx, sid, string(hintLevel))
 	if err == nil && time.Since(hc.CreatedAt) <= 90*24*time.Hour {
 		var hr types.HintResponse
 		_ = json.Unmarshal(hc.HintJson, &hr)
@@ -37,20 +38,21 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 	} else {
 		in := types.HintRequest{
 			RawTaskText: hs.Parse.RawTaskText,
-			Level:       lvlToConst(level),
+			Level:       hintLevel,
 			Grade:       hs.Detect.GradeHint,
 			TaskStruct:  hs.Parse.TaskStruct,
 			Locale:      "ru_RU",
 		}
-		hintLevel := level - 1
-		for hintLevel > 0 {
-			h, err := r.Store.FindHintBySID(ctx, sid, hintLevel)
+		i := level - 1
+		for i > 0 {
+			hintLevel = lvlToConst(i)
+			h, err := r.Store.FindHintBySID(ctx, sid, string(hintLevel))
 			if err == nil {
 				var hr types.HintResponse
 				_ = json.Unmarshal(h.HintJson, &hr)
 				in.PreviousHints = append(in.PreviousHints, hr.HintText)
 			}
-			hintLevel--
+			i--
 		}
 		llmName := r.LlmManager.Get(chatID)
 		start := time.Now()
