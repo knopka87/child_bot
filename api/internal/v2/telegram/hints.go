@@ -76,7 +76,19 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 		HintJson:  js,
 		Level:     string(lvlToConst(level)),
 	}
-	_ = r.Store.UpsertHint(context.Background(), data)
+	err = r.Store.UpsertHint(context.Background(), data)
+	if err != nil {
+		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+			ChatID:        chatID,
+			TaskSessionID: sid,
+			Direction:     "db",
+			EventType:     string(Hints),
+			Provider:      llmName,
+			OK:            false,
+			Error:         err,
+			CreatedAt:     time.Time{},
+		})
+	}
 	r.send(chatID, formatHint(hrNew), makeHintButtons(level, true))
 
 }
