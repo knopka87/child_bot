@@ -49,7 +49,7 @@ const (
 var (
 	btnYes           = tgbotapi.NewInlineKeyboardButtonData(YesButton, "parse_yes")
 	btnCheckAnswer   = tgbotapi.NewInlineKeyboardButtonData(CheckAnswerButton, "ready_solution")
-	btnNextHint      = tgbotapi.NewInlineKeyboardButtonData(NextHintButton, "next_hint")
+	btnNextHint      = tgbotapi.NewInlineKeyboardButtonData(NextHintButton, "hint_next")
 	btnReport        = tgbotapi.NewInlineKeyboardButtonData(SendReportButton, "report")
 	btnDontLikeHint  = tgbotapi.NewInlineKeyboardButtonData(DontLikeHintButton, "dont_like_hint")
 	btnNewTask       = tgbotapi.NewInlineKeyboardButtonData(NewTaskButton, "new_task")
