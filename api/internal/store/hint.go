@@ -29,7 +29,7 @@ func (s *Store) FindHintBySID(ctx context.Context, sid string, level int) (HintC
 // UK: (session_id, level).
 func (s *Store) UpsertHint(ctx context.Context, hc HintCache) error {
 	const q = `
-insert into hints_cache(session_id, engine, level, hint_json)
+insert into hints_cache (session_id, engine, level, hint_json)
 values ($1,$2,$3,$4)
 on conflict (session_id, level)
 do update set 
