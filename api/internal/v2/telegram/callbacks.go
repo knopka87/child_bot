@@ -39,6 +39,8 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	case "dont_like_hint":
 		r.onDontLikeHint(cid, cb.Message.MessageID)
 	case "ready_solution":
+		sid, _ := r.getSession(cid)
+		_ = r.Store.MarkAcceptedParseBySID(context.Background(), sid, "user_yes")
 		// Скрыть старые кнопки у сообщения с колбэком
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		setMode(cid, "await_solution")
