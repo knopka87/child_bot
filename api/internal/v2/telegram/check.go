@@ -17,14 +17,14 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "generic"
-	grade := int64(2)
+	grade := int64(0)
 	if pr, ok := r.Store.FindLastConfirmedParse(ctx, sid); ok {
 		if s := strings.TrimSpace(pr.Subject); s != "" {
 			subj = s
 			grade = pr.Grade
 		}
 	}
-	if user, err := r.Store.FindUserByChatID(ctx, chatID); err != nil && user.Grade != nil {
+	if user, err := r.Store.FindUserByChatID(ctx, chatID); err == nil && user.Grade != nil {
 		grade = *user.Grade
 	}
 

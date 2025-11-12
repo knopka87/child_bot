@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 )
 
 type User struct {
@@ -26,10 +27,11 @@ where chat_id = $1`
 	}
 
 	c := User{ID: chatID}
-	if grade.Valid {
-		c.Grade = &grade.Int64
+	if !grade.Valid {
+		return User{}, fmt.Errorf("invalid grade: %v", grade)
 	}
 
+	c.Grade = &grade.Int64
 	return c, nil
 }
 

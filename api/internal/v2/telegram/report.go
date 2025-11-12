@@ -69,8 +69,8 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64, text strin
 		username = *chat.Username
 	}
 	var grade *int64
-	if g, err := r.Store.FindUserByChatID(ctx, chatID); err == nil && g.Grade != nil {
-		grade = g.Grade
+	if u, err := r.Store.FindUserByChatID(ctx, chatID); err == nil && u.Grade != nil {
+		grade = u.Grade
 	}
 
 	// 4) Build README.md (Markdown) + collect images
@@ -182,7 +182,7 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64, text strin
 	doc := tgbotapi.FilePath(zipPath)
 	for _, cid := range adminsChatID {
 		msg := tgbotapi.NewDocument(cid, doc)
-		msg.Caption = fmt.Sprintf("Отчёт по сессии\nUsername=%s\nchatID=%d\nsession=%s\nsteps=%d", username, chatID, sid, len(events))
+		msg.Caption = fmt.Sprintf("Отчёт по сессии\nUsername=%s\nchatID=%d\nsession=%s\nsteps=%d\n\n%s", username, chatID, sid, len(events), text)
 		if _, err := r.Bot.Send(msg); err != nil {
 			return r.sendErrorToAdmin(err, "Не удалось отправить отчёт в Telegram.")
 		}
