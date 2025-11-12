@@ -36,15 +36,16 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 		TaskStruct:  hs.Parse.TaskStruct,
 		Locale:      "ru_RU",
 	}
-	hintLevel := level - 1
-	for hintLevel > 0 {
-		h, err := r.Store.FindHintBySID(ctx, sid, hintLevel)
+	i := level - 1
+	for i > 0 {
+		hintLevel := lvlToConst(i)
+		h, err := r.Store.FindHintBySID(ctx, sid, string(hintLevel))
 		if err == nil {
 			var hr types.HintResponse
 			_ = json.Unmarshal(h.HintJson, &hr)
 			in.PreviousHints = append(in.PreviousHints, hr.HintText)
 		}
-		hintLevel--
+		i--
 	}
 	llmName := r.LlmManager.Get(chatID)
 	start := time.Now()

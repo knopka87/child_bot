@@ -14,7 +14,7 @@ type HintCache struct {
 }
 
 // FindHintBySID возвращает кэш подсказки указанного уровня (1..3) для session_id.
-func (s *Store) FindHintBySID(ctx context.Context, sid string, level int) (HintCache, error) {
+func (s *Store) FindHintBySID(ctx context.Context, sid string, level string) (HintCache, error) {
 	const q = `select hint_json, created_at
 	           from hints_cache
 	           where session_id=$1 and level=$2`
