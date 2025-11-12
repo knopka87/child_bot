@@ -94,6 +94,10 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 
 	// 4) Сохраняем черновик PARSE в БД
 	js, _ := json.Marshal(pr)
+	gradeValue := int64(0)
+	if grade != nil {
+		gradeValue = *grade
+	}
 	data := store.ParsedTasks{
 		CreatedAt:             time.Now(),
 		ChatID:                chatID,
@@ -102,6 +106,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		ImageHash:             imgHash,
 		Engine:                llmName,
 		Subject:               pr.TaskStruct.Subject,
+		Grade:                 gradeValue,
 		RawTaskText:           pr.RawTaskText,
 		ResultJSON:            js,
 		NeedsUserConfirmation: pr.NeedsUserConfirmation,

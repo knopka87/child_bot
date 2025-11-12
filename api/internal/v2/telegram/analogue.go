@@ -84,7 +84,7 @@ func (r *Router) buildAnalogueInput(ctx context.Context, sid string, reason type
 	}
 
 	grade := pr.Grade
-	if user, err := r.Store.FindUserByChatID(ctx, pr.ChatID); err != nil && user.Grade != nil {
+	if user, err := r.Store.FindUserByChatID(ctx, pr.ChatID); err == nil && user.Grade != nil {
 		grade = *user.Grade
 	}
 
