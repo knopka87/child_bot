@@ -130,7 +130,7 @@ func (r *Router) updateGradeUser(cid, grade int64) {
 		Grade: &grade,
 	}
 	_ = r.Store.UpsertUser(context.Background(), user)
-	userState.Store(cid, user)
+	userInfo.Store(cid, user)
 	setState(cid, AwaitingTask)
 	r.send(cid, StartMessageText, nil)
 }
