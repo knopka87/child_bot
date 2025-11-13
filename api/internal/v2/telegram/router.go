@@ -67,8 +67,8 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		}
 	}
 
-	_, ok := chatInfo.Load(cid)
-	if !ok {
+	chat, ok := chatInfo.Load(cid)
+	if !ok || chat.(store.Chat).Username == nil || *chat.(store.Chat).Username == "" {
 		chat, err := r.Store.FindChatByID(ctx, cid)
 		if err != nil {
 			chat = store.Chat{
@@ -80,7 +80,6 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 				chat.FirstName = &upd.Message.Chat.FirstName
 				chat.LastName = &upd.Message.Chat.LastName
 			}
-			chatInfo.Store(cid, chat)
 			_ = r.Store.UpsertChat(ctx, chat)
 		}
 		chatInfo.Store(cid, chat)
