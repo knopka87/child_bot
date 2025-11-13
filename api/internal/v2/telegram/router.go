@@ -226,7 +226,7 @@ func (r *Router) sendAlert(chatID int64, text string, postpone, delay time.Durat
 		msg := tgbotapi.NewMessage(chatID, text)
 		sent, _ := r.Bot.Send(msg)
 
-		time.AfterFunc((postpone+delay)*time.Second, func() {
+		time.AfterFunc((delay)*time.Second, func() {
 			del := tgbotapi.DeleteMessageConfig{ChatID: chatID, MessageID: sent.MessageID}
 			_, _ = r.Bot.Request(del)
 		})
