@@ -15,6 +15,8 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 	setState(chatID, Check)
 	sid, _ := r.getSession(chatID)
 
+	time1 := r.sendAlert(chatID, CheckAlert, 0, 15)
+
 	// 0) Подтянем метаданные предмета/класса из последнего подтверждённого парсинга
 	subj := "generic"
 	grade := int64(0)
@@ -85,6 +87,7 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 		},
 	})
 
+	time1.Stop()
 	r.sendCheckResponse(chatID, res)
 }
 
