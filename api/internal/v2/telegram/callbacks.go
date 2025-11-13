@@ -49,9 +49,9 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		r.send(cid, AnalogueTaskWaitingText, nil)
 
-		timer1 := r.sendAlert(cid, AnalogueAlert1, 4, 4)
-		timer2 := r.sendAlert(cid, AnalogueAlert2, 8, 4)
-		timer3 := r.sendAlert(cid, AnalogueAlert3, 12, 4)
+		timer1 := r.sendAlert(cid, AnalogueAlert1, 5, 5)
+		timer2 := r.sendAlert(cid, AnalogueAlert2, 10, 5)
+		timer3 := r.sendAlert(cid, AnalogueAlert3, 15, 5)
 
 		userID := util.GetUserIDFromTgCB(cb)
 		if getState(cid) == Incorrect {
