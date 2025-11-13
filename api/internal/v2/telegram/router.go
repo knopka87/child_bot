@@ -222,7 +222,7 @@ func (r *Router) sendMarkdown(chatID int64, text string, buttons [][]tgbotapi.In
 }
 
 func (r *Router) sendAlert(chatID int64, text string, postpone, delay time.Duration) *time.Timer {
-	return time.AfterFunc(4*time.Second, func() {
+	return time.AfterFunc(postpone*time.Second, func() {
 		msg := tgbotapi.NewMessage(chatID, text)
 		sent, _ := r.Bot.Send(msg)
 
