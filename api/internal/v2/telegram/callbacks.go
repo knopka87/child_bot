@@ -48,12 +48,20 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	case "analogue_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		r.send(cid, AnalogueTaskWaitingText, nil)
+
+		timer1 := r.sendAlert(cid, AnalogueAlert1, 4, 4)
+		timer2 := r.sendAlert(cid, AnalogueAlert2, 8, 4)
+		timer3 := r.sendAlert(cid, AnalogueAlert3, 12, 4)
+
 		userID := util.GetUserIDFromTgCB(cb)
 		if getState(cid) == Incorrect {
 			r.HandleAnalogueCallback(cid, userID, types.ReasonAfterIncorrect)
 		} else {
 			r.HandleAnalogueCallback(cid, userID, types.ReasonAfter3Hints)
 		}
+		timer3.Stop()
+		timer2.Stop()
+		timer1.Stop()
 	case "new_task":
 		_ = hideKeyboard(cid, cb.Message.MessageID, r)
 		resetContext(cid)
@@ -75,7 +83,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 func (r *Router) onParseYes(chatID int64, msgID int) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
-		r.send(chatID, ErrorText, makeErrorButtons())
+		r.sendError(chatID, fmt.Errorf("not found Parse"))
 		return
 	}
 	parseWait.Delete(chatID)

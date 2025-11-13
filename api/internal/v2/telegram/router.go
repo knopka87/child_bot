@@ -70,7 +70,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	chat, ok := chatInfo.Load(cid)
 	if !ok || chat.(store.Chat).Username == nil || *chat.(store.Chat).Username == "" {
 		chat, err := r.Store.FindChatByID(ctx, cid)
-		if err != nil {
+		if err != nil || chat.Username == nil || *chat.Username == "" {
 			chat = store.Chat{
 				ID: cid,
 			}
@@ -79,6 +79,13 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 				chat.Username = &upd.Message.Chat.UserName
 				chat.FirstName = &upd.Message.Chat.FirstName
 				chat.LastName = &upd.Message.Chat.LastName
+			}
+			if chat.Username == nil || *chat.Username == "" {
+				if upd.Message != nil && upd.Message.From != nil {
+					chat.Username = &upd.Message.From.UserName
+					chat.FirstName = &upd.Message.From.FirstName
+					chat.LastName = &upd.Message.From.LastName
+				}
 			}
 			_ = r.Store.UpsertChat(ctx, chat)
 		}
@@ -214,6 +221,18 @@ func (r *Router) sendMarkdown(chatID int64, text string, buttons [][]tgbotapi.In
 	r._sendWithError(chatID, text, "Markdown", buttons, nil)
 }
 
+func (r *Router) sendAlert(chatID int64, text string, postpone, delay time.Duration) *time.Timer {
+	return time.AfterFunc(4*time.Second, func() {
+		msg := tgbotapi.NewMessage(chatID, text)
+		sent, _ := r.Bot.Send(msg)
+
+		time.AfterFunc((postpone+delay)*time.Second, func() {
+			del := tgbotapi.DeleteMessageConfig{ChatID: chatID, MessageID: sent.MessageID}
+			_, _ = r.Bot.Request(del)
+		})
+	})
+}
+
 func (r *Router) sendDebug(chatID int64, name string, v any) {
 	find := false
 	for _, adminID := range adminsChatID {
@@ -255,6 +274,7 @@ func (r *Router) sendJSONAsDocument(chatID int64, data []byte, filename string) 
 
 func (r *Router) sendError(chatID int64, err error) {
 	r._sendWithError(chatID, ErrorText, "", makeErrorButtons(), err)
+	_ = r.SendSessionReport(context.Background(), chatID, "Внимание!! Техническая ошибка!")
 }
 
 func (r *Router) _sendWithError(chatID int64, text, parseMode string, buttons [][]tgbotapi.InlineKeyboardButton, err error) {

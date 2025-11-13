@@ -188,9 +188,6 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64, text strin
 		}
 	}
 
-	// Optional: notify user that report has been sent
-	r.send(chatID, "Отчёт отправлен разработчику. Спасибо!", nil)
-
 	// Cleanup temp file
 	_ = os.Remove(zipPath)
 	return nil
@@ -221,9 +218,11 @@ func classifyAndAppendImages(eventType string, imgs []imageInfo, tasks *[]imageF
 	for _, im := range imgs {
 		img := imageFile{Data: im.Data, Mime: im.Mime, Name: im.Name}
 		switch {
-		case strings.Contains(l, "detect"), strings.Contains(l, "parse"):
+		case strings.Contains(l, "detect"):
 			*tasks = append(*tasks, img)
-		case strings.Contains(l, "normalize"), strings.Contains(l, "solution"):
+		case strings.Contains(l, "parse"):
+			continue
+		case strings.Contains(l, "normalize"), strings.Contains(l, "solution"), strings.Contains(l, "ocr"):
 			*answers = append(*answers, img)
 		default:
 			// fallback: classify by key hint

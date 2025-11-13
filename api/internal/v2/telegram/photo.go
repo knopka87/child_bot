@@ -96,7 +96,7 @@ func (r *Router) processBatch(key string, userID *int64) {
 			return
 		}
 	}
-	r.send(chatID, GetPhotoText, nil)
+	// r.send(chatID, GetPhotoText, nil)
 	r.runDetectThenParse(ctx, chatID, userID, merged, mediaGroupID)
 }
 

@@ -28,6 +28,9 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	setState(chatID, Normalize)
 	llmName := r.LlmManager.Get(chatID)
 
+	time1 := r.sendAlert(chatID, NormaliseAlert1, 0, 15)
+	time2 := r.sendAlert(chatID, NormaliseAlert2, 15, 30)
+
 	text = strings.TrimSpace(text)
 	if text == "" {
 		r.sendError(chatID, fmt.Errorf("распознан пустой ответ"))
@@ -98,6 +101,8 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		},
 	})
 
+	time2.Stop()
+	time1.Stop()
 	r.checkSolution(ctx, chatID, userID, res)
 	clearMode(chatID)
 }
