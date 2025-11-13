@@ -15,7 +15,7 @@ type User struct {
 func (s *Store) FindUserByChatID(ctx context.Context, chatID int64) (User, error) {
 	const q = `
 select grade
-from "user"
+from public."user"
 where chat_id = $1`
 	var (
 		grade sql.NullInt64
@@ -38,7 +38,7 @@ where chat_id = $1`
 // UpsertUser inserts/updates a user by chat_id (PK: chat_id).
 func (s *Store) UpsertUser(ctx context.Context, c User) error {
 	const q = `
-insert into "user" (chat_id, grade) values ($1, $2)
+insert into public."user" (chat_id, grade) values ($1, $2)
 on conflict (chat_id) do update
 set
 	grade       = excluded.grade`

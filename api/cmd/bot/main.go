@@ -272,7 +272,7 @@ func resolveDSN() string {
 		User:     url.UserPassword(user, pass),
 		Host:     net.JoinHostPort(host, port),
 		Path:     "/" + db,
-		RawQuery: "sslmode=disable",
+		RawQuery: "sslmode=disable&search_path=public",
 	}
 	return u.String()
 }
