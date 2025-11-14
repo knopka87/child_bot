@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -236,20 +237,39 @@ func runPolling(ctx context.Context, bot *tgbotapi.BotAPI, handle func(tgbotapi.
 			continue
 		}
 
-		if len(updates) > 0 {
-			log.Printf("polling: received %d updates (offset=%d)", len(updates), offset)
-		}
-
-		for _, upd := range updates {
-			if upd.UpdateID >= offset {
-				offset = upd.UpdateID + 1
-			}
-			handle(upd)
-		}
-
 		if len(updates) == 0 {
 			time.Sleep(200 * time.Millisecond)
+			continue
 		}
+
+		log.Printf("polling: received %d updates (offset=%d)", len(updates), offset)
+
+		// Advance offset only after the whole batch is processed to avoid losing updates on crash.
+		nextOffset := updates[len(updates)-1].UpdateID + 1
+
+		maxWorkers := 8
+		sem := make(chan struct{}, maxWorkers)
+		var wg sync.WaitGroup
+
+		for _, upd := range updates {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(upd tgbotapi.Update) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				defer func() {
+					if rcv := recover(); rcv != nil {
+						log.Printf("panic in update handler (update_id=%d): %v", upd.UpdateID, rcv)
+					}
+				}()
+
+				handle(upd)
+			}(upd)
+		}
+
+		// Wait for the batch to finish before asking Telegram for new updates.
+		wg.Wait()
+		offset = nextOffset
 	}
 }
 
