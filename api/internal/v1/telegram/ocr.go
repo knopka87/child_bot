@@ -19,6 +19,7 @@ import (
 func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 	llmName := r.LlmManager.Get(util.GetChatIDFromTgMessage(msg))
 	chatID := util.GetChatIDFromTgMessage(msg)
+	setState(chatID, OCR)
 
 	if len(msg.Photo) == 0 {
 		util.PrintInfo("OCR", llmName, chatID, "not found photo")
@@ -28,12 +29,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 	ph := msg.Photo[len(msg.Photo)-1] // последнее
 	data, mime, err := r.downloadFileBytes(ph.FileID)
 	if err != nil {
-		util.PrintError("OCR", llmName, chatID, "не удалось получить фото", err)
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b,
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")),
-		)
-		r.send(chatID, fmt.Sprintf("Не удалось получить фото: %v", err), b)
+		r.sendError(chatID, fmt.Errorf("не удалось получить фото: %v", err))
 		return
 	}
 	if mime == "application/octet-stream" {
@@ -57,7 +53,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		Image:  base64.StdEncoding.EncodeToString(data),
 		Locale: "ru_RU",
 	}
-	// util.PrintInfo("OCR", llmName, chatID, fmt.Sprintf("ocr_input: %v", in))
+
 	userID := util.GetUserIDFromTgMessage(msg)
 	start := time.Now()
 	res, err := r.GetLLMClient().OCR(ctx, llmName, in)
@@ -92,12 +88,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 			},
 		})
 
-		util.PrintError("OCR", llmName, chatID, "Не удалось нормализовать ответ (фото)", err)
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b,
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")),
-		)
-		r.send(chatID, "Не удалось нормализовать ответ (фото)", b)
+		r.sendError(chatID, fmt.Errorf("не удалось нормализовать ответ (фото):%v", err))
 		return
 	}
 
@@ -117,7 +108,7 @@ func (r *Router) OCR(ctx context.Context, msg tgbotapi.Message) {
 		},
 	})
 
-	util.PrintInfo("OCR", llmName, chatID, fmt.Sprintf("ocr_photo: %+v", res))
+	// util.PrintInfo("OCR", llmName, chatID, fmt.Sprintf("ocr_photo: %+v", res))
 	r.normalizeText(ctx, chatID, userID, res.RawAnswerText)
 }
 

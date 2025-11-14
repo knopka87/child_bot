@@ -44,7 +44,7 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 		Direction:     "api",
 		EventType:     string(Detect),
 		InputPayload:  in,
-		OutputPayload: dres,
+		OutputPayload: dr,
 		Error:         err,
 		OK:            err == nil,
 		LatencyMS:     &latency,

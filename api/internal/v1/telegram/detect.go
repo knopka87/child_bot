@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"time"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"child-bot/api/internal/store"
 	"child-bot/api/internal/util"
@@ -39,12 +36,25 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	start := time.Now()
 	dr, err := r.GetLLMClient().Detect(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
+	sid, _ := r.getSession(chatID)
+	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
+		ChatID:        chatID,
+		TaskSessionID: sid,
+		Provider:      llmName,
+		Direction:     "api",
+		EventType:     string(Detect),
+		InputPayload:  in,
+		OutputPayload: dr,
+		Error:         err,
+		OK:            err == nil,
+		LatencyMS:     &latency,
+	})
 	if err == nil {
 		dres = dr
 		r.sendDebug(chatID, "detect_req", in)
 		r.sendDebug(chatID, "detect_res", dres)
 
-		errM := r.Store.InsertEvent(ctx, store.MetricEvent{
+		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "detect",
 			Provider:   llmName,
 			OK:         true,
@@ -58,9 +68,6 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 				"debug_reason": dres.DebugReason,
 			},
 		})
-		if errM != nil {
-			util.PrintError("runDetectThenParse", llmName, chatID, "error insert metrics", errM)
-		}
 	} else {
 		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "detect",
@@ -71,30 +78,12 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			UserIDAnon: userID,
 			Error:      err.Error(),
 		})
-		log.Printf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err)
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
-		r.send(chatID, "ℹ️ Не удалось выделить области на фото, попробую распознать задание целиком.", b)
-	}
-	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
 
-	sid, _ := r.getSession(chatID)
-	_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
-		ChatID:        chatID,
-		TaskSessionID: sid,
-		Provider:      llmName,
-		Direction:     "api",
-		EventType:     string(Detect),
-		InputPayload:  in,
-		OutputPayload: dres,
-		Error:         err,
-		OK:            err == nil,
-		LatencyMS:     &latency,
-	})
+		r._sendWithError(chatID, DetectErrorText, "", makeErrorButtons(), fmt.Errorf("detect failed (chat=%d): %v; fallback to parse without detect", chatID, err))
+	}
 
 	// без выбора — сразу PARSE
-	setState(chatID, DecideTasks)
-	r.send(chatID, "Изображение распознано, перехожу к парсингу.", nil)
+	r.send(chatID, ReadTaskText, nil)
 	sc := &selectionContext{Image: image, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
 	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, dres.SubjectHint, dres.GradeHint)
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Total time: %d", time.Since(start).Milliseconds()))

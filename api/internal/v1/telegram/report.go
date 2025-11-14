@@ -33,7 +33,7 @@ type imageFile struct {
 // SendSessionReport builds a ZIP report for the current task session of chatID
 // and sends it to the admin report chat. The report contains human-readable
 // Markdown with all steps from timeline_events and extracted images (task & answer).
-func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
+func (r *Router) SendSessionReport(ctx context.Context, chatID int64, text string) error {
 	// 1) Resolve session id
 	sid, ok := r.getSession(chatID)
 	if !ok || sid == "" {
@@ -64,13 +64,26 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 	zw := zip.NewWriter(out)
 	defer zw.Close()
 
+	username := ""
+	if chat, err := r.Store.FindChatByID(ctx, chatID); err == nil && chat.Username != nil {
+		username = *chat.Username
+	}
+	var grade *int64
+	if u, err := r.Store.FindUserByChatID(ctx, chatID); err == nil && u.Grade != nil {
+		grade = u.Grade
+	}
+
 	// 4) Build README.md (Markdown) + collect images
 	var md bytes.Buffer
 	_, _ = fmt.Fprintf(&md, "# Отчёт по сессии\n\n")
-	_, _ = fmt.Fprintf(&md, "- Пользователь (chatID): **%d**\n", chatID)
+	_, _ = fmt.Fprintf(&md, "- Пользователь (chatID): **%s (%d)**\n", username, chatID)
+	if grade != nil {
+		_, _ = fmt.Fprintf(&md, "- Класс: **%d**\n", *grade)
+	}
 	_, _ = fmt.Fprintf(&md, "- Session ID: **%s**\n", sid)
 	_, _ = fmt.Fprintf(&md, "- Временная зона сервера (UTC): **%s**\n", now.Format(time.RFC3339))
-	_, _ = fmt.Fprintf(&md, "- Количество шагов: **%d**\n\n", len(events))
+	_, _ = fmt.Fprintf(&md, "- Количество шагов: **%d**\n", len(events))
+	_, _ = fmt.Fprintf(&md, "- Feedback от пользователя: \n%s\n\n", text)
 
 	_, _ = fmt.Fprintf(&md, "## Шаги\n\n")
 
@@ -169,14 +182,11 @@ func (r *Router) SendSessionReport(ctx context.Context, chatID int64) error {
 	doc := tgbotapi.FilePath(zipPath)
 	for _, cid := range adminsChatID {
 		msg := tgbotapi.NewDocument(cid, doc)
-		msg.Caption = fmt.Sprintf("Отчёт по сессии\nchatID=%d\nsession=%s\nsteps=%d", chatID, sid, len(events))
+		msg.Caption = fmt.Sprintf("Отчёт по сессии\nUsername=%s\nchatID=%d\nsession=%s\nsteps=%d\n\n%s", username, chatID, sid, len(events), text)
 		if _, err := r.Bot.Send(msg); err != nil {
 			return r.sendErrorToAdmin(err, "Не удалось отправить отчёт в Telegram.")
 		}
 	}
-
-	// Optional: notify user that report has been sent
-	r.send(chatID, "Отчёт отправлен разработчику. Спасибо!", nil)
 
 	// Cleanup temp file
 	_ = os.Remove(zipPath)
@@ -208,9 +218,11 @@ func classifyAndAppendImages(eventType string, imgs []imageInfo, tasks *[]imageF
 	for _, im := range imgs {
 		img := imageFile{Data: im.Data, Mime: im.Mime, Name: im.Name}
 		switch {
-		case strings.Contains(l, "detect"), strings.Contains(l, "parse"):
+		case strings.Contains(l, "detect"):
 			*tasks = append(*tasks, img)
-		case strings.Contains(l, "normalize"), strings.Contains(l, "solution"):
+		case strings.Contains(l, "parse"):
+			continue
+		case strings.Contains(l, "normalize"), strings.Contains(l, "solution"), strings.Contains(l, "ocr"):
 			*answers = append(*answers, img)
 		default:
 			// fallback: classify by key hint

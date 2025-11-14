@@ -7,10 +7,7 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-
 	"child-bot/api/internal/store"
-	"child-bot/api/internal/util"
 	"child-bot/api/internal/v1/types"
 )
 
@@ -31,9 +28,12 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 	setState(chatID, Normalize)
 	llmName := r.LlmManager.Get(chatID)
 
+	time1 := r.sendAlert(chatID, NormaliseAlert1, 0, 15)
+	time2 := r.sendAlert(chatID, NormaliseAlert2, 15, 30)
+
 	text = strings.TrimSpace(text)
 	if text == "" {
-		r.send(chatID, "Пожалуйста, пришлите текст ответа.", nil)
+		r.sendError(chatID, fmt.Errorf("распознан пустой ответ"))
 		return
 	}
 
@@ -51,7 +51,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		RawTaskText:   pr.RawTaskText,
 		RawAnswerText: text,
 	}
-	util.PrintInfo("normalizeText", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
+	// util.PrintInfo("normalizeText", r.LlmManager.Get(chatID), chatID, fmt.Sprintf("normalize_input: %+v", in))
 	start := time.Now()
 	res, err := r.GetLLMClient().Normalize(ctx, llmName, in)
 	latency := time.Since(start).Milliseconds()
@@ -82,12 +82,7 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 			},
 		})
 
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 2)
-		b = append(b,
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("Перейти к новой задаче", "new_task")),
-			tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")),
-		)
-		r.send(chatID, fmt.Sprintf("Не удалось нормализовать ответ: %v", err), b)
+		r.sendError(chatID, fmt.Errorf("не удалось нормализовать ответ: %v", err))
 		return
 	}
 
@@ -106,16 +101,8 @@ func (r *Router) normalizeText(ctx context.Context, chatID int64, userID *int64,
 		},
 	})
 
-	r.sendNormalizePreview(chatID)
-
-	// Попробуем сразу проверить решение, если в системе есть ожидаемое решение
+	time2.Stop()
+	time1.Stop()
 	r.checkSolution(ctx, chatID, userID, res)
 	clearMode(chatID)
-}
-
-// sendNormalizePreview — короткий текст для пользователя по NormalizeResult
-func (r *Router) sendNormalizePreview(chatID int64) {
-	b := &strings.Builder{}
-	b.WriteString("✅ Принял ответ.")
-	r.send(chatID, b.String(), nil)
 }
