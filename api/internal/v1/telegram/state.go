@@ -6,8 +6,6 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-
-	"child-bot/api/internal/util"
 )
 
 const (
@@ -16,12 +14,13 @@ const (
 )
 
 var (
-	pendingChoice sync.Map // chatID -> []string (tasks brief)
-	pendingCtx    sync.Map // chatID -> *selectionContext
-	parseWait     sync.Map // chatID -> *parsePending
-	hintState     sync.Map // chatID -> *hintSession
-	chatMode      sync.Map // chatID -> string: "", "await_solution", "await_new_task"
-	chatState     sync.Map // chatID ->
+	pendingCtx sync.Map // chatID -> *selectionContext
+	parseWait  sync.Map // chatID -> *parsePending
+	hintState  sync.Map // chatID -> *hintSession
+	chatMode   sync.Map // chatID -> string: "", "await_solution", "await_new_task"
+	chatState  sync.Map // chatID -> State
+	userInfo   sync.Map // chatID -> User
+	chatInfo   sync.Map // chatID -> Chat
 )
 
 // хелперы
@@ -42,50 +41,34 @@ var (
 	AwaitingTask    State = "awaiting_task"
 	CollectingPages State = "collecting_pages"
 	Detect          State = "detect"
-	NeedsRescan     State = "need_rescan"
-	NotATask        State = "not_a_task"
-	Inappropriate   State = "inappropriate"
-	DecideTasks     State = "decide_task"
 	Parse           State = "parse"
-	AutoPick        State = "auto_pick"
-	AskChoice       State = "ask_choice"
 	Report          State = "report"
-	AnalyzeChoice   State = "analyze_choice"
 	Hints           State = "hint"
-	Confirm         State = "confirm"
-	AnalogueTask    State = "analogue_task"
 	AwaitSolution   State = "await_solution"
 	OCR             State = "ocr"
 	Normalize       State = "normalize"
 	Check           State = "check"
 	Correct         State = "correct"
 	Incorrect       State = "incorrect"
-	Uncertain       State = "uncertain"
 	Analogue        State = "analogue"
+	AwaitGrade      State = "await_grade"
 )
 
 var States = map[State][]State{
+	AwaitGrade:      {AwaitingTask, Report},
 	AwaitingTask:    {CollectingPages, AwaitingTask, Report},
 	CollectingPages: {Detect, Report, AwaitingTask},
-	Detect:          {NeedsRescan, NotATask, Inappropriate, DecideTasks, Report},
-	NeedsRescan:     {AwaitingTask, CollectingPages, Report},
-	NotATask:        {AwaitingTask, CollectingPages, Report},
-	Inappropriate:   {AwaitingTask, CollectingPages, Report},
-	DecideTasks:     {Parse, AskChoice},
-	AskChoice:       {Report, AnalyzeChoice},
-	AnalyzeChoice:   {Parse, AwaitingTask, AnalyzeChoice, Report},
-	Parse:           {Hints, AwaitSolution, Confirm, NeedsRescan, Report},
-	Confirm:         {Hints, AwaitSolution, AwaitingTask, CollectingPages, Report},
-	AutoPick:        {Hints, AwaitSolution, AwaitingTask, CollectingPages, Report},
+	Detect:          {Parse, Report},
+	Parse:           {Hints, AwaitSolution, Report},
 	Hints:           {AwaitSolution, AwaitingTask, Analogue, Hints, Report},
-	AwaitSolution:   {Normalize, OCR, Report},
+	AwaitSolution:   {OCR, Normalize, Report},
 	OCR:             {Normalize, Report},
-	Normalize:       {Check, Report, AwaitingTask},
-	Check:           {Correct, Incorrect, Uncertain, Report, AwaitingTask, Analogue},
+	Normalize:       {Check, Report},
+	Check:           {Correct, Incorrect, Report, AwaitingTask, CollectingPages, Analogue},
 	Correct:         {AwaitingTask, CollectingPages, Report},
 	Incorrect:       {Analogue, AwaitingTask, CollectingPages, Report},
-	Uncertain:       {Analogue, AwaitingTask, Report},
 	Analogue:        {AwaitingTask, CollectingPages, AwaitSolution, Report},
+	Report:          {AwaitingTask, CollectingPages, Report},
 }
 
 // canTransition проверяет, можно ли перейти из from в to.
@@ -117,45 +100,20 @@ func setState(chatID int64, s State) {
 	chatState.Store(chatID, s)
 }
 
-// В схемe Mermaid помечено, что текст явно допустим в L0/L1/L2/L3 и AnalogueTask.
-// У нас этих под-состояний нет, поэтому используем ближайшие «узлы», где мы реально ждём текст:
-func isCanUserText(s State) bool {
-	switch s {
-	case Hints, AskChoice, AwaitSolution, Analogue: // упрощённое соответствие
-		return true
-	default:
-		return false
-	}
-}
-
 func friendlyState(s State) string {
 	switch s {
+	case AwaitGrade:
+		return "Укажите класс"
 	case AwaitingTask:
 		return "Жду фото задачи"
 	case CollectingPages:
 		return "Сбор фото"
 	case Detect:
 		return "Детект"
-	case NeedsRescan:
-		return "Нужно перефотографировать"
-	case NotATask:
-		return "Это не задание"
-	case Inappropriate:
-		return "Неподходящее изображение"
-	case DecideTasks:
-		return "Выбор задачи"
 	case Parse:
 		return "Парсинг"
-	case AutoPick:
-		return "Автовыбор задачи"
-	case AskChoice:
-		return "Ожидаю номер задачи"
-	case AnalyzeChoice:
-		return "Анализ выбора"
 	case Hints:
 		return "Подсказки"
-	case Confirm:
-		return "Подтверждение"
 	case AwaitSolution:
 		return "Жду решение"
 	case OCR:
@@ -168,8 +126,6 @@ func friendlyState(s State) string {
 		return "Верно"
 	case Incorrect:
 		return "Есть ошибка"
-	case Uncertain:
-		return "Не уверен"
 	case Analogue:
 		return "Похожее задание"
 	case Report:
@@ -184,13 +140,11 @@ func allowedStateHints(cur State) string {
 	switch cur {
 	case AwaitingTask:
 		return "\nМожно прислать фото задания (1–2 фото)."
-	case AskChoice:
-		return "\nПришлите номер задачи из списка (целое число 1..N) или нажмите «Сообщить об ошибке»."
 	case Hints:
 		return "\nДоступно: «Получить подсказку», «Готов дать решение», «Перейти к новой задаче»."
 	case AwaitSolution:
 		return "\nПришлите ваш ответ текстом или фото. Либо «Перейти к новой задаче»."
-	case Incorrect, Uncertain:
+	case Incorrect:
 		return "\nМожно запросить «Похожее задание» или «Перейти к новой задаче»."
 	default:
 		// По умолчанию — перечислим разрешённые состояния по карте переходов
@@ -212,20 +166,22 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 	// 1) Callback-и
 	if upd.CallbackQuery != nil {
 		switch strings.ToLower(strings.TrimSpace(upd.CallbackQuery.Data)) {
-		case "analogue_task", "analogue":
-			return Analogue, true
+		case "analogue", "analogue_task":
+			return Analogue, true // после подсказок
 		case "hint_next":
 			return Hints, true
 		case "parse_yes":
 			return Hints, true
-		case "parse_no":
-			return AwaitingTask, true
+		case "dont_like_hint":
+			return Hints, true
 		case "ready_solution":
 			return AwaitSolution, true
 		case "new_task":
 			return AwaitingTask, true
 		case "report":
 			return Report, true
+		case "grade1", "grade2", "grade3", "grade4":
+			return AwaitingTask, true
 		default:
 			return cur, false
 		}
@@ -265,11 +221,14 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 
 	// 5) Текст
 	if s := strings.TrimSpace(upd.Message.Text); s != "" {
-		if v, ok := pendingChoice.Load(util.GetChatIDByTgUpdate(upd)); ok && v != nil {
-			return AnalyzeChoice, true // ввод номера задачи 1..N
-		}
 		if cur == AwaitSolution {
 			return Normalize, true // текстовое решение → нормализация
+		}
+		if cur == Report {
+			return Report, true
+		}
+		if cur == AwaitGrade {
+			return AwaitingTask, true
 		}
 		// Иначе текст вне контекста: останемся, где были
 		return cur, false

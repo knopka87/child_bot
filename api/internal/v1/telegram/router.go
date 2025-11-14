@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
@@ -35,60 +35,63 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 	cid := util.GetChatIDByTgUpdate(upd)
 	switch upd.Message.Command() {
 	case "start":
-		r.send(cid, "Пришли фото задачи — верну распознанный текст и подскажу, с чего начать.\nКоманды: /health", nil)
+		resetContext(cid)
+		r.send(cid, StartMessageText, nil)
 	case "health":
-		r.send(cid, "✅ OK", nil)
-	case "engine":
-		args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/engine")))
-		cur := r.LlmManager.Get(cid)
-		if len(args) == 0 {
-			r.send(cid, "Текущий LLMClient-провайдер: "+cur+
-				"\nИспользование:\n/engine gemini\n/engine gpt", nil)
-			return
-		}
-		// применим через общий обработчик ниже
-		r.handleEngineCommand(cid, upd.Message.Text)
-		return
-	case "hintL1":
-		// Everything after the subcommand is treated as the prompt text
-		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL1"))
-		if rest == "" {
-			r.send(cid, "Использование: /hintL1  <текст промпта>", nil)
-			return
-		}
-		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
-		return
-	case "hintL2":
-		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL2"))
-		if rest == "" {
-			r.send(cid, "Использование: /hintL2  <текст промпта>", nil)
-			return
-		}
-		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
-		return
-	case "hintL3":
-		rest := strings.TrimSpace(strings.TrimPrefix(upd.Message.Text, "/hintL3"))
-		if rest == "" {
-			r.send(cid, "Использование: /hintL3  <текст промпта>", nil)
-			return
-		}
-		r.postUpdatePrompt(context.Background(), cid, upd.Message.Command(), rest)
-		return
+		r.send(cid, OkText, nil)
 	default:
-		r.send(cid, "Неизвестная команда", nil)
+		r.send(cid, UnderFoundCommandText, nil)
 	}
 }
 
 func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
+	ctx := context.Background()
 	util.PrintInfo("HandleUpdate", llmName, util.GetChatIDByTgUpdate(upd), "Start")
 	cid := util.GetChatIDByTgUpdate(upd)
 
 	// r.sendDebug(cid, "telegram_message", upd)
-	message := fmt.Sprintf("telegram message: %+v", upd)
-	// util.PrintInfo("HandleUpdate", llmName, cid, message)
-	r.sendDebug(cid, "message", message)
+	stopTyping := r.startTyping(cid, upd.Message, tgbotapi.ChatTyping, 4*time.Second)
+	defer stopTyping()
 
 	cur := getState(cid)
+
+	if cur != AwaitGrade {
+		if _, ok := userInfo.Load(cid); !ok {
+			user, err := r.Store.FindUserByChatID(ctx, cid)
+			if err != nil || user.Grade == nil {
+				setState(cid, AwaitGrade)
+				r.send(cid, GradePreviewText, makeGradeListButtons())
+				return
+			}
+			userInfo.Store(cid, user)
+		}
+	}
+
+	chat, ok := chatInfo.Load(cid)
+	if !ok || chat.(store.Chat).Username == nil || *chat.(store.Chat).Username == "" {
+		chat, err := r.Store.FindChatByID(ctx, cid)
+		if err != nil || chat.Username == nil || *chat.Username == "" {
+			chat = store.Chat{
+				ID: cid,
+			}
+			if upd.Message != nil && upd.Message.Chat != nil {
+				chat.Type = &upd.Message.Chat.Type
+				chat.Username = &upd.Message.Chat.UserName
+				chat.FirstName = &upd.Message.Chat.FirstName
+				chat.LastName = &upd.Message.Chat.LastName
+			}
+			if chat.Username == nil || *chat.Username == "" {
+				if upd.Message != nil && upd.Message.From != nil {
+					chat.Username = &upd.Message.From.UserName
+					chat.FirstName = &upd.Message.From.FirstName
+					chat.LastName = &upd.Message.From.LastName
+				}
+			}
+			_ = r.Store.UpsertChat(ctx, chat)
+		}
+		chatInfo.Store(cid, chat)
+	}
+
 	// r.sendDebug(cid, "last_state", cur)
 
 	if ns, ok := inferNextState(upd, cur); ok && ns != cur {
@@ -99,7 +102,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
 				friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
 			b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
+			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData(SendReportButton, "report")))
 			r.send(cid, msg, b)
 
 			return
@@ -116,7 +119,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 
 		if upd.Message != nil && upd.Message.Text != "" {
 			if sid, ok := r.getSession(cid); ok {
-				_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+				_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 					ChatID:        cid,
 					TaskSessionID: sid,
 					Direction:     "in",
@@ -141,37 +144,21 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		return
 	}
 
-	// 3) Если ждём текстовую правку после «Нет» — приоритетно принимаем её
-	if r.hasPendingCorrection(cid) && upd.Message.Text != "" {
-		sid, _ := r.getSession(cid)
-		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
-			ChatID:        cid,
-			TaskSessionID: sid,
-			Direction:     "in",
-			EventType:     "pending_correction",
-			Provider:      llmName,
-			OK:            true,
-			TgMessageID:   &upd.Message.MessageID,
-			Text:          upd.Message.Text,
-		})
-
-		r.applyTextCorrectionThenShowHints(context.Background(), cid, upd.Message.Text)
-		return
-	}
-
 	// 4) «Жёсткий» режим ввода: если ждём решение — принимаем и текст, и фото;
 	//    если ждём новую задачу — просим фото задачи; в остальных случаях — как раньше.
 	if upd.Message.Text != "" && !upd.Message.IsCommand() {
 		switch getState(cid) {
+		case Report:
+			resetContext(cid)
+			r.send(cid, SendReportText, nil)
+			_ = r.SendSessionReport(ctx, cid, upd.Message.Text)
 		case AwaitSolution:
-			// Нормализуем текстовый ответ ученика
-			r.send(cid, "Начинаю нормализацию твоего ответа.", nil)
 			userID := util.GetUserIDFromTgUpdate(upd)
-			r.normalizeText(context.Background(), cid, userID, upd.Message.Text)
+			r.normalizeText(ctx, cid, userID, upd.Message.Text)
 			return
 		case AwaitingTask:
 			sid, _ := r.getSession(cid)
-			_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+			_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
 				ChatID:        cid,
 				TaskSessionID: sid,
 				Direction:     "in",
@@ -181,16 +168,16 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 				TgMessageID:   &upd.Message.MessageID,
 				Text:          upd.Message.Text,
 			})
-			r.send(cid, "Я жду фото новой задачи. Пожалуйста, пришлите фото.", nil)
+			r.send(cid, NewTaskText, makeErrorButtons())
 			return
 		}
 	}
 
 	// 6) Команды (в т.ч. /engine)
-	if upd.Message.IsCommand() && strings.HasPrefix(upd.Message.Text, "/engine") {
-		r.handleEngineCommand(cid, upd.Message.Text)
-		return
-	}
+	// if upd.Message.IsCommand() && strings.HasPrefix(upd.Message.Text, "/engine") {
+	// 	r.handleEngineCommand(cid, upd.Message.Text)
+	// 	return
+	// }
 	if upd.Message.IsCommand() {
 		r.HandleCommand(upd)
 		return
@@ -200,8 +187,8 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	if len(upd.Message.Photo) > 0 {
 		if getMode(cid) == "await_solution" {
 			// Фото с ответом ученика → OCR
-			r.send(cid, "Начинаю парсинг твоего ответа.", nil)
-			r.OCR(context.Background(), *upd.Message)
+			r.send(cid, CheckAnswerText, nil)
+			r.OCR(ctx, *upd.Message)
 			clearMode(cid)
 			return
 		}
@@ -215,39 +202,34 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	}
 
 	// 8) Остальное — игнорируем
-	message = "Не смог понять, что Вы от меня хотите."
+	message := ""
 	switch getMode(cid) {
 	case "await_solution":
-		message += " Я жду от вас фото с решением."
+		message = AwaitSolutionText
 	case "await_new_task":
-		message += " Я жду от тебя фото с задачей."
+		message = AwaitNewTaskText
 	}
 
 	r.send(cid, message, nil)
 }
 
 func (r *Router) send(chatID int64, text string, buttons [][]tgbotapi.InlineKeyboardButton) {
-	msg := tgbotapi.NewMessage(chatID, text)
-	if buttons != nil {
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(buttons...)
-	}
+	r._sendWithError(chatID, text, "", buttons, nil)
+}
 
-	m, _ := r.Bot.Send(msg)
+func (r *Router) sendMarkdown(chatID int64, text string, buttons [][]tgbotapi.InlineKeyboardButton) {
+	r._sendWithError(chatID, text, "Markdown", buttons, nil)
+}
 
-	sid, _ := r.getSession(chatID)
+func (r *Router) sendAlert(chatID int64, text string, postpone, delay time.Duration) *time.Timer {
+	return time.AfterFunc(postpone*time.Second, func() {
+		msg := tgbotapi.NewMessage(chatID, text)
+		sent, _ := r.Bot.Send(msg)
 
-	if textLen := len(text); textLen > 4000 {
-		text = text[:4000] + "…"
-	}
-	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
-		ChatID:        chatID,
-		TaskSessionID: sid,
-		Direction:     "out",
-		EventType:     "tg_text",
-		Provider:      r.LlmManager.Get(chatID),
-		TgMessageID:   &m.MessageID,
-		Text:          text,
-		OK:            true,
+		time.AfterFunc((delay)*time.Second, func() {
+			del := tgbotapi.DeleteMessageConfig{ChatID: chatID, MessageID: sent.MessageID}
+			_, _ = r.Bot.Request(del)
+		})
 	})
 }
 
@@ -290,34 +272,62 @@ func (r *Router) sendJSONAsDocument(chatID int64, data []byte, filename string) 
 	return
 }
 
-// func (r *Router) SendResult(chatID int64, text string) {
-// 	if len(text) > 3900 {
-// 		text = text[:3900] + "…"
-// 	}
-// 	r.send(chatID, "📝 Распознанный текст:\n\n"+text)
-// }
-
-func (r *Router) SendError(chatID int64, err error) {
-	r.send(chatID, fmt.Sprintf("Ошибка OCR: %v", err), nil)
+func (r *Router) sendError(chatID int64, err error) {
+	r._sendWithError(chatID, ErrorText, "", makeErrorButtons(), err)
+	_ = r.SendSessionReport(context.Background(), chatID, "Внимание!! Техническая ошибка!")
 }
 
-// handleEngineCommand парсит команду /engine и переключает провайдера LLMClient для чата.
-// Поддерживаются только gemini и gpt.
-func (r *Router) handleEngineCommand(chatID int64, cmd string) {
-	args := strings.Fields(strings.TrimSpace(strings.TrimPrefix(cmd, "/engine")))
-	if len(args) == 0 {
-		r.send(chatID, "Использование: /engine {gemini|gpt}", nil)
-		return
+func (r *Router) _sendWithError(chatID int64, text, parseMode string, buttons [][]tgbotapi.InlineKeyboardButton, err error) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	if buttons != nil {
+		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(buttons...)
 	}
-	name := strings.ToLower(args[0])
-	switch name {
-	case "gemini", "google":
-		r.LlmManager.Set(chatID, "gemini")
-		r.send(chatID, "✅ Провайдер LLMClient: gemini", nil)
-	case "gpt", "openai":
-		r.LlmManager.Set(chatID, "gpt")
-		r.send(chatID, "✅ Провайдер LLMClient: gpt", nil)
-	default:
-		r.send(chatID, "Неизвестный провайдер. Доступны: gemini | gpt", nil)
+	if parseMode != "" {
+		msg.ParseMode = parseMode
 	}
+
+	m, _ := r.Bot.Send(msg)
+
+	sid, _ := r.getSession(chatID)
+
+	if textLen := len(text); textLen > 4000 {
+		text = text[:4000] + "…"
+	}
+	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+		ChatID:        chatID,
+		TaskSessionID: sid,
+		Direction:     "out",
+		EventType:     "tg_text",
+		Provider:      r.LlmManager.Get(chatID),
+		TgMessageID:   &m.MessageID,
+		Text:          text,
+		OK:            err == nil,
+		Error:         err,
+	})
+}
+
+// startTyping sends a repeated chat action (e.g. typing) to the chat.
+// NOTE: Some versions of tgbotapi don't expose MessageThreadID on Message.
+// If you need per-topic typing in forum chats, upgrade the library and set
+// cfg.MessageThreadID at the call site where the thread id is available.
+func (r *Router) startTyping(chatID int64, _ *tgbotapi.Message, action string, interval time.Duration) (stop func()) {
+	done := make(chan struct{})
+
+	// базовый конфиг; без thread id для совместимости со старыми версиями
+	cfg := tgbotapi.NewChatAction(chatID, action)
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		_, _ = r.Bot.Request(cfg) // первая отсылка сразу
+		for {
+			select {
+			case <-ticker.C:
+				_, _ = r.Bot.Request(cfg)
+			case <-done:
+				return
+			}
+		}
+	}()
+	return func() { close(done) }
 }
