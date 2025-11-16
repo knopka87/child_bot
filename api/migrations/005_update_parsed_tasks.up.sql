@@ -1,2 +1,2 @@
-ALTER TABLE parsed_tasks
-    RENAME COLUMN accepted_reason TO accept_reason;
+-- ALTER TABLE parsed_tasks
+--     RENAME COLUMN accepted_reason TO accept_reason;
