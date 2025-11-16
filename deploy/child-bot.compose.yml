@@ -1,11 +1,11 @@
 version: "3.9"
 
 networks:
-  appnet:
+  appnet_v2:
     driver: bridge
 
 volumes:
-  pgdata:
+  pgdata_v2:
     name: child-bot_pgdata
 
 services:
@@ -24,8 +24,8 @@ services:
       timeout: 3s
       retries: 20
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks: [appnet]
+      - pgdata_v2:/var/lib/postgresql/data
+    networks: [appnet_v2]
 
   app:
     image: ghcr.io/knopka87/child-bot:main
@@ -45,4 +45,4 @@ services:
     ports:
       - "8080:8080"
     # Tip: update only app without touching DB: `docker compose -f child-bot.compose.yml up -d --no-deps --build app`
-    networks: [appnet]
+    networks: [appnet_v2]
