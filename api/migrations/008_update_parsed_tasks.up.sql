@@ -27,7 +27,7 @@ ALTER TABLE public.parsed_tasks
     ALTER COLUMN combined_subpoints SET NOT NULL;
 
 -- CHECK для subject
-ALTER TABLE public.parsed_tasks
-    ADD CONSTRAINT parsed_tasks_subject_enum CHECK (
-        subject IN ('math','russian','generic')
-    );
+-- ALTER TABLE public.parsed_tasks
+--     ADD CONSTRAINT parsed_tasks_subject_enum CHECK (
+--         subject IN ('math','russian','generic')
+--     );
