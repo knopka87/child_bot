@@ -280,7 +280,14 @@ func (r *Router) sendError(chatID int64, err error) {
 func (r *Router) _sendWithError(chatID int64, text, parseMode string, buttons [][]tgbotapi.InlineKeyboardButton, err error) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	if buttons != nil {
-		msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(buttons...)
+		rows := make([][]tgbotapi.KeyboardButton, len(buttons))
+		for i, buttonRow := range buttons {
+			for _, button := range buttonRow {
+				rows[i] = append(rows[i], tgbotapi.NewKeyboardButton(button.Text))
+			}
+		}
+		kb := tgbotapi.NewReplyKeyboard(rows...)
+		msg.ReplyMarkup = kb
 	}
 	if parseMode != "" {
 		msg.ParseMode = parseMode
