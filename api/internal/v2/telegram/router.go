@@ -287,6 +287,8 @@ func (r *Router) _sendWithError(chatID int64, text, parseMode string, buttons []
 			}
 		}
 		kb := tgbotapi.NewReplyKeyboard(rows...)
+		kb.OneTimeKeyboard = true
+		kb.ResizeKeyboard = true
 		msg.ReplyMarkup = kb
 	}
 	if parseMode != "" {
