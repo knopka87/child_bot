@@ -152,10 +152,6 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			resetContext(cid)
 			r.send(cid, SendReportText, nil)
 			_ = r.SendSessionReport(ctx, cid, upd.Message.Text)
-		case AwaitSolution:
-			userID := util.GetUserIDFromTgUpdate(upd)
-			r.normalizeText(ctx, cid, userID, upd.Message.Text)
-			return
 		case AwaitingTask:
 			sid, _ := r.getSession(cid)
 			_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
@@ -186,9 +182,10 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// 7) Фото/альбом
 	if len(upd.Message.Photo) > 0 {
 		if getMode(cid) == "await_solution" {
-			// Фото с ответом ученика → OCR
+			// Фото с ответом ученика
 			r.send(cid, CheckAnswerText, nil)
-			r.OCR(ctx, *upd.Message)
+			userID := util.GetUserIDFromTgUpdate(upd)
+			r.checkSolution(ctx, cid, userID, *upd.Message)
 			clearMode(cid)
 			return
 		}

@@ -45,8 +45,6 @@ var (
 	Report          State = "report"
 	Hints           State = "hint"
 	AwaitSolution   State = "await_solution"
-	OCR             State = "ocr"
-	Normalize       State = "normalize"
 	Check           State = "check"
 	Correct         State = "correct"
 	Incorrect       State = "incorrect"
@@ -61,9 +59,7 @@ var States = map[State][]State{
 	Detect:          {Parse, Report},
 	Parse:           {Hints, AwaitSolution, Report},
 	Hints:           {AwaitSolution, AwaitingTask, Analogue, Hints, Report},
-	AwaitSolution:   {OCR, Normalize, Report},
-	OCR:             {Normalize, Report},
-	Normalize:       {Check, Report},
+	AwaitSolution:   {Check, Report},
 	Check:           {Correct, Incorrect, Report, AwaitingTask, CollectingPages, Analogue},
 	Correct:         {AwaitingTask, CollectingPages, Report},
 	Incorrect:       {Analogue, AwaitingTask, CollectingPages, Report},
@@ -116,10 +112,6 @@ func friendlyState(s State) string {
 		return "Подсказки"
 	case AwaitSolution:
 		return "Жду решение"
-	case OCR:
-		return "Парсинг ответа"
-	case Normalize:
-		return "Нормализация ответа"
 	case Check:
 		return "Проверка решения"
 	case Correct:
@@ -214,7 +206,7 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 	// 4) Фото
 	if upd.Message.Photo != nil && len(upd.Message.Photo) > 0 {
 		if cur == AwaitSolution {
-			return Normalize, true // прислано решение фото → нормализация
+			return Check, true // прислано решение фото → сразу check
 		}
 		return CollectingPages, true // прислано фото задания/страницы
 	}
@@ -222,7 +214,7 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 	// 5) Текст
 	if s := strings.TrimSpace(upd.Message.Text); s != "" {
 		if cur == AwaitSolution {
-			return Normalize, true // текстовое решение → нормализация
+			return Check, true // текстовое решение → сразу check
 		}
 		if cur == Report {
 			return Report, true

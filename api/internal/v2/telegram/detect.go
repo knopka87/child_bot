@@ -29,9 +29,8 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	// DETECT через llmproxy
 	var dres types.DetectResponse
 	in := types.DetectRequest{
-		Image:    base64.StdEncoding.EncodeToString(image),
-		Locale:   "ru-RU",
-		MaxTasks: 1,
+		Image:  base64.StdEncoding.EncodeToString(image),
+		Locale: "ru_RU",
 	}
 	start := time.Now()
 	dr, err := r.GetLLMClient().Detect(ctx, llmName, in)
@@ -62,10 +61,9 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 			ChatID:     &chatID,
 			UserIDAnon: userID,
 			Details: map[string]any{
-				"subject_hint": dres.SubjectHint,
-				"grade_hint":   dres.GradeHint,
-				"confidence":   dres.Confidence,
-				"debug_reason": dres.DebugReason,
+				"subject_candidate": dres.Classification.SubjectCandidate,
+				"confidence":        dres.Classification.Confidence,
+				"recommend_retake":  dres.Quality.RecommendRetake,
 			},
 		})
 	} else {
@@ -85,6 +83,6 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	// без выбора — сразу PARSE
 	r.send(chatID, ReadTaskText, nil)
 	sc := &selectionContext{Image: image, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
-	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, dres.SubjectHint, dres.GradeHint)
+	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, dres.Classification.SubjectCandidate)
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Total time: %d", time.Since(start).Milliseconds()))
 }

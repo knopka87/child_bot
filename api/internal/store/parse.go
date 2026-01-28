@@ -19,21 +19,21 @@ type ParsedTasks struct {
 	Engine                string          `db:"engine"`
 	Subject               string          `db:"subject"`
 	Grade                 int64           `db:"grade_hint"`
-	RawTaskText           string          `db:"raw_task_text"`
-	Question              string          `db:"question"`
+	RawTaskText           string          `db:"raw_task_text"` // v1: raw_task_text, v2: task_text_clean
+	Question              string          `db:"question"`      // v1 only, nullable in v2
 	ResultJSON            json.RawMessage `db:"result_json"`
-	NeedsUserConfirmation bool            `db:"needs_user_confirmation"`
+	NeedsUserConfirmation bool            `db:"needs_user_confirmation"` // v1 only, nil in v2
 	TaskType              string          `db:"task_type"`
-	CombinedSubpoints     bool            `db:"combined_subpoints"`
+	CombinedSubpoints     bool            `db:"combined_subpoints"` // v1 only, nil in v2
 	Confidence            float64         `db:"confidence"`
 	Accepted              bool            `db:"accepted"`
 	AcceptReason          string          `db:"accept_reason"`
+	TaskID                string          `db:"task_id"` // v2 only
 }
 
 var ErrNotFound = sql.ErrNoRows
 
-// FindParseBySID достаёт самую свежую запись по chat_id (ориентируясь на updated_at).
-// Если maxAge > 0 — проверяет "свежесть", иначе игнорирует возраст.
+// FindParseBySID достаёт самую свежую запись по session_id.
 func (s *Store) FindParseBySID(ctx context.Context, sid string) (*ParsedTasks, error) {
 	const q = `
 select pt.id,
@@ -46,15 +46,16 @@ select pt.id,
        pt.subject,
        pt.grade_hint,
        pt.raw_task_text,
-       pt.question,
+       coalesce(pt.question,'') as question,
        pt.result_json,
        pt.needs_user_confirmation,
        pt.task_type,
        pt.combined_subpoints,
        pt.accepted,
        pt."accept_reason",
-       pt.confidence
-from parsed_tasks pt 
+       pt.confidence,
+       coalesce(pt.task_id,'') as task_id
+from parsed_tasks pt
 where pt.session_id = $1
 limit 1`
 
@@ -79,10 +80,11 @@ limit 1`
 		accepted     bool
 		accReason    sql.NullString
 		confidence   float64
+		taskID       string
 	)
 
 	if err := row.Scan(&id, &createdAt, &updatedAt, &chatID, &mediaGroupID, &imgHash, &engName,
-		&subject, &grade, &rawText, &question, &jsonBlob, &needConf, &taskType, &combined, &accepted, &accReason, &confidence); err != nil {
+		&subject, &grade, &rawText, &question, &jsonBlob, &needConf, &taskType, &combined, &accepted, &accReason, &confidence, &taskID); err != nil {
 		return nil, err
 	}
 
@@ -106,10 +108,11 @@ limit 1`
 		Accepted:              accepted,
 		AcceptReason:          accReason.String,
 		Confidence:            confidence,
+		TaskID:                taskID,
 	}, nil
 }
 
-// UpsertParse сохраняет PARSE (черновик или принятый). .
+// UpsertParse сохраняет PARSE (черновик или принятый).
 func (s *Store) UpsertParse(
 	ctx context.Context,
 	pr ParsedTasks,
@@ -133,9 +136,10 @@ insert into parsed_tasks (
   accepted,
   accept_reason,
   confidence,
+  task_id,
   created_at,
   updated_at
-) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17)
+) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$18)
 on conflict (session_id) do update set
   chat_id = excluded.chat_id,
   media_group_id = excluded.media_group_id,
@@ -152,6 +156,7 @@ on conflict (session_id) do update set
   accepted = excluded.accepted,
   accept_reason = excluded.accept_reason,
   confidence = excluded.confidence,
+  task_id = excluded.task_id,
   updated_at = NOW()
   `
 	_, err := s.DB.ExecContext(ctx, q,
@@ -171,6 +176,7 @@ on conflict (session_id) do update set
 		pr.Accepted,
 		pr.AcceptReason,
 		pr.Confidence,
+		pr.TaskID,
 		pr.CreatedAt,
 	)
 	return err
