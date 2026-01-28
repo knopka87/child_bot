@@ -64,30 +64,6 @@ func (c *Client) Hint(ctx context.Context, llmName string, hin types.HintRequest
 	return out, nil
 }
 
-func (c *Client) OCR(ctx context.Context, llmName string, oin types.OCRRequest) (types.OCRResponse, error) {
-	in := ocrRequest{
-		LLMName:    llmName,
-		OCRRequest: oin,
-	}
-	var out types.OCRResponse
-	if err := c.post(ctx, "/v2/ocr", in, &out); err != nil {
-		return types.OCRResponse{}, err
-	}
-	return out, nil
-}
-
-func (c *Client) Normalize(ctx context.Context, llmName string, nin types.NormalizeRequest) (types.NormalizeResponse, error) {
-	in := normalizeRequest{
-		LLMName:          llmName,
-		NormalizeRequest: nin,
-	}
-	var out types.NormalizeResponse
-	if err := c.post(ctx, "/v2/normalize", in, &out); err != nil {
-		return types.NormalizeResponse{}, err
-	}
-	return out, nil
-}
-
 func (c *Client) CheckSolution(ctx context.Context, llmName string, cin types.CheckRequest) (types.CheckResponse, error) {
 	in := checkRequest{
 		LLMName:      llmName,
@@ -129,16 +105,6 @@ type parseRequest struct {
 type hintRequest struct {
 	LLMName string `json:"llm_name"`
 	types.HintRequest
-}
-
-type ocrRequest struct {
-	LLMName string `json:"llm_name"`
-	types.OCRRequest
-}
-
-type normalizeRequest struct {
-	LLMName string `json:"llm_name"`
-	types.NormalizeRequest
 }
 
 type checkRequest struct {

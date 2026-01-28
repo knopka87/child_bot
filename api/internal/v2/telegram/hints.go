@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"child-bot/api/internal/store"
@@ -20,33 +21,36 @@ type hintSession struct {
 	NextLevel    int
 }
 
-func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hintSession) {
+func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSession) {
 	level := hs.NextLevel
 	sid, _ := r.getSession(chatID)
 
-	grade := hs.Detect.GradeHint
-	if user, err := r.Store.FindUserByChatID(ctx, chatID); err == nil && user.Grade != nil {
-		grade = user.Grade
+	// Определяем режим подсказки
+	mode := "learn"
+	if level > 1 {
+		mode = "rescue"
+	}
+
+	// Определяем политику подсказок из первого item, если есть
+	var appliedPolicy types.HintPolicy
+	if len(hs.Parse.Items) > 0 {
+		appliedPolicy = hs.Parse.Items[0].HintPolicy
+	} else {
+		appliedPolicy = types.HintPolicy{
+			MaxHints:       3,
+			DefaultVisible: 1,
+			H3Reason:       types.H3ReasonNone,
+		}
 	}
 
 	in := types.HintRequest{
-		RawTaskText: hs.Parse.RawTaskText,
-		Level:       lvlToConst(level),
-		Grade:       grade,
-		TaskStruct:  hs.Parse.TaskStruct,
-		Locale:      "ru_RU",
+		Task:          hs.Parse.Task,
+		Mode:          mode,
+		Items:         hs.Parse.Items,
+		AppliedPolicy: appliedPolicy,
+		Template:      getTemplate(hs.Parse.Task, hs.Parse.Items),
 	}
-	i := level - 1
-	for i > 0 {
-		hintLevel := lvlToConst(i)
-		h, err := r.Store.FindHintBySID(ctx, sid, string(hintLevel))
-		if err == nil {
-			var hr types.HintResponse
-			_ = json.Unmarshal(h.HintJson, &hr)
-			in.PreviousHints = append(in.PreviousHints, hr.HintText)
-		}
-		i--
-	}
+
 	llmName := r.LlmManager.Get(chatID)
 	start := time.Now()
 	hrNew, err := r.GetLLMClient().Hint(context.Background(), llmName, in)
@@ -90,19 +94,36 @@ func (r *Router) sendHint(ctx context.Context, chatID int64, msgID int, hs *hint
 			CreatedAt:     time.Time{},
 		})
 	}
-	r.send(chatID, formatHint(hrNew), makeHintButtons(level, true))
-
+	r.send(chatID, formatHint(hrNew, level), makeHintButtons(level, true))
 }
 
-func formatHint(hr types.HintResponse) string {
-	switch hr.Level {
+func formatHint(hr types.HintResponse, level int) string {
+	// Собираем подсказки из всех items для указанного уровня
+	var hints []string
+	targetLevel := lvlToConst(level)
+
+	for _, item := range hr.Items {
+		for _, hint := range item.Hints {
+			if hint.Level == targetLevel {
+				hints = append(hints, hint.HintText)
+			}
+		}
+	}
+
+	if len(hints) == 0 {
+		return "Подсказка не найдена"
+	}
+
+	hintText := strings.Join(hints, "\n\n")
+
+	switch targetLevel {
 	case types.HintL1:
-		return fmt.Sprintf(HINT1Text, hr.HintText)
+		return fmt.Sprintf(HINT1Text, hintText)
 	case types.HintL2:
-		return fmt.Sprintf(HINT2Text, hr.HintText)
+		return fmt.Sprintf(HINT2Text, hintText)
 	case types.HintL3:
-		return fmt.Sprintf(HINT3Text, hr.HintText)
+		return fmt.Sprintf(HINT3Text, hintText)
 	default:
-		return ""
+		return hintText
 	}
 }
