@@ -109,12 +109,17 @@
               "must_have": {
                 "text_patterns_any": [
                   "уравнен",
-                  "уравнение",
-                  "реши уравнение",
+                  "реши(те)? уравнение",
                   "неравенств",
-                  "неравенство",
-                  "на числовом луче",
-                  "числовой луч"
+                  "(на )?числов(ом|ой) луч",
+                  "(найди|чему равн[оа]) (x|икс)",
+                  "(корень|решение) уравнения",
+                  "(больше|меньше) или равно",
+                  "x [+−\\-×·\\*:]",
+                  "[+−\\-] ?x ?=",
+                  "(подставь|проверь) (x|корень)",
+                  "\\d+ [+−\\-×·\\*:] x [=<>]",
+                  "x [+−\\-×·\\*:] \\d+ [=<>]"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -168,6 +173,42 @@
           "topic": "equations"
         },
         "why": "Условие описывает простое неравенство на числовом луче (по педдокументу T37)."
+      },
+      {
+        "id": "RT_T37_EQ_MUL",
+        "kind": "positive",
+        "description": "Реши уравнение: x · 4 = 28.",
+        "expected": {
+          "template_id": "T37_pedagogical_template",
+          "task_type": "patterns_logic",
+          "format": "plain_text",
+          "topic": "equations"
+        },
+        "why": "Уравнение с умножением."
+      },
+      {
+        "id": "RT_T37_EQ_SUB",
+        "kind": "positive",
+        "description": "Найди x: 25 - x = 18.",
+        "expected": {
+          "template_id": "T37_pedagogical_template",
+          "task_type": "patterns_logic",
+          "format": "plain_text",
+          "topic": "equations"
+        },
+        "why": "Уравнение с вычитанием, просят 'найди x'."
+      },
+      {
+        "id": "RT_T37_EQ_CHECK",
+        "kind": "positive",
+        "description": "Реши уравнение и сделай проверку: x + 12 = 30.",
+        "expected": {
+          "template_id": "T37_pedagogical_template",
+          "task_type": "patterns_logic",
+          "format": "plain_text",
+          "topic": "equations"
+        },
+        "why": "Уравнение с требованием проверки."
       }
     ]
   },

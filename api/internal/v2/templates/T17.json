@@ -100,20 +100,34 @@
         },
         "routing": {
           "match_keys": {
-            "ped.constraints": "multi_step",
-            "ped.format": "plain_text",
-            "ped.task_type": "word_problems",
-            "ped.template_params.change_mode": "none",
-            "ped.template_params.compare_mode": "none",
-            "ped.template_params.ops": "add,sub,mul,div",
-            "ped.template_params.word_model": "mixed_story",
-            "subject": "math"
+            "task_type": "word_problems",
+            "topic": "multi_step_word_problems",
+            "formats_allowed": [
+              "plain_text",
+              "mixed"
+            ]
           },
           "routing_rules": [
             {
               "rule_id": "T17_MULTI_STEP_WORD_PROBLEMS",
               "must_have": {
-                "text_patterns_any": [],
+                "text_patterns_any": [
+                  "в два действия",
+                  "в три действия",
+                  "в \\d+ действи",
+                  "составная задача",
+                  "несколько действий",
+                  "сколько всего .* и",
+                  "сначала .* потом",
+                  "а затем",
+                  "а потом",
+                  "и ещ[её] (купил|дали|взял|привезли)",
+                  "сколько .* осталось",
+                  "всего .* из них",
+                  "\\d+ (ящиков|коробок|пакетов) .* по \\d+",
+                  "(в первый|во второй|в третий) день",
+                  "сколько .* за (два|три|\\d+) дн"
+                ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
               },
@@ -175,6 +189,30 @@
           "topic": "multi_step_word_problems"
         },
         "why": "Трёхшаговая задача: найти путь второго дня, затем третьего, затем сумму трёх дней."
+      },
+      {
+        "id": "RT_T17_SHOP_PROBLEM",
+        "kind": "positive",
+        "description": "Мама купила 3 кг яблок по 40 рублей и 2 кг груш по 60 рублей. Сколько сдачи она получит с 500 рублей?",
+        "expected": {
+          "template_id": "T17_pedagogical_template",
+          "task_type": "word_problems",
+          "format": "plain_text",
+          "topic": "multi_step_word_problems"
+        },
+        "why": "Трёхшаговая задача: найти стоимость яблок, стоимость груш, общую стоимость, затем сдачу."
+      },
+      {
+        "id": "RT_T17_EXPLICIT_TWO_STEPS",
+        "kind": "positive",
+        "description": "Реши задачу в два действия: В классе 15 мальчиков и на 3 девочки больше. Сколько всего учеников в классе?",
+        "expected": {
+          "template_id": "T17_pedagogical_template",
+          "task_type": "word_problems",
+          "format": "plain_text",
+          "topic": "multi_step_word_problems"
+        },
+        "why": "Явное указание 'в два действия'."
       }
     ]
   },

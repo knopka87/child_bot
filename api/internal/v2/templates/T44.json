@@ -115,11 +115,18 @@
               "must_have": {
                 "text_patterns_any": [
                   "проверь",
+                  "проверьте",
                   "проверь вычисления",
                   "проверь пример",
                   "проверь результат",
+                  "проверь решение",
+                  "проверь ответ",
                   "обратным действием",
-                  "обратным действием проверь"
+                  "обратным действием проверь",
+                  "сделай проверку",
+                  "выполни проверку",
+                  "проверка вычислений",
+                  "проверочное действие"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -129,7 +136,9 @@
                   "задача",
                   "скорость",
                   "расстояние",
-                  "км/ч"
+                  "км/ч",
+                  "периметр",
+                  "площадь"
                 ],
                 "visual_kinds_any": []
               },
@@ -142,9 +151,21 @@
                 "text_patterns_any": [
                   "прикинь результат",
                   "прикинь",
+                  "прикинь ответ",
+                  "прикидка",
                   "оценить результат",
                   "оценить ответ",
-                  "примерно"
+                  "оцени результат",
+                  "оцени ответ",
+                  "оценка результата",
+                  "примерно",
+                  "примерный ответ",
+                  "приблизительно",
+                  "приблизительный ответ",
+                  "округли и вычисли",
+                  "округли и посчитай",
+                  "примерно равно",
+                  "приблизительное значение"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -152,7 +173,8 @@
               "must_not": {
                 "text_patterns_any": [
                   "найди точное значение",
-                  "точный ответ"
+                  "точный ответ",
+                  "точное значение"
                 ],
                 "visual_kinds_any": []
               },
@@ -165,9 +187,19 @@
                 "text_patterns_any": [
                   "найди ошибку",
                   "найдите ошибку",
+                  "где ошибка",
+                  "исправь ошибку",
+                  "исправьте ошибку",
                   "в каком примере",
                   "в каких примерах",
-                  "ошибк"
+                  "ошибк",
+                  "есть ли ошибка",
+                  "допущена ошибка",
+                  "ошибочный ответ",
+                  "неправильно вычислено",
+                  "неверно решено",
+                  "правильно ли решено",
+                  "правильно ли вычислено"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -183,6 +215,34 @@
               "tie_breaker": "(1) 0 нарушений must_not; (2) наличие маркеров поиска ошибки; (3) выше routing_priority."
             },
             {
+              "rule_id": "T44_TRUE_FALSE_CHECK",
+              "must_have": {
+                "text_patterns_any": [
+                  "верно ли",
+                  "верно или неверно",
+                  "правда ли",
+                  "истинно ли",
+                  "согласен ли",
+                  "может ли быть",
+                  "правильно ли",
+                  "верное равенство",
+                  "неверное равенство"
+                ],
+                "visual_kinds_any": [],
+                "template_params_required": {}
+              },
+              "must_not": {
+                "text_patterns_any": [
+                  "задача",
+                  "скорость",
+                  "расстояние"
+                ],
+                "visual_kinds_any": []
+              },
+              "routing_priority": 70,
+              "tie_breaker": "(1) 0 нарушений must_not; (2) наличие маркеров верно/неверно; (3) выше routing_priority."
+            },
+            {
               "rule_id": "T44_DESCRIBE_ALGORITHM",
               "must_have": {
                 "text_patterns_any": [
@@ -190,7 +250,16 @@
                   "составь алгоритм",
                   "опиши алгоритм",
                   "опиши порядок действий",
-                  "запиши по шагам"
+                  "порядок действий",
+                  "последовательность действий",
+                  "запиши по шагам",
+                  "план вычислений",
+                  "как вычислить",
+                  "расставь порядок действий",
+                  "какое действие первое",
+                  "какое действие выполнить сначала",
+                  "что выполнить сначала",
+                  "в каком порядке вычислять"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -199,7 +268,9 @@
                 "text_patterns_any": [
                   "задача на движение",
                   "скорость",
-                  "расстояние"
+                  "расстояние",
+                  "вычисли выражение",
+                  "найди значение"
                 ],
                 "visual_kinds_any": []
               },
@@ -240,6 +311,18 @@
         "why": "Задание явно просит выполнить проверку обратным действием."
       },
       {
+        "id": "RT_T44_DO_CHECK",
+        "kind": "positive",
+        "description": "Вычисли и сделай проверку: 156 - 89.",
+        "expected": {
+          "template_id": "T44_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "calc_culture_algorithms"
+        },
+        "why": "Фраза 'сделай проверку' — типичный маркер T44."
+      },
+      {
         "id": "RT_T44_FIND_ERROR",
         "kind": "positive",
         "description": "В каких примерах допущена ошибка? 36 + 29 = 55; 48 - 19 = 39; 7 · 8 = 56.",
@@ -250,6 +333,78 @@
           "topic": "calc_culture_algorithms"
         },
         "why": "Задача на поиск ошибок в вычислениях, типичный случай для T44."
+      },
+      {
+        "id": "RT_T44_FIX_ERROR",
+        "kind": "positive",
+        "description": "Найди и исправь ошибку: 72 : 8 = 8.",
+        "expected": {
+          "template_id": "T44_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "calc_culture_algorithms"
+        },
+        "why": "Фраза 'исправь ошибку' — маркер T44_FIND_ERROR."
+      },
+      {
+        "id": "RT_T44_ESTIMATE",
+        "kind": "positive",
+        "description": "Прикинь результат, не вычисляя точно: 49 × 21.",
+        "expected": {
+          "template_id": "T44_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "calc_culture_algorithms"
+        },
+        "why": "Слово 'прикинь' — ключевой маркер T44_ESTIMATE_RESULT."
+      },
+      {
+        "id": "RT_T44_ROUND_ESTIMATE",
+        "kind": "positive",
+        "description": "Округли числа и вычисли примерный ответ: 398 + 512.",
+        "expected": {
+          "template_id": "T44_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "calc_culture_algorithms"
+        },
+        "why": "Фразы 'округли' и 'примерный ответ' указывают на прикидку."
+      },
+      {
+        "id": "RT_T44_TRUE_FALSE",
+        "kind": "positive",
+        "description": "Верно ли равенство: 15 × 4 = 60?",
+        "expected": {
+          "template_id": "T44_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "calc_culture_algorithms"
+        },
+        "why": "Фраза 'верно ли' — маркер T44_TRUE_FALSE_CHECK."
+      },
+      {
+        "id": "RT_T44_ORDER_OF_OPERATIONS",
+        "kind": "positive",
+        "description": "В каком порядке вычислять выражение 24 + 6 × 3?",
+        "expected": {
+          "template_id": "T44_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "calc_culture_algorithms"
+        },
+        "why": "Вопрос про порядок вычислений — маркер T44_DESCRIBE_ALGORITHM."
+      },
+      {
+        "id": "RT_T44_ALGORITHM_PLAN",
+        "kind": "positive",
+        "description": "Составь план решения и вычисли: (45 + 15) : 3 × 2.",
+        "expected": {
+          "template_id": "T44_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "calc_culture_algorithms"
+        },
+        "why": "Фраза 'составь план решения' — явный маркер T44_DESCRIBE_ALGORITHM."
       }
     ]
   },

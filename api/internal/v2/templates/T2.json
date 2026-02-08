@@ -164,8 +164,10 @@
               "must_have": {
                 "text_patterns_any": [
                   "римск",
-                  "римские цифры",
-                  "римские числа"
+                  "(запиши|запишите|переведи|переведите) .* римск",
+                  "в римской записи",
+                  "из (римских|арабских) в (арабские|римские)",
+                  "(сложение|вычитание) римских"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -176,7 +178,8 @@
                   "числовой луч",
                   "по числовому лучу",
                   "таблица умножения",
-                  "деление с остатком"
+                  "деление с остатком",
+                  "закономерн"
                 ],
                 "visual_kinds_any": [
                   "number_line",
@@ -187,6 +190,35 @@
               },
               "routing_priority": 85,
               "tie_breaker": "(1) visual_kinds_any совпадение сильнее текста; (2) 0 нарушений must_not; (3) больше совпадений сильных якорей; (4) больше совпадений template_params_required; (5) выше routing_priority; (6) стабильный порядок по template_code."
+            },
+            {
+              "rule_id": "T2_rule_roman_numerals_regex",
+              "must_have": {
+                "text_patterns_any": [
+                  "[IVXLCDM]{1,}",
+                  "число [IVXLCDM]{1,}"
+                ],
+                "visual_kinds_any": [],
+                "template_params_required": {}
+              },
+              "must_not": {
+                "text_patterns_any": [
+                  "числовая прямая",
+                  "числовой луч",
+                  "диаграмм",
+                  "таблица умножения",
+                  "периметр",
+                  "площадь"
+                ],
+                "visual_kinds_any": [
+                  "number_line",
+                  "diagram",
+                  "grid",
+                  "drawing"
+                ]
+              },
+              "routing_priority": 80,
+              "tie_breaker": "(1) 0 нарушений must_not; (2) наличие римских цифр в тексте; (3) выше routing_priority."
             },
             {
               "rule_id": "T2_rule_table",
@@ -231,7 +263,14 @@
                   "прочитай диаграмму",
                   "по числовой прямой",
                   "периметр",
-                  "площадь"
+                  "площадь",
+                  "неизвестн",
+                  "уравнен",
+                  "столбик",
+                  "столбиком",
+                  "письменно",
+                  "умнож",
+                  "делен"
                 ],
                 "visual_kinds_any": [
                   "number_line",
@@ -299,6 +338,54 @@
           "topic": "numeration_number_line"
         },
         "why": "Нет якоря 'римск' и нет римской записи [IVXLCDM]{2,}; фраза 'арабскими цифрами' сама по себе недостаточна для T2."
+      },
+      {
+        "id": "RT_T2_D",
+        "kind": "positive",
+        "description": "Запиши римскими цифрами число 24.",
+        "expected": {
+          "template_id": "T2_pedagogical_template",
+          "task_type": "numeral_systems",
+          "format": "plain_text",
+          "topic": "roman_arabic_numerals"
+        },
+        "why": "Фраза 'запиши римскими цифрами' — маркер T2."
+      },
+      {
+        "id": "RT_T2_E",
+        "kind": "positive",
+        "description": "Какое римское число больше: XXI или XIX?",
+        "expected": {
+          "template_id": "T2_pedagogical_template",
+          "task_type": "numeral_systems",
+          "format": "plain_text",
+          "topic": "roman_arabic_numerals"
+        },
+        "why": "Фраза 'римское число' + наличие римских цифр XXI, XIX."
+      },
+      {
+        "id": "RT_T2_F",
+        "kind": "positive",
+        "description": "Выполни сложение римских чисел: XII + VIII.",
+        "expected": {
+          "template_id": "T2_pedagogical_template",
+          "task_type": "numeral_systems",
+          "format": "plain_text",
+          "topic": "roman_arabic_numerals"
+        },
+        "why": "Фраза 'сложение римских чисел' + римские цифры XII, VIII."
+      },
+      {
+        "id": "RT_T2_G",
+        "kind": "positive",
+        "description": "Переведи из римских в арабские: XLII.",
+        "expected": {
+          "template_id": "T2_pedagogical_template",
+          "task_type": "numeral_systems",
+          "format": "plain_text",
+          "topic": "roman_arabic_numerals"
+        },
+        "why": "Фраза 'из римских в арабские' — маркер T2."
       }
     ]
   },

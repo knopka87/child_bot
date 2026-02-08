@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -131,11 +132,125 @@ type TemplateCandidate struct {
 	VisualMatched  bool
 }
 
+// RoutingTraceEntry — запись трассировки для одного шаблона/правила
+type RoutingTraceEntry struct {
+	TemplateCode    string   `json:"template_code"`
+	RuleID          string   `json:"rule_id"`
+	Status          string   `json:"status"` // "matched", "rejected_must_not", "rejected_must_have", "rejected_grade", "rejected_task_type"
+	Score           int      `json:"score,omitempty"`
+	AnchorsMatched  int      `json:"anchors_matched,omitempty"`
+	VisualMatched   bool     `json:"visual_matched,omitempty"`
+	RejectedBy      []string `json:"rejected_by,omitempty"` // какие паттерны отсекли
+	MatchedPatterns []string `json:"matched_patterns,omitempty"`
+}
+
+// RoutingTrace — полная трассировка выбора шаблона
+type RoutingTrace struct {
+	TextAll        string              `json:"text_all"`
+	VisualKinds    []string            `json:"visual_kinds"`
+	TaskType       string              `json:"task_type"`
+	Format         string              `json:"format"`
+	Grade          int64               `json:"grade"`
+	Entries        []RoutingTraceEntry `json:"entries"`
+	Winner         string              `json:"winner,omitempty"`
+	WinnerScore    int                 `json:"winner_score,omitempty"`
+	WinnerRuleID   string              `json:"winner_rule_id,omitempty"`
+	CandidateCount int                 `json:"candidate_count"`
+}
+
+// RoutingDebugEnabled — флаг для включения trace-логирования
+var RoutingDebugEnabled = false
+
+// lastRoutingTrace — последняя трассировка (для тестирования и отладки)
+var lastRoutingTrace *RoutingTrace
+var traceMutex sync.Mutex
+
+// GetLastRoutingTrace возвращает последнюю трассировку (для тестирования)
+func GetLastRoutingTrace() *RoutingTrace {
+	traceMutex.Lock()
+	defer traceMutex.Unlock()
+	return lastRoutingTrace
+}
+
+// SetRoutingDebug включает/выключает trace-логирование
+func SetRoutingDebug(enabled bool) {
+	RoutingDebugEnabled = enabled
+}
+
+// FormatRoutingTrace форматирует трассировку в читаемый вид
+func FormatRoutingTrace(trace *RoutingTrace) string {
+	if trace == nil {
+		return "No trace available"
+	}
+
+	var sb strings.Builder
+	sb.WriteString("=== ROUTING TRACE ===\n")
+	sb.WriteString(fmt.Sprintf("Text: %.100s...\n", trace.TextAll))
+	sb.WriteString(fmt.Sprintf("VisualKinds: %v\n", trace.VisualKinds))
+	sb.WriteString(fmt.Sprintf("TaskType: %s, Format: %s, Grade: %d\n", trace.TaskType, trace.Format, trace.Grade))
+	sb.WriteString(fmt.Sprintf("Candidates found: %d\n", trace.CandidateCount))
+
+	if trace.Winner != "" {
+		sb.WriteString(fmt.Sprintf("WINNER: %s (score=%d, rule=%s)\n", trace.Winner, trace.WinnerScore, trace.WinnerRuleID))
+	} else {
+		sb.WriteString("WINNER: none\n")
+	}
+
+	sb.WriteString("\n--- Evaluation details ---\n")
+
+	// Группируем по статусу для лучшей читаемости
+	matched := []RoutingTraceEntry{}
+	rejected := []RoutingTraceEntry{}
+
+	for _, e := range trace.Entries {
+		if e.Status == "matched" {
+			matched = append(matched, e)
+		} else {
+			rejected = append(rejected, e)
+		}
+	}
+
+	if len(matched) > 0 {
+		sb.WriteString("\nMATCHED:\n")
+		for _, e := range matched {
+			sb.WriteString(fmt.Sprintf("  [%s] rule=%s score=%d anchors=%d visual=%v\n",
+				e.TemplateCode, e.RuleID, e.Score, e.AnchorsMatched, e.VisualMatched))
+			if len(e.MatchedPatterns) > 0 {
+				sb.WriteString(fmt.Sprintf("    patterns: %v\n", e.MatchedPatterns))
+			}
+		}
+	}
+
+	if len(rejected) > 0 {
+		sb.WriteString("\nREJECTED:\n")
+		for _, e := range rejected {
+			sb.WriteString(fmt.Sprintf("  [%s] rule=%s status=%s\n", e.TemplateCode, e.RuleID, e.Status))
+			if len(e.RejectedBy) > 0 {
+				sb.WriteString(fmt.Sprintf("    rejected_by: %v\n", e.RejectedBy))
+			}
+		}
+	}
+
+	sb.WriteString("=== END TRACE ===\n")
+	return sb.String()
+}
+
 var (
 	templatesCache     []TemplateRegistry
 	templatesCacheOnce sync.Once
 	templatesDir       = "api/internal/v2/templates"
 )
+
+// SetTemplatesDir sets the templates directory (for testing)
+func SetTemplatesDir(dir string) {
+	templatesDir = dir
+}
+
+// ResetTemplatesCache resets the templates cache (for testing)
+func ResetTemplatesCache() {
+	templatesCache = nil
+	templatesCacheOnce = sync.Once{}
+}
 
 // loadTemplates загружает все шаблоны из папки templates
 func loadTemplates() []TemplateRegistry {
@@ -159,13 +274,31 @@ func loadTemplates() []TemplateRegistry {
 	return templatesCache
 }
 
-// normalizeText нормализует текст для сравнения: lower-case, ё→е, убрать лишние пробелы
+// normalizeText нормализует текст для сравнения:
+// - lower-case
+// - ё → е
+// - унификация математических символов (×, ·, * → *, ÷, : → :)
+// - длинные/средние тире → -
+// - убрать множественные пробелы
 func normalizeText(s string) string {
 	s = strings.ToLower(s)
 	// ё → е
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	result, _, _ := transform.String(t, s)
 	result = strings.ReplaceAll(result, "ё", "е")
+
+	// унификация математических символов умножения → *
+	result = strings.ReplaceAll(result, "×", "*")
+	result = strings.ReplaceAll(result, "·", "*")
+
+	// унификация символов деления → :
+	result = strings.ReplaceAll(result, "÷", ":")
+
+	// длинные/средние тире → обычный минус
+	result = strings.ReplaceAll(result, "—", "-") // длинное тире (em dash)
+	result = strings.ReplaceAll(result, "–", "-") // среднее тире (en dash)
+	result = strings.ReplaceAll(result, "−", "-") // математический минус
+
 	// убрать множественные пробелы
 	re := regexp.MustCompile(`\s+`)
 	result = re.ReplaceAllString(result, " ")
@@ -228,50 +361,107 @@ func getMostFrequent(m map[string]int) string {
 	return result
 }
 
+// cyrillicWordBoundary — паттерн для русских границ слова
+// Используется вместо \b, который не работает корректно с кириллицей в Go/RE2
+const cyrillicWordBoundaryStart = `(?:^|[^А-Яа-яЁёA-Za-z0-9])`
+const cyrillicWordBoundaryEnd = `(?:[^А-Яа-яЁёA-Za-z0-9]|$)`
+
+// wrapWithCyrillicBoundaries оборачивает слово в русские границы слова
+func wrapWithCyrillicBoundaries(word string) string {
+	return cyrillicWordBoundaryStart + regexp.QuoteMeta(word) + cyrillicWordBoundaryEnd
+}
+
+// matchCyrillicWord проверяет наличие слова с учётом русских границ
+func matchCyrillicWord(text, word string) bool {
+	pattern := wrapWithCyrillicBoundaries(word)
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return strings.Contains(text, word)
+	}
+	return re.MatchString(text)
+}
+
+// isRegexPattern проверяет, содержит ли паттерн regex-метасимволы
+func isRegexPattern(pattern string) bool {
+	// Проверяем наличие типичных regex-конструкций
+	return strings.Contains(pattern, ".*") ||
+		strings.Contains(pattern, ".+") ||
+		strings.Contains(pattern, "\\d") ||
+		strings.Contains(pattern, "\\w") ||
+		strings.Contains(pattern, "[") ||
+		strings.Contains(pattern, "(") ||
+		strings.Contains(pattern, "?") ||
+		strings.Contains(pattern, "+") ||
+		strings.Contains(pattern, "|")
+}
+
+// matchPatternFlexible проверяет паттерн с допуском расстояния между частями.
+// Поддерживает три режима:
+// 1. Regex-паттерны (если содержат .*, .+, \d и т.д.)
+// 2. Точное совпадение подстроки
+// 3. Proximity search для паттернов с 3+ словами
+func matchPatternFlexible(text, pattern string, maxDistance int) bool {
+	normalizedPattern := normalizeText(pattern)
+
+	// 1. Проверяем, является ли паттерн regex
+	if isRegexPattern(pattern) {
+		// Нормализуем паттерн, но сохраняем regex-конструкции
+		regexPattern := strings.ToLower(pattern)
+		regexPattern = strings.ReplaceAll(regexPattern, "ё", "е")
+		re, err := regexp.Compile(regexPattern)
+		if err != nil {
+			// Если regex невалиден, пробуем как обычную строку
+			return strings.Contains(text, normalizedPattern)
+		}
+		return re.MatchString(text)
+	}
+
+	// 2. Пробуем точное совпадение подстроки
+	if strings.Contains(text, normalizedPattern) {
+		return true
+	}
+
+	// 3. Разбиваем паттерн на части и ищем с proximity
+	words := strings.Fields(normalizedPattern)
+
+	// Proximity search только для паттернов с 3+ словами (избегаем false positives для коротких)
+	if len(words) < 3 {
+		return false
+	}
+
+	// Ищем первые два слова как устойчивый якорь
+	anchor := words[0] + " " + words[1]
+	idx := strings.Index(text, anchor)
+	if idx == -1 {
+		return false
+	}
+
+	// Проверяем, что остальные слова находятся в пределах maxDistance от якоря
+	windowEnd := idx + len(anchor) + maxDistance
+	if windowEnd > len(text) {
+		windowEnd = len(text)
+	}
+	window := text[idx:windowEnd]
+
+	for _, word := range words[2:] {
+		if !strings.Contains(window, word) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // checkMustHave проверяет, выполняются ли must_have условия
 func checkMustHave(ctx RoutingContext, patterns RulePatterns) (bool, int, bool) {
-	anchorsMatched := 0
-	visualMatched := false
-
-	// Проверяем text_patterns_any (OR)
-	textMatched := len(patterns.TextPatternsAny) == 0
-	for _, pattern := range patterns.TextPatternsAny {
-		if strings.Contains(ctx.TextAll, normalizeText(pattern)) {
-			textMatched = true
-			anchorsMatched++
-		}
-	}
-
-	// Проверяем visual_kinds_any (OR)
-	visualKindsMatched := len(patterns.VisualKindsAny) == 0
-	for _, kind := range patterns.VisualKindsAny {
-		if ctx.VisualKinds[strings.ToLower(kind)] {
-			visualKindsMatched = true
-			visualMatched = true
-			break
-		}
-	}
-
-	return textMatched && visualKindsMatched, anchorsMatched, visualMatched
+	matched, anchorsMatched, visualMatched, _ := checkMustHaveWithTrace(ctx, patterns)
+	return matched, anchorsMatched, visualMatched
 }
 
 // checkMustNot проверяет, нарушены ли must_not условия
 func checkMustNot(ctx RoutingContext, patterns RulePatterns) bool {
-	// Проверяем text_patterns_any
-	for _, pattern := range patterns.TextPatternsAny {
-		if strings.Contains(ctx.TextAll, normalizeText(pattern)) {
-			return true // нарушено
-		}
-	}
-
-	// Проверяем visual_kinds_any
-	for _, kind := range patterns.VisualKindsAny {
-		if ctx.VisualKinds[strings.ToLower(kind)] {
-			return true // нарушено
-		}
-	}
-
-	return false
+	rejected, _ := checkMustNotWithTrace(ctx, patterns)
+	return rejected
 }
 
 // scoreCandidate вычисляет score для кандидата
@@ -304,13 +494,148 @@ func scoreCandidate(ctx RoutingContext, tmpl *Template, rule *RoutingRule, ancho
 }
 
 // selectTemplate выбирает лучший шаблон по алгоритму из ТЗ
+// Двухпроходный поиск: сначала с точным совпадением task_type, затем fallback по паттернам
 func selectTemplate(ctx RoutingContext) (*TemplateCandidate, bool) {
+	// Инициализируем trace если включен debug
+	var trace *RoutingTrace
+	if RoutingDebugEnabled {
+		visualKindsList := make([]string, 0, len(ctx.VisualKinds))
+		for k := range ctx.VisualKinds {
+			visualKindsList = append(visualKindsList, k)
+		}
+		trace = &RoutingTrace{
+			TextAll:     ctx.TextAll,
+			VisualKinds: visualKindsList,
+			TaskType:    ctx.TaskType,
+			Format:      ctx.Format,
+			Grade:       ctx.Grade,
+			Entries:     []RoutingTraceEntry{},
+		}
+	}
+
 	// Только для math
 	if ctx.Subject != types.SubjectMath {
+		if trace != nil {
+			traceMutex.Lock()
+			lastRoutingTrace = trace
+			traceMutex.Unlock()
+		}
 		return nil, false
 	}
 
 	registries := loadTemplates()
+
+	// Первый проход: точное совпадение task_type
+	candidates := findCandidatesWithTrace(ctx, registries, true, trace)
+
+	// Fallback: если кандидатов нет, ищем без учёта task_type
+	if len(candidates) == 0 {
+		candidates = findCandidatesWithTrace(ctx, registries, false, trace)
+	}
+
+	if len(candidates) == 0 {
+		if trace != nil {
+			trace.CandidateCount = 0
+			traceMutex.Lock()
+			lastRoutingTrace = trace
+			traceMutex.Unlock()
+		}
+		return nil, false
+	}
+
+	// Сортировка по tie-break правилам
+	best := candidates[0]
+	for _, c := range candidates[1:] {
+		if compareCandidates(c, best) > 0 {
+			best = c
+		}
+	}
+
+	// Сохраняем trace
+	if trace != nil {
+		trace.CandidateCount = len(candidates)
+		trace.Winner = best.Template.TemplateCode
+		trace.WinnerScore = best.Score
+		trace.WinnerRuleID = best.MatchedRuleID
+		traceMutex.Lock()
+		lastRoutingTrace = trace
+		traceMutex.Unlock()
+	}
+
+	return &best, true
+}
+
+// checkMustNotWithTrace проверяет must_not и возвращает список отсекающих паттернов
+func checkMustNotWithTrace(ctx RoutingContext, patterns RulePatterns) (bool, []string) {
+	var rejectedBy []string
+
+	// Проверяем text_patterns_any
+	for _, pattern := range patterns.TextPatternsAny {
+		normalizedPattern := normalizeText(pattern)
+
+		// Если паттерн содержит regex-конструкции, используем regex
+		if isRegexPattern(pattern) {
+			re, err := regexp.Compile(strings.ToLower(pattern))
+			if err == nil && re.MatchString(ctx.TextAll) {
+				rejectedBy = append(rejectedBy, "text:"+pattern)
+			}
+			continue
+		}
+
+		// Для коротких паттернов (1-2 слова) используем русские границы слова
+		words := strings.Fields(normalizedPattern)
+		if len(words) <= 2 && len(normalizedPattern) >= 3 {
+			if matchCyrillicWord(ctx.TextAll, normalizedPattern) {
+				rejectedBy = append(rejectedBy, "text:"+pattern)
+			}
+		} else if strings.Contains(ctx.TextAll, normalizedPattern) {
+			rejectedBy = append(rejectedBy, "text:"+pattern)
+		}
+	}
+
+	// Проверяем visual_kinds_any
+	for _, kind := range patterns.VisualKindsAny {
+		if ctx.VisualKinds[strings.ToLower(kind)] {
+			rejectedBy = append(rejectedBy, "visual:"+kind)
+		}
+	}
+
+	return len(rejectedBy) > 0, rejectedBy
+}
+
+// checkMustHaveWithTrace проверяет must_have и возвращает список совпавших паттернов
+func checkMustHaveWithTrace(ctx RoutingContext, patterns RulePatterns) (bool, int, bool, []string) {
+	anchorsMatched := 0
+	visualMatched := false
+	var matchedPatterns []string
+
+	// Проверяем text_patterns_any (OR) с гибким поиском
+	textMatched := len(patterns.TextPatternsAny) == 0
+	for _, pattern := range patterns.TextPatternsAny {
+		// Используем гибкий поиск с окном 100 символов
+		if matchPatternFlexible(ctx.TextAll, pattern, 100) {
+			textMatched = true
+			anchorsMatched++
+			matchedPatterns = append(matchedPatterns, "text:"+pattern)
+		}
+	}
+
+	// Проверяем visual_kinds_any (OR)
+	visualKindsMatched := len(patterns.VisualKindsAny) == 0
+	for _, kind := range patterns.VisualKindsAny {
+		if ctx.VisualKinds[strings.ToLower(kind)] {
+			visualKindsMatched = true
+			visualMatched = true
+			matchedPatterns = append(matchedPatterns, "visual:"+kind)
+			break
+		}
+	}
+
+	return textMatched && visualKindsMatched, anchorsMatched, visualMatched, matchedPatterns
+}
+
+// findCandidatesWithTrace ищет кандидатов с опциональной трассировкой
+func findCandidatesWithTrace(ctx RoutingContext, registries []TemplateRegistry, strictTaskType bool, trace *RoutingTrace) []TemplateCandidate {
 	var candidates []TemplateCandidate
 
 	for i := range registries {
@@ -320,33 +645,74 @@ func selectTemplate(ctx RoutingContext) (*TemplateCandidate, bool) {
 
 			// Проверяем grade
 			if ctx.Grade > 0 && (ctx.Grade < tmpl.GradeMin || ctx.Grade > tmpl.GradeMax) {
+				if trace != nil {
+					trace.Entries = append(trace.Entries, RoutingTraceEntry{
+						TemplateCode: tmpl.TemplateCode,
+						RuleID:       "",
+						Status:       "rejected_grade",
+						RejectedBy:   []string{fmt.Sprintf("grade %d not in [%d, %d]", ctx.Grade, tmpl.GradeMin, tmpl.GradeMax)},
+					})
+				}
 				continue
 			}
 
-			// Проверяем match_keys (task_type)
-			if ctx.TaskType != "" && tmpl.Routing.MatchKeys.TaskType != "" {
+			// Проверяем match_keys (task_type) — только в strict режиме
+			taskTypeMatched := true
+			if strictTaskType && ctx.TaskType != "" && tmpl.Routing.MatchKeys.TaskType != "" {
 				if ctx.TaskType != tmpl.Routing.MatchKeys.TaskType {
+					if trace != nil {
+						trace.Entries = append(trace.Entries, RoutingTraceEntry{
+							TemplateCode: tmpl.TemplateCode,
+							RuleID:       "",
+							Status:       "rejected_task_type",
+							RejectedBy:   []string{fmt.Sprintf("task_type '%s' != '%s'", ctx.TaskType, tmpl.Routing.MatchKeys.TaskType)},
+						})
+					}
 					continue
 				}
+			} else if ctx.TaskType != "" && tmpl.Routing.MatchKeys.TaskType != "" {
+				taskTypeMatched = ctx.TaskType == tmpl.Routing.MatchKeys.TaskType
 			}
 
 			// Проверяем routing_rules (OR)
+			ruleMatched := false
 			for k := range tmpl.Routing.RoutingRules {
 				rule := &tmpl.Routing.RoutingRules[k]
 
 				// Проверяем must_not
-				if checkMustNot(ctx, rule.MustNot) {
+				rejected, rejectedBy := checkMustNotWithTrace(ctx, rule.MustNot)
+				if rejected {
+					if trace != nil {
+						trace.Entries = append(trace.Entries, RoutingTraceEntry{
+							TemplateCode: tmpl.TemplateCode,
+							RuleID:       rule.RuleID,
+							Status:       "rejected_must_not",
+							RejectedBy:   rejectedBy,
+						})
+					}
 					continue
 				}
 
 				// Проверяем must_have
-				matched, anchorsMatched, visualMatched := checkMustHave(ctx, rule.MustHave)
+				matched, anchorsMatched, visualMatched, matchedPatterns := checkMustHaveWithTrace(ctx, rule.MustHave)
 				if !matched {
+					if trace != nil {
+						trace.Entries = append(trace.Entries, RoutingTraceEntry{
+							TemplateCode: tmpl.TemplateCode,
+							RuleID:       rule.RuleID,
+							Status:       "rejected_must_have",
+						})
+					}
 					continue
 				}
 
 				// Вычисляем score
 				score := scoreCandidate(ctx, tmpl, rule, anchorsMatched, visualMatched)
+
+				// Бонус за совпадение task_type
+				if taskTypeMatched {
+					score += 20
+				}
 
 				// Получаем profile
 				var profile *TemplateProfile
@@ -362,24 +728,34 @@ func selectTemplate(ctx RoutingContext) (*TemplateCandidate, bool) {
 					AnchorsMatched: anchorsMatched,
 					VisualMatched:  visualMatched,
 				})
+
+				if trace != nil {
+					trace.Entries = append(trace.Entries, RoutingTraceEntry{
+						TemplateCode:    tmpl.TemplateCode,
+						RuleID:          rule.RuleID,
+						Status:          "matched",
+						Score:           score,
+						AnchorsMatched:  anchorsMatched,
+						VisualMatched:   visualMatched,
+						MatchedPatterns: matchedPatterns,
+					})
+				}
+
+				ruleMatched = true
 				break // Достаточно одного правила
+			}
+
+			// Если ни одно правило не подошло и нет записей в trace, добавим общую запись
+			if !ruleMatched && trace != nil && len(tmpl.Routing.RoutingRules) == 0 {
+				trace.Entries = append(trace.Entries, RoutingTraceEntry{
+					TemplateCode: tmpl.TemplateCode,
+					Status:       "no_rules",
+				})
 			}
 		}
 	}
 
-	if len(candidates) == 0 {
-		return nil, false
-	}
-
-	// Сортировка по tie-break правилам
-	best := candidates[0]
-	for _, c := range candidates[1:] {
-		if compareCandidates(c, best) > 0 {
-			best = c
-		}
-	}
-
-	return &best, true
+	return candidates
 }
 
 // compareCandidates сравнивает кандидатов по tie-break правилам

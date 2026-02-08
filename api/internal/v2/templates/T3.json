@@ -98,12 +98,10 @@
               "rule_id": "T3_PARITY_ANCHOR",
               "must_have": {
                 "text_patterns_any": [
-                  "чётн",
-                  "нечётн",
-                  "чётное",
-                  "нечётное",
-                  "делится на 2",
-                  "кратно 2"
+                  "(не)?ч[её]тн(ое|ые|ых)?( числ(о|а))?",
+                  "(делится на 2|кратно 2)",
+                  "разб(ей|ить|ейте) на пары",
+                  "(сумма|произведение|выпиши|найди|определи|является ли) .* (не)?ч[её]тн"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -134,9 +132,10 @@
               "must_have": {
                 "text_patterns_any": [
                   "остаток",
-                  "деление с остатком",
-                  "ост.",
-                  "остаток при делении"
+                  "ост\\.",
+                  "(неполное )?частное",
+                  "(деление|раздели(те)?|выполни(те)?) .* с остатком",
+                  "\\d+ (:|разделить на) \\d+ .* остат"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -163,11 +162,45 @@
               "tie_breaker": "(1) совпало visual_kinds_any (если задано) > (2) 0 нарушений must_not > (3) больше совпадений сильных якорей > (4) совпало больше template_params_required > (5) выше routing_priority > (6) стабильный порядок по template_code."
             },
             {
+              "rule_id": "T3_DIVISIBILITY_ANCHOR",
+              "must_have": {
+                "text_patterns_any": [
+                  "делится (ли|без остатка)",
+                  "(не )?делится",
+                  "кратно",
+                  "кратность",
+                  "признак(и)? делимости",
+                  "делител(ь|и)( числа| \\d+)?",
+                  "(число )?\\d+ делится на \\d+",
+                  "проверь.* делится"
+                ],
+                "visual_kinds_any": [],
+                "template_params_required": {}
+              },
+              "must_not": {
+                "text_patterns_any": [
+                  "в столбик",
+                  "деление столбиком",
+                  "таблица умножения",
+                  "закономерн",
+                  "найди правило",
+                  "уравнен"
+                ],
+                "visual_kinds_any": [
+                  "number_line",
+                  "diagram",
+                  "grid",
+                  "drawing"
+                ]
+              },
+              "routing_priority": 75,
+              "tie_breaker": "(1) 0 нарушений must_not > (2) больше совпадений маркеров делимости > (3) выше routing_priority."
+            },
+            {
               "rule_id": "T3_PLAIN_TEXT_FALLBACK",
               "must_have": {
                 "text_patterns_any": [
-                  "чётн",
-                  "нечётн",
+                  "(не)?ч[её]тн",
                   "остаток"
                 ],
                 "visual_kinds_any": [],
@@ -178,7 +211,7 @@
                   "закономерн",
                   "продолжи ряд",
                   "найди правило",
-                  "в ... раза",
+                  "в \\d+ раза",
                   "периметр",
                   "площадь",
                   "термометр"
@@ -250,6 +283,78 @@
           "topic": "patterns_sequences"
         },
         "why": "Маркер 'продолжи ряд/найди правило' должен уводить в T34, даже если числа чётные."
+      },
+      {
+        "id": "RT_T03_D",
+        "kind": "positive",
+        "description": "Найди остаток от деления 23 на 7.",
+        "expected": {
+          "template_id": "T3_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "parity_and_remainder_division"
+        },
+        "why": "Фраза 'найди остаток от деления' — маркер T3_REMAINDER_DIVISION_ANCHOR."
+      },
+      {
+        "id": "RT_T03_E",
+        "kind": "positive",
+        "description": "Выпиши все чётные числа от 1 до 20.",
+        "expected": {
+          "template_id": "T3_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "parity_and_remainder_division"
+        },
+        "why": "Фраза 'чётные числа' — маркер T3_PARITY_ANCHOR."
+      },
+      {
+        "id": "RT_T03_F",
+        "kind": "positive",
+        "description": "Делится ли число 45 на 9 без остатка?",
+        "expected": {
+          "template_id": "T3_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "parity_and_remainder_division"
+        },
+        "why": "Фраза 'делится ли' и 'без остатка' — маркеры T3_DIVISIBILITY_ANCHOR."
+      },
+      {
+        "id": "RT_T03_G",
+        "kind": "positive",
+        "description": "Какие признаки делимости на 3 ты знаешь? Примени их к числу 123.",
+        "expected": {
+          "template_id": "T3_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "parity_and_remainder_division"
+        },
+        "why": "Фраза 'признаки делимости' — маркер T3_DIVISIBILITY_ANCHOR."
+      },
+      {
+        "id": "RT_T03_H",
+        "kind": "positive",
+        "description": "Чему равен остаток, если 29 разделить на 4?",
+        "expected": {
+          "template_id": "T3_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "parity_and_remainder_division"
+        },
+        "why": "Фраза 'чему равен остаток' — маркер T3_REMAINDER_DIVISION_ANCHOR."
+      },
+      {
+        "id": "RT_T03_I",
+        "kind": "positive",
+        "description": "Может ли сумма двух нечётных чисел быть нечётной?",
+        "expected": {
+          "template_id": "T3_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "plain_text",
+          "topic": "parity_and_remainder_division"
+        },
+        "why": "Фраза 'нечётных чисел' и 'нечётной' — маркеры T3_PARITY_ANCHOR."
       }
     ]
   },

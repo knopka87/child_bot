@@ -106,11 +106,11 @@
               "rule_id": "T5_EXPLICIT_COLUMN_KEYWORDS",
               "must_have": {
                 "text_patterns_any": [
-                  "столбиком",
-                  "в столбик",
+                  "(столбиком|в столбик)",
                   "письменно",
-                  "запиши столбиком",
-                  "выполни в столбик"
+                  "(запиши|выполни|сложи|вычти|реши)(те)? .* (столбиком|в столбик|письменно)",
+                  "(сложение|вычитание|решение) (столбиком|в столбик)",
+                  "\\d+ [+−\\-] \\d+ .* столбик"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -174,11 +174,11 @@
                   "__GAP__",
                   "перенос",
                   "заним",
-                  "заняли",
-                  "взять десяток",
-                  "разряд",
-                  "единиц",
-                  "десят"
+                  "(взять|занять|займ[её]м) (десяток|сотню|тысячу)",
+                  "(с )?переход(ом)? через (десяток|разряд)",
+                  "(по разрядам|поразрядно)",
+                  "разряд (единиц|десятков|сотен|тысяч)",
+                  "перенеси(те)? (десяток|единицу)"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -260,6 +260,42 @@
           "topic": "mental_add_sub_under_100"
         },
         "why": "Маркер 'устно/в уме/переход через десяток' уводит в T4."
+      },
+      {
+        "id": "RT_T05_D",
+        "kind": "positive",
+        "description": "Реши столбиком с переходом через разряд: 678 + 456.",
+        "expected": {
+          "template_id": "T5_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "column",
+          "topic": "written_add_sub_column"
+        },
+        "why": "Фразы 'реши столбиком' и 'переход через разряд' — маркеры T5."
+      },
+      {
+        "id": "RT_T05_E",
+        "kind": "positive",
+        "description": "Выполни сложение в столбик: 1234 + 5678.",
+        "expected": {
+          "template_id": "T5_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "column",
+          "topic": "written_add_sub_column"
+        },
+        "why": "Фраза 'сложение в столбик' — маркер T5."
+      },
+      {
+        "id": "RT_T05_F",
+        "kind": "positive",
+        "description": "Вычисли письменно: 4000 - 1837. Объясни по разрядам.",
+        "expected": {
+          "template_id": "T5_pedagogical_template",
+          "task_type": "arithmetic_fluency",
+          "format": "column",
+          "topic": "written_add_sub_column"
+        },
+        "why": "Фразы 'вычисли письменно' и 'по разрядам' — маркеры T5."
       }
     ]
   },
