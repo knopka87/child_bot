@@ -1364,6 +1364,137 @@ func TestAntiPatterns(t *testing.T) {
 // Benchmark Tests
 // =============================================================================
 
+// =============================================================================
+// P0: Critical __GAP__ Collision Tests (from Analysis Document)
+// Tests from "Анализ_обновленных_шаблонов_и_роутера.docx"
+// =============================================================================
+
+func TestCriticalGapCollisions(t *testing.T) {
+	tests := []TestCase{
+		// Test 1: "__ + 47 = 92" → expected T6 (gap without x - simple equation)
+		{
+			Name:         "gap_equation_without_x_T6",
+			Task:         makeTask(2, "__GAP__ + 47 = 92", nil),
+			Items:        []types.ParseItem{makeItem("Пропуск в равенстве", "arithmetic_fluency", "fill_gaps")},
+			ExpectedCode: "T6",
+			ShouldMatch:  true,
+		},
+
+		// Test 2: "VII = __" → expected T2 (Roman numerals with gap)
+		{
+			Name:         "roman_gap_T2",
+			Task:         makeTask(3, "VII = __GAP__", nil),
+			Items:        []types.ParseItem{makeItem("Римские числа", "numeral_systems", "fill_gaps")},
+			ExpectedCode: "T2",
+			ShouldMatch:  true,
+		},
+
+		// Test 3: "Заполни в столбик: __ + 47 = 92" → expected T5 (column addition with gap)
+		{
+			Name:         "column_gap_addition_T5",
+			Task:         makeTask(2, "Заполни в столбик: __GAP__ + 47 = 92", nil),
+			Items:        []types.ParseItem{makeItem("Столбиком", "arithmetic_fluency", "column")},
+			ExpectedCode: "T5",
+			ShouldMatch:  true,
+		},
+
+		// Test 4: "Заполни в столбик: 23×__=69" → expected T9 (column multiplication with gap)
+		{
+			Name:         "column_gap_multiplication_T9",
+			Task:         makeTask(3, "Заполни в столбик: 23×__GAP__=69", nil),
+			Items:        []types.ParseItem{makeItem("Умножение столбиком", "arithmetic_fluency", "column")},
+			ExpectedCode: "T9",
+			ShouldMatch:  true,
+		},
+
+		// Test 5: "Выполни умножение: 7×8" → expected T8 (NOT T9 - simple multiplication)
+		{
+			Name:         "simple_multiplication_T8_not_T9",
+			Task:         makeTask(2, "Выполни умножение: 7×8", nil),
+			Items:        []types.ParseItem{makeItem("Умножение", "arithmetic_fluency", "plain_text")},
+			ExpectedCode: "T8",
+			ShouldMatch:  true,
+		},
+
+		// Additional edge cases from analysis
+		// Gap with equality but no column context → T6
+		{
+			Name:         "gap_equality_no_column_T6",
+			Task:         makeTask(2, "Найди число: __GAP__ - 15 = 28", nil),
+			Items:        []types.ParseItem{makeItem("Пропуск", "arithmetic_fluency", "fill_gaps")},
+			ExpectedCode: "T6",
+			ShouldMatch:  true,
+		},
+
+		// Column with gap but multiplication → T9 not T5
+		{
+			Name:         "column_division_gap_T9",
+			Task:         makeTask(3, "Раздели столбиком: __GAP__ : 7 = 12", nil),
+			Items:        []types.ParseItem{makeItem("Деление столбиком", "arithmetic_fluency", "column")},
+			ExpectedCode: "T9",
+			ShouldMatch:  true,
+		},
+	}
+
+	runTestCases(t, tests)
+}
+
+// =============================================================================
+// P0: T8 vs T9 Conflict Resolution (from Analysis Document)
+// T9 should only match when "столбик/письменно/уголком" is present
+// =============================================================================
+
+func TestT8vsT9Conflict(t *testing.T) {
+	tests := []TestCase{
+		// T8: Simple multiplication without column indicator
+		{
+			Name:         "simple_mul_no_column_T8",
+			Task:         makeTask(2, "Вычисли: 6 × 9", nil),
+			Items:        []types.ParseItem{makeItem("Вычисли", "arithmetic_fluency", "plain_text")},
+			ExpectedCode: "T8",
+			ShouldMatch:  true,
+		},
+
+		// T8: Multiplication table reference
+		{
+			Name:         "table_reference_T8",
+			Task:         makeTask(2, "По таблице умножения найди: 8 × 7", nil),
+			Items:        []types.ParseItem{makeItem("Таблица умножения", "arithmetic_fluency", "plain_text")},
+			ExpectedCode: "T8",
+			ShouldMatch:  true,
+		},
+
+		// T9: With explicit "столбиком"
+		{
+			Name:         "explicit_column_T9",
+			Task:         makeTask(3, "Умножь столбиком: 123 × 4", nil),
+			Items:        []types.ParseItem{makeItem("Столбиком", "arithmetic_fluency", "column")},
+			ExpectedCode: "T9",
+			ShouldMatch:  true,
+		},
+
+		// T9: With "уголком" (division)
+		{
+			Name:         "ugolkom_T9",
+			Task:         makeTask(3, "Выполни деление уголком: 144 : 6", nil),
+			Items:        []types.ParseItem{makeItem("Деление уголком", "arithmetic_fluency", "column")},
+			ExpectedCode: "T9",
+			ShouldMatch:  true,
+		},
+
+		// T9: With "письменно"
+		{
+			Name:         "pismeno_mul_T9",
+			Task:         makeTask(3, "Выполни письменно умножение: 234 × 5", nil),
+			Items:        []types.ParseItem{makeItem("Письменное умножение", "arithmetic_fluency", "column")},
+			ExpectedCode: "T9",
+			ShouldMatch:  true,
+		},
+	}
+
+	runTestCases(t, tests)
+}
+
 func BenchmarkSelectTemplate(b *testing.B) {
 	task := makeTask(3, "Прямоугольник разрезали на 9 неодинаковых квадратов. Покажи длины сторон остальных квадратов.", []types.VisualFact{
 		{Kind: "diagram", Value: "Прямоугольник из квадратов"},
