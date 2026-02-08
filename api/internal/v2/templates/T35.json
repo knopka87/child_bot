@@ -115,7 +115,16 @@
                   "найди значение выражения",
                   "найдите значение выражения",
                   "вычисли устно",
-                  "вычислите устно"
+                  "вычислите устно",
+                  "порядок действий",
+                  "в каком порядке",
+                  "(расставь|поставь)(те)? скобки",
+                  "выполни(те)? действия",
+                  "сначала (умножение|деление)",
+                  "(составь|запиши)(те)? выражение",
+                  "записать выражением",
+                  "(расставь|укажи)(те)? порядок",
+                  "пронумеруй(те)? действия"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -176,6 +185,42 @@
           "topic": "arith_expressions_order"
         },
         "why": "Задача на устное вычисление выражения без сюжета, что соответствует T35."
+      },
+      {
+        "id": "RT_T35_ORDER_QUESTION",
+        "kind": "positive",
+        "description": "В каком порядке выполняются действия в выражении 8 + 2 × 5 - 3?",
+        "expected": {
+          "template_id": "T35_pedagogical_template",
+          "task_type": "patterns_logic",
+          "format": "plain_text",
+          "topic": "arith_expressions_order"
+        },
+        "why": "Прямой вопрос про порядок действий."
+      },
+      {
+        "id": "RT_T35_BRACKETS",
+        "kind": "positive",
+        "description": "Расставь скобки так, чтобы значение выражения 2 + 3 × 4 равнялось 20.",
+        "expected": {
+          "template_id": "T35_pedagogical_template",
+          "task_type": "patterns_logic",
+          "format": "plain_text",
+          "topic": "arith_expressions_order"
+        },
+        "why": "Задание на расстановку скобок для изменения порядка действий."
+      },
+      {
+        "id": "RT_T35_COMPOSE",
+        "kind": "positive",
+        "description": "Составь выражение по условию: из суммы чисел 12 и 8 вычесть произведение 3 и 4.",
+        "expected": {
+          "template_id": "T35_pedagogical_template",
+          "task_type": "patterns_logic",
+          "format": "plain_text",
+          "topic": "arith_expressions_order"
+        },
+        "why": "Задание на составление выражения по словесному описанию."
       }
     ]
   },

@@ -96,16 +96,15 @@
         },
         "routing": {
           "match_keys": {
-            "ped.constraints": "needs_visual",
-            "ped.format": "mixed",
-            "ped.task_type": "geometry",
-            "ped.template_params.change_mode": "none",
-            "ped.template_params.compare_mode": "none",
-            "ped.template_params.geometry_mode": "perimeter_area_rect",
-            "ped.template_params.ops": "add,sub,mul",
-            "ped.template_params.unit_kind": "length,area",
-            "subject": "math",
-            "derived.geometry_mode_final": "perimeter_area_rect"
+            "task_type": "geometry",
+            "topic": "perimeter_area_rect",
+            "formats_allowed": [
+              "mixed",
+              "plain_text",
+              "grid",
+              "drawing",
+              "table"
+            ]
           },
           "routing_rules": [
             {
@@ -117,7 +116,28 @@
                   "прямоугольника",
                   "прямоугольник",
                   "квадрата",
-                  "квадрат"
+                  "квадрат",
+                  "найди периметр",
+                  "вычисли периметр",
+                  "чему равен периметр",
+                  "найди площадь",
+                  "вычисли площадь",
+                  "чему равна площадь",
+                  "сторона квадрата",
+                  "сторона прямоугольника",
+                  "длина прямоугольника",
+                  "ширина прямоугольника",
+                  "длина и ширина",
+                  "см²",
+                  "м²",
+                  "кв\\. см",
+                  "кв\\. м",
+                  "квадратных сантиметров",
+                  "квадратных метров",
+                  "формула периметра",
+                  "формула площади",
+                  "P = ",
+                  "S = "
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -130,7 +150,19 @@
                   "трапеция",
                   "параллелограмм",
                   "радиус",
-                  "диаметр"
+                  "диаметр",
+                  "спичк",
+                  "разрезали на",
+                  "сколько квадратов",
+                  "сколько всего квадратов",
+                  "сетка",
+                  "сетке",
+                  "посчитай",
+                  "подсчитай",
+                  "переложи",
+                  "магический квадрат",
+                  "волшебный квадрат",
+                  "заполни квадрат"
                 ],
                 "visual_kinds_any": []
               },
@@ -176,6 +208,66 @@
           "topic": "perimeter_area_rect"
         },
         "why": "Есть слова 'площадь' и 'квадрат'; классическая задача на площадь квадрата."
+      },
+      {
+        "id": "RT_T22_C",
+        "kind": "positive",
+        "description": "Длина прямоугольника 8 см, ширина 3 см. Чему равна площадь?",
+        "expected": {
+          "template_id": "T22_pedagogical_template",
+          "task_type": "geometry",
+          "format": "plain_text",
+          "topic": "perimeter_area_rect"
+        },
+        "why": "Маркеры 'длина прямоугольника', 'ширина', 'площадь'."
+      },
+      {
+        "id": "RT_T22_D",
+        "kind": "positive",
+        "description": "Сторона квадрата равна 7 м. Найди его периметр и площадь.",
+        "expected": {
+          "template_id": "T22_pedagogical_template",
+          "task_type": "geometry",
+          "format": "plain_text",
+          "topic": "perimeter_area_rect"
+        },
+        "why": "Маркеры 'сторона квадрата', 'периметр', 'площадь'."
+      },
+      {
+        "id": "RT_T22_E",
+        "kind": "positive",
+        "description": "Площадь прямоугольника 24 кв. см. Длина 6 см. Найди ширину.",
+        "expected": {
+          "template_id": "T22_pedagogical_template",
+          "task_type": "geometry",
+          "format": "plain_text",
+          "topic": "perimeter_area_rect"
+        },
+        "why": "Обратная задача: по площади и одной стороне найти другую. Маркеры 'площадь прямоугольника', 'кв. см'."
+      },
+      {
+        "id": "RT_T22_F",
+        "kind": "positive",
+        "description": "Периметр квадрата 20 см. Чему равна его сторона?",
+        "expected": {
+          "template_id": "T22_pedagogical_template",
+          "task_type": "geometry",
+          "format": "plain_text",
+          "topic": "perimeter_area_rect"
+        },
+        "why": "Обратная задача на периметр квадрата."
+      },
+      {
+        "id": "RT_T22_G",
+        "kind": "near_miss",
+        "description": "Найди площадь треугольника с основанием 6 см и высотой 4 см.",
+        "expected": {
+          "template_id": "T26_pedagogical_template",
+          "task_type": "geometry",
+          "format": "plain_text",
+          "topic": "other_geometry"
+        },
+        "why": "Треугольник — это не прямоугольник/квадрат, must_not отсекает."
       }
     ]
   },
@@ -248,9 +340,9 @@
         "Регулярно напоминать отличие периметра (длина границы) от площади (место внутри фигуры)."
       ],
       "disclosure_defaults": {
-        "can_show_formula_symbols": true,
-        "can_show_intermediate_diagram": true,
-        "emphasize_units": true
+        "h1": "none",
+        "h2": "partial",
+        "h3": "partial"
       }
     }
   }

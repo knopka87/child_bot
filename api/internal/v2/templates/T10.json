@@ -101,19 +101,14 @@
               "rule_id": "T10_TIMES_MORE_LESS_ANCHORS",
               "must_have": {
                 "text_patterns_any": [
-                  "в раз",
-                  "в раза",
+                  "в \\d+ раза? (больше|меньше|дороже|дешевле|старше|младше|тяжелее|легче|выше|ниже|длиннее|короче)",
+                  "в \\d+ раз(а)?\\b",
                   "в несколько раз",
-                  "в 2 раза",
-                  "в 3 раза",
-                  "в 4 раза",
-                  "в 5 раз",
-                  "в 6 раз",
-                  "в 7 раз",
-                  "в 8 раз",
-                  "в 9 раз",
-                  "больше в",
-                  "меньше в"
+                  "(больше|меньше) в \\d+ раз",
+                  "(увеличь|уменьши|увеличить|уменьшить)(те)? .* в \\d+ раз",
+                  "(увеличь|уменьши|увеличить|уменьшить)(те)? \\d+ в \\d+ раз",
+                  "(вдвое|втрое|вчетверо|впятеро)( (больше|меньше|дороже|дешевле))?",
+                  "\\d+ .* в \\d+ раза? (больше|меньше)"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -156,11 +151,9 @@
               "rule_id": "T10_MULTIPLICATIVE_COMPARE_WORDS",
               "must_have": {
                 "text_patterns_any": [
-                  "во сколько раз",
-                  "на сколько раз",
-                  "в сколько раз",
-                  "в несколько раз больше",
-                  "в несколько раз меньше"
+                  "в несколько раз (больше|меньше)",
+                  "сколько .* в \\d+ раза? (больше|меньше)",
+                  "(найди|найдите|вычисли) .* в \\d+ раз"
                 ],
                 "visual_kinds_any": [],
                 "template_params_required": {}
@@ -242,6 +235,54 @@
           "topic": "equal_groups_mul_div_meaning"
         },
         "why": "Это деление на равные части (поровну) — смысл равных групп (T7), а не сравнение «в ... раз»."
+      },
+      {
+        "id": "RT_T10_D",
+        "kind": "positive",
+        "description": "Во сколько раз 36 больше 4?",
+        "expected": {
+          "template_id": "T10_pedagogical_template",
+          "task_type": "word_problems",
+          "format": "plain_text",
+          "topic": "multiplicative_comparison_times"
+        },
+        "why": "Вопрос «во сколько раз» — кратное сравнение."
+      },
+      {
+        "id": "RT_T10_E",
+        "kind": "positive",
+        "description": "Увеличь число 7 в 5 раз.",
+        "expected": {
+          "template_id": "T10_pedagogical_template",
+          "task_type": "word_problems",
+          "format": "plain_text",
+          "topic": "multiplicative_comparison_times"
+        },
+        "why": "Маркер «увеличь в ... раз» — умножение."
+      },
+      {
+        "id": "RT_T10_F",
+        "kind": "positive",
+        "description": "Уменьши 48 в 6 раз.",
+        "expected": {
+          "template_id": "T10_pedagogical_template",
+          "task_type": "word_problems",
+          "format": "plain_text",
+          "topic": "multiplicative_comparison_times"
+        },
+        "why": "Маркер «уменьши в ... раз» — деление."
+      },
+      {
+        "id": "RT_T10_G",
+        "kind": "positive",
+        "description": "Книга стоит 50 рублей, а тетрадь вдвое дешевле. Сколько стоит тетрадь?",
+        "expected": {
+          "template_id": "T10_pedagogical_template",
+          "task_type": "word_problems",
+          "format": "plain_text",
+          "topic": "multiplicative_comparison_times"
+        },
+        "why": "Маркер «вдвое дешевле» = в 2 раза меньше."
       }
     ]
   },
