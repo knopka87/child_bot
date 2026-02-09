@@ -124,10 +124,7 @@
                   "периметр",
                   "площадь",
                   "дроб",
-                  "процент",
-                  "римск",
-                  "римские",
-                  "[IVXLCDM]{2,}"
+                  "процент"
                 ],
                 "visual_kinds_any": [
                   "table",
@@ -144,6 +141,7 @@
               "rule_id": "T6_EQUATION_WITH_X_OR_GAP",
               "must_have": {
                 "text_patterns_any": [
+                  "__GAP__",
                   "(x|икс)",
                   "(уравнение|неизвестное)"
                 ],
@@ -163,10 +161,7 @@
                   "периметр",
                   "площадь",
                   "дроб",
-                  "процент",
-                  "римск",
-                  "римские",
-                  "[IVXLCDM]{2,}"
+                  "процент"
                 ],
                 "visual_kinds_any": [
                   "table",
@@ -177,46 +172,7 @@
                 ]
               },
               "routing_priority": 70,
-              "tie_breaker": "(1) 0 нарушений must_not; (2) больше совпадений маркеров x/икс/неизвестное; (3) выше routing_priority."
-            },
-            {
-              "rule_id": "T6_FILL_GAP_EQUALITY",
-              "must_have": {
-                "text_patterns_any": [
-                  "__GAP__.*=",
-                  "=.*__GAP__",
-                  "__GAP__ [+−\\-] \\d+ = \\d+",
-                  "\\d+ [+−\\-] __GAP__ = \\d+"
-                ],
-                "visual_kinds_any": [],
-                "template_params_required": {}
-              },
-              "must_not": {
-                "text_patterns_any": [
-                  "умнож",
-                  "делен",
-                  "в столбик",
-                  "столбиком",
-                  "письменно",
-                  "таблица умножения",
-                  "римск",
-                  "римские",
-                  "[IVXLCDM]{2,}",
-                  "перенос",
-                  "заним",
-                  "по разрядам"
-                ],
-                "visual_kinds_any": [
-                  "table",
-                  "diagram",
-                  "number_line",
-                  "grid",
-                  "drawing",
-                  "column"
-                ]
-              },
-              "routing_priority": 80,
-              "tie_breaker": "(1) 0 нарушений must_not; (2) совпадение __GAP__ + равенство; (3) выше routing_priority."
+              "tie_breaker": "(1) 0 нарушений must_not; (2) больше совпадений маркеров __GAP__/x/икс/неизвестное; (3) выше routing_priority."
             }
           ],
           "confusables": [
