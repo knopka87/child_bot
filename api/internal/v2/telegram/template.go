@@ -3,16 +3,12 @@ package telegram
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
-	"unicode"
-
-	"golang.org/x/text/runes"
-	"golang.org/x/text/transform"
-	"golang.org/x/text/unicode/norm"
 
 	"child-bot/api/internal/v2/types"
 )
@@ -81,13 +77,13 @@ type HintPolicyDefault struct {
 
 // TemplateProfile — профиль для передачи в HINT (template_profile_core)
 type TemplateProfile struct {
-	HintStyleProfile   string            `json:"hint_style_profile"`
-	MaxHintsDefault    int               `json:"max_hints_default"`
-	AgeLanguage        AgeLanguage       `json:"age_language"`
-	TeachingPattern    TeachingPattern   `json:"teaching_pattern"`
-	CommonMistakes     []string          `json:"common_mistakes"`
-	TerminologyRules   []string          `json:"terminology_rules"`
-	DisclosureDefaults map[string]string `json:"disclosure_defaults"`
+	HintStyleProfile   interface{}            `json:"hint_style_profile"` // can be string or object
+	MaxHintsDefault    int                    `json:"max_hints_default"`
+	AgeLanguage        AgeLanguage            `json:"age_language"`
+	TeachingPattern    TeachingPattern        `json:"teaching_pattern"`
+	CommonMistakes     []string               `json:"common_mistakes"`
+	TerminologyRules   interface{}            `json:"terminology_rules"` // can be string array or map
+	DisclosureDefaults map[string]interface{} `json:"disclosure_defaults"`
 }
 
 type AgeLanguage struct {
@@ -262,10 +258,12 @@ func loadTemplates() []TemplateRegistry {
 		for _, f := range files {
 			data, err := os.ReadFile(f)
 			if err != nil {
+				log.Printf("[template] failed to read %s: %v", f, err)
 				continue
 			}
 			var reg TemplateRegistry
 			if err := json.Unmarshal(data, &reg); err != nil {
+				log.Printf("[template] failed to parse %s: %v", f, err)
 				continue
 			}
 			templatesCache = append(templatesCache, reg)
@@ -276,16 +274,14 @@ func loadTemplates() []TemplateRegistry {
 
 // normalizeText нормализует текст для сравнения:
 // - lower-case
-// - ё → е
+// - ё → е (простая замена, без NFD чтобы сохранить й)
 // - унификация математических символов (×, ·, * → *, ÷, : → :)
 // - длинные/средние тире → -
 // - убрать множественные пробелы
 func normalizeText(s string) string {
 	s = strings.ToLower(s)
-	// ё → е
-	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-	result, _, _ := transform.String(t, s)
-	result = strings.ReplaceAll(result, "ё", "е")
+	// ё → е (простая замена, NFD удаляет й поэтому не используем)
+	result := strings.ReplaceAll(s, "ё", "е")
 
 	// унификация математических символов умножения → *
 	result = strings.ReplaceAll(result, "×", "*")
@@ -489,6 +485,20 @@ func scoreCandidate(ctx RoutingContext, tmpl *Template, rule *RoutingRule, ancho
 
 	// +routing_priority (нормализованный)
 	score += rule.RoutingPriority / 10
+
+	// Бонус за специфичность шаблона (узкий диапазон классов)
+	// Чем уже диапазон, тем выше бонус
+	// Это важно для выбора специализированных шаблонов (T45-T50 для 1 класса)
+	// перед общими шаблонами (T1-T14 для классов 1-4)
+	// Формула: 80 / gradeRange, так что:
+	// - range=1 (один класс): +80
+	// - range=2: +40
+	// - range=4: +20
+	gradeRange := tmpl.GradeMax - tmpl.GradeMin + 1
+	if gradeRange > 0 {
+		specificityBonus := 80 / int(gradeRange)
+		score += specificityBonus
+	}
 
 	return score
 }
