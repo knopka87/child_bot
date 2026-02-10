@@ -118,7 +118,14 @@
                 "template_params_required": {}
               },
               "must_not": {
-                "text_patterns_any": [],
+                "text_patterns_any": [
+                  "увеличил[аио]?",
+                  "уменьшил[аио]?",
+                  "стал[аио]? (больше|меньше)",
+                  "вырос(ла|ло)?",
+                  "убав",
+                  "прибав"
+                ],
                 "visual_kinds_any": []
               },
               "routing_priority": 66,
