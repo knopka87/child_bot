@@ -226,6 +226,122 @@ func TestT2_RomanNumerals(t *testing.T) {
 	runTestCases(t, tests)
 }
 
+// TestT2_ListMarkersNotRoman проверяет, что римские цифры как маркеры списка не триггерят T2
+func TestT2_ListMarkersNotRoman(t *testing.T) {
+	tests := []TestCase{
+		// "I. Вычисли..." — это пункт списка, не римская цифра
+		// Должен матчить T4 (арифметика), а не T2 (римские числа)
+		{
+			Name:         "T2_reject_list_marker_I",
+			Task:         makeTask(3, "I. Вычисли 25 + 37. II. Вычисли 48 - 19.", nil),
+			Items:        []types.ParseItem{makeItem("Вычисли", "arithmetic_fluency", "plain_text")},
+			ExpectedCode: "T4", // арифметика, не T2
+			ShouldMatch:  true,
+		},
+		// Но "XIV" в контексте числа — это римская цифра
+		{
+			Name:         "T2_match_XIV_number",
+			Task:         makeTask(3, "Какое число записано: XIV?", nil),
+			Items:        []types.ParseItem{makeItem("Римское число", "numeral_systems", "plain_text")},
+			ExpectedCode: "T2",
+			ShouldMatch:  true,
+		},
+		// Проверим ещё один случай: "V. Реши задачу" — пункт списка
+		{
+			Name:         "T2_reject_list_marker_V",
+			Task:         makeTask(3, "V. Реши уравнение: x + 5 = 12", nil),
+			Items:        []types.ParseItem{makeItem("Реши уравнение", "patterns_logic", "plain_text")},
+			ExpectedCode: "T37", // уравнения, не T2
+			ShouldMatch:  true,
+		},
+	}
+
+	runTestCases(t, tests)
+}
+
+// TestT2_RejectEquationsWithX проверяет, что T2 не матчит уравнения с переменной X
+func TestT2_RejectEquationsWithX(t *testing.T) {
+	// Эти задачи содержат X как переменную, а не римскую цифру
+	equationTests := []struct {
+		Name string
+		Text string
+	}{
+		{"T2_reject_equation_find_x", "Найди x: x + 5 = 12"},
+		{"T2_reject_equation_solve", "Реши уравнение: X - 3 = 7"},
+		{"T2_reject_unknown_x", "Найди неизвестное X в примере: X + 10 = 25"},
+	}
+
+	for _, tc := range equationTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			task := makeTask(3, tc.Text, nil)
+			items := []types.ParseItem{makeItem("Уравнение", "patterns_logic", "plain_text")}
+			ctx := buildRoutingContext(task, items)
+			candidate, found := selectTemplate(ctx)
+
+			if found && candidate.Template.TemplateCode == "T2" {
+				t.Errorf("T2 should NOT match equation with variable X, but got T2 (rule=%s)", candidate.MatchedRuleID)
+			}
+		})
+	}
+}
+
+// TestT5_RejectGapWithoutColumn проверяет, что T5 не матчит __GAP__ без контекста столбика
+func TestT5_RejectGapWithoutColumn(t *testing.T) {
+	// Эти задачи содержат __GAP__ но не про столбик
+	gapTests := []struct {
+		Name string
+		Text string
+	}{
+		{"T5_reject_gap_roman", "Запиши римскими цифрами: __GAP__ = 14"},
+		{"T5_reject_gap_mental", "Считай устно: 25 + __GAP__ = 40"},
+		{"T5_reject_gap_diagram", "По диаграмме определи __GAP__"},
+	}
+
+	for _, tc := range gapTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			task := makeTask(3, tc.Text, nil)
+			items := []types.ParseItem{makeItem("Пропуск", "arithmetic_fluency", "fill_gaps")}
+			ctx := buildRoutingContext(task, items)
+			candidate, found := selectTemplate(ctx)
+
+			if found && candidate.Template.TemplateCode == "T5" {
+				t.Errorf("T5 should NOT match __GAP__ without column context, but got T5 (rule=%s)", candidate.MatchedRuleID)
+			}
+		})
+	}
+}
+
+// TestVisualKindsRequired проверяет, что правила с обязательным visual_kinds_any
+// не матчатся, если у задачи нет визуальных элементов
+func TestVisualKindsRequired(t *testing.T) {
+	tests := []TestCase{
+		// T26 требует визуал (grid/drawing) для "площадь по клеткам"
+		// Без визуала не должен матчиться
+		{
+			Name: "T26_requires_visual_with_visual",
+			Task: makeTask(3, "На клетчатой бумаге нарисована фигура. Найди её площадь по клеткам.", []types.VisualFact{
+				{Kind: "grid", Value: "клетки"},
+			}),
+			Items:        []types.ParseItem{makeItem("Площадь по клеткам", "geometry", "grid")},
+			ExpectedCode: "T26",
+			ShouldMatch:  true,
+		},
+		// T42 требует визуал "diagram" для чтения часов
+		// С визуалом должен матчиться
+		{
+			Name: "T42_clock_with_visual",
+			Task: makeTask(2, "Который час показывают часы?", []types.VisualFact{
+				{Kind: "diagram", Value: "циферблат"},
+			}),
+			Items:        []types.ParseItem{makeItem("Который час", "measurement_units", "diagram")},
+			ExpectedCode: "T42",
+			ShouldMatch:  true,
+		},
+	}
+
+	runTestCases(t, tests)
+}
+
 // =============================================================================
 // T3: Чётные/нечётные числа, деление с остатком
 // task_type: arithmetic_fluency
@@ -1996,14 +2112,14 @@ func TestPetersonGrade3Tasks(t *testing.T) {
 			ShouldMatch:  true,
 		},
 
-		// Page 6, Task 8: Unit expression
+		// Page 6, Task 8: Unit expression (перевод единиц — это T21, не T19)
 		{
 			Name: "Peterson_p6_t8_unit_conversion",
 			Task: makeTask(3, "Вырази в указанных единицах измерения: А) 3 м 8 см = … см; 12 км 25 м = … м.", nil),
 			Items: []types.ParseItem{
 				makeItem("Единицы измерения", "measurement_units", "plain_text"),
 			},
-			ExpectedCode: "T19",
+			ExpectedCode: "T21",
 			ShouldMatch:  true,
 		},
 	}
@@ -2788,6 +2904,414 @@ func TestT43_MoneyPrices(t *testing.T) {
 			Task:         makeTask(2, "Покупка стоит 57 руб., заплатили 100 руб. Какая сдача?", nil),
 			Items:        []types.ParseItem{makeItem("Сдача", "measurement_units", "plain_text")},
 			ExpectedCode: "T43",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// =============================================================================
+// CONFUSABLE PAIRS: Negative tests
+// Проверяем, что похожие шаблоны не путаются между собой
+// =============================================================================
+
+// T23 vs T25: Температура (градусы °C) vs Углы (градусы °)
+// Оба используют слово "градус" и символ "°", но контекст разный
+func TestT23vsT25_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T23 должен ловить температуру, а не углы
+		{
+			Name: "T23_temperature_not_angle",
+			Task: makeTask(3, "Термометр показывает 15 градусов. Какая температура на улице?", []types.VisualFact{
+				{Kind: "diagram", Value: "термометр"},
+			}),
+			Items:        []types.ParseItem{makeItem("Температура", "measurement_units", "diagram")},
+			ExpectedCode: "T23",
+			ShouldMatch:  true,
+		},
+		// T25 должен ловить углы, а не температуру
+		{
+			Name: "T25_angle_not_temperature",
+			Task: makeTask(3, "Угол равен 90 градусов. Какой это угол — острый, прямой или тупой?", []types.VisualFact{
+				{Kind: "diagram", Value: "угол"},
+			}),
+			Items:        []types.ParseItem{makeItem("Вид угла", "geometry", "diagram")},
+			ExpectedCode: "T25",
+			ShouldMatch:  true,
+		},
+		// Негативный: "градусы" без контекста температуры — НЕ T23
+		{
+			Name: "T23_reject_angle_degrees",
+			Task: makeTask(3, "Измерь угол транспортиром. Сколько градусов?", []types.VisualFact{
+				{Kind: "diagram", Value: "транспортир"},
+			}),
+			Items:        []types.ParseItem{makeItem("Угол в градусах", "geometry", "diagram")},
+			ExpectedCode: "T25", // должен быть T25, а не T23
+			ShouldMatch:  true,
+		},
+		// T23: температура с термометром (более надёжное соответствие)
+		{
+			Name: "T23_temperature_with_thermometer",
+			Task: makeTask(3, "Посмотри на термометр. Утром температура была минус 5 градусов, а днём плюс 10 градусов. На сколько градусов потеплело?", []types.VisualFact{
+				{Kind: "diagram", Value: "термометр"},
+			}),
+			Items:        []types.ParseItem{makeItem("Изменение температуры", "measurement_units", "diagram")},
+			ExpectedCode: "T23",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// T19 vs T21: Текстовые задачи на величины vs Перевод единиц
+// T19 — сюжетная задача с величинами, T21 — чистый перевод/сравнение единиц
+func TestT19vsT21_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T21: чистый перевод единиц (без сюжета)
+		{
+			Name:         "T21_pure_conversion",
+			Task:         makeTask(3, "Переведи 2 км 300 м в метры", nil),
+			Items:        []types.ParseItem{makeItem("Перевод единиц", "measurement_units", "plain_text")},
+			ExpectedCode: "T21",
+			ShouldMatch:  true,
+		},
+		// T21: сравнение единиц длины
+		{
+			Name:         "T21_compare_units",
+			Task:         makeTask(3, "Сравни единицы длины: 3 км 50 м и 3500 м. Что больше? Переведи в одну единицу.", nil),
+			Items:        []types.ParseItem{makeItem("Сравнение единиц длины", "measurement_units", "plain_text")},
+			ExpectedCode: "T21",
+			ShouldMatch:  true,
+		},
+		// T19: сюжетная задача с величинами (не чистый перевод)
+		{
+			Name:         "T19_story_with_units",
+			Task:         makeTask(3, "Мама купила 2 кг яблок и 1 кг 500 г груш. Сколько всего фруктов купила мама?", nil),
+			Items:        []types.ParseItem{makeItem("Задача с величинами", "word_problems", "plain_text")},
+			ExpectedCode: "T19",
+			ShouldMatch:  true,
+		},
+		// Негативный: "вырази" — это T21, не T19
+		{
+			Name:         "T21_express_not_story",
+			Task:         makeTask(3, "Вырази 1 час 20 минут в минутах", nil),
+			Items:        []types.ParseItem{makeItem("Вырази", "measurement_units", "plain_text")},
+			ExpectedCode: "T21",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// T31 vs T32: Чтение диаграмм vs Построение диаграмм
+// T31 — прочитать/найти по диаграмме, T32 — построить/нарисовать диаграмму
+func TestT31vsT32_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T31: чтение диаграммы
+		{
+			Name: "T31_read_diagram",
+			Task: makeTask(3, "По диаграмме определи, в какой день было больше всего посетителей", []types.VisualFact{
+				{Kind: "diagram", Value: "столбчатая диаграмма"},
+			}),
+			Items:        []types.ParseItem{makeItem("По диаграмме определи", "data_representation", "diagram")},
+			ExpectedCode: "T31",
+			ShouldMatch:  true,
+		},
+		// T32: построение диаграммы
+		{
+			Name: "T32_build_diagram",
+			Task: makeTask(3, "Построй столбчатую диаграмму по данным: Пн-5, Вт-8, Ср-3", []types.VisualFact{
+				{Kind: "table", Value: "данные"},
+			}),
+			Items:        []types.ParseItem{makeItem("Построй диаграмму", "data_representation", "mixed")},
+			ExpectedCode: "T32",
+			ShouldMatch:  true,
+		},
+		// Негативный: "найди по диаграмме" — это T31, не T32
+		{
+			Name: "T31_find_not_build",
+			Task: makeTask(3, "Найди по диаграмме наименьшее значение", []types.VisualFact{
+				{Kind: "diagram", Value: "диаграмма"},
+			}),
+			Items:        []types.ParseItem{makeItem("Найди по диаграмме", "data_representation", "diagram")},
+			ExpectedCode: "T31",
+			ShouldMatch:  true,
+		},
+		// Негативный: "составь диаграмму" — это T32, не T31
+		{
+			Name: "T32_compose_not_read",
+			Task: makeTask(3, "По данным таблицы составь столбчатую диаграмму распределения учеников по кружкам", []types.VisualFact{
+				{Kind: "table", Value: "данные"},
+			}),
+			Items:        []types.ParseItem{makeItem("Составь диаграмму", "data_representation", "mixed")},
+			ExpectedCode: "T32",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// T21 vs T42: Перевод единиц времени vs Часы и расписание
+// T21 — "переведи 2 часа в минуты", T42 — "который час на циферблате"
+func TestT21vsT42_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T21: перевод единиц времени
+		{
+			Name:         "T21_convert_time_units",
+			Task:         makeTask(3, "Переведи 2 часа 15 минут в минуты", nil),
+			Items:        []types.ParseItem{makeItem("Перевод времени", "measurement_units", "plain_text")},
+			ExpectedCode: "T21",
+			ShouldMatch:  true,
+		},
+		// T42: чтение часов
+		{
+			Name: "T42_read_clock_face",
+			Task: makeTask(2, "Который час показывают часы на рисунке?", []types.VisualFact{
+				{Kind: "diagram", Value: "циферблат"},
+			}),
+			Items:        []types.ParseItem{makeItem("Который час", "measurement_units", "diagram")},
+			ExpectedCode: "T42",
+			ShouldMatch:  true,
+		},
+		// T42: длительность/расписание
+		{
+			Name:         "T42_duration",
+			Task:         makeTask(3, "Фильм начался в 14:00 и закончился в 15:30. Сколько времени длился фильм?", nil),
+			Items:        []types.ParseItem{makeItem("Сколько времени", "measurement_units", "plain_text")},
+			ExpectedCode: "T42",
+			ShouldMatch:  true,
+		},
+		// Негативный: "вырази в секундах" — это T21, не T42
+		{
+			Name:         "T21_express_seconds",
+			Task:         makeTask(3, "Вырази 3 минуты в секундах", nil),
+			Items:        []types.ParseItem{makeItem("Вырази в секундах", "measurement_units", "plain_text")},
+			ExpectedCode: "T21",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// T14 vs T15 vs T16: Простые задачи vs Кратное сравнение vs Изменение величины
+// T14 — общие текстовые, T15 — "во сколько раз", T16 — "увеличили/уменьшили на/в"
+func TestT14vsT15vsT16_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T15: "во сколько раз" — кратное сравнение
+		{
+			Name:         "T15_how_many_times",
+			Task:         makeTask(3, "У Пети 12 марок, а у Васи 4 марки. Во сколько раз больше марок у Пети?", nil),
+			Items:        []types.ParseItem{makeItem("Во сколько раз", "word_problems", "plain_text")},
+			ExpectedCode: "T15",
+			ShouldMatch:  true,
+		},
+		// T16: "увеличили в N раз" — изменение величины
+		{
+			Name:         "T16_increased_times",
+			Task:         makeTask(3, "Число увеличили в 3 раза и получили 24. Какое было число?", nil),
+			Items:        []types.ParseItem{makeItem("Увеличили в раз", "word_problems", "plain_text")},
+			ExpectedCode: "T16",
+			ShouldMatch:  true,
+		},
+		// T16: "уменьшили на N" — изменение величины
+		{
+			Name:         "T16_decreased_by",
+			Task:         makeTask(3, "Было 50 яблок, стало на 15 меньше. Сколько стало?", nil),
+			Items:        []types.ParseItem{makeItem("Уменьшили на", "word_problems", "plain_text")},
+			ExpectedCode: "T16",
+			ShouldMatch:  true,
+		},
+		// T14: простая задача без спецякорей (fallback)
+		{
+			Name:         "T14_simple_story",
+			Task:         makeTask(2, "В корзине было 8 яблок. Добавили ещё 5. Сколько стало?", nil),
+			Items:        []types.ParseItem{makeItem("Простая задача", "word_problems", "plain_text")},
+			ExpectedCode: "T14",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+
+	// Проверка: T15 НЕ должен матчиться на задачи с "увеличили/уменьшили"
+	forbidTests := []struct {
+		Name string
+		Text string
+	}{
+		{"T15_reject_increased", "Число увеличили в несколько раз. Во сколько раз увеличили?"},
+		{"T15_reject_decreased", "Уменьшили в 3 раза. Во сколько раз уменьшили число?"},
+		{"T15_reject_became_more", "Стало в 2 раза больше. Во сколько раз увеличилось?"},
+	}
+
+	for _, tc := range forbidTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			task := makeTask(3, tc.Text, nil)
+			items := []types.ParseItem{makeItem("Изменение", "word_problems", "plain_text")}
+			ctx := buildRoutingContext(task, items)
+			candidate, found := selectTemplate(ctx)
+
+			if found && candidate.Template.TemplateCode == "T15" {
+				t.Errorf("T15 should NOT match task with 'увеличили/уменьшили', but got T15 (rule=%s)", candidate.MatchedRuleID)
+			}
+		})
+	}
+}
+
+// T4 vs T5: Устное vs Письменное сложение/вычитание
+// T4 — "устно/в уме", T5 — "столбиком/письменно"
+func TestT4vsT5_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T4: устный счёт
+		{
+			Name:         "T4_mental_calculation",
+			Task:         makeTask(2, "Считай в уме 45 + 27", nil),
+			Items:        []types.ParseItem{makeItem("В уме", "arithmetic_fluency", "inline_examples")},
+			ExpectedCode: "T4",
+			ShouldMatch:  true,
+		},
+		// T5: письменное сложение столбиком
+		{
+			Name: "T5_column_addition",
+			Task: makeTask(2, "Выполни сложение столбиком: 345 + 278", []types.VisualFact{
+				{Kind: "column", Value: "столбик"},
+			}),
+			Items:        []types.ParseItem{makeItem("Столбиком", "arithmetic_fluency", "column")},
+			ExpectedCode: "T5",
+			ShouldMatch:  true,
+		},
+		// Негативный: "столбиком" — это T5, не T4
+		{
+			Name:         "T5_not_T4_column_keyword",
+			Task:         makeTask(2, "Вычисли в столбик: 67 + 48", nil),
+			Items:        []types.ParseItem{makeItem("В столбик", "arithmetic_fluency", "column")},
+			ExpectedCode: "T5",
+			ShouldMatch:  true,
+		},
+		// Негативный: "письменно" — это T5, не T4
+		{
+			Name:         "T5_not_T4_written_keyword",
+			Task:         makeTask(2, "Выполни письменно: 234 - 156", nil),
+			Items:        []types.ParseItem{makeItem("Письменно", "arithmetic_fluency", "column")},
+			ExpectedCode: "T5",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// T7 vs T8: Смысл умножения vs Таблица умножения
+// T7 — объяснение смысла ("поровну", "по 5 штук"), T8 — знание таблицы
+func TestT7vsT8_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T7: смысл умножения (группы, поровну)
+		{
+			Name:         "T7_multiplication_meaning",
+			Task:         makeTask(2, "В 4 коробках лежит по 6 карандашей. Сколько всего карандашей?", nil),
+			Items:        []types.ParseItem{makeItem("По штук в коробках", "word_problems", "plain_text")},
+			ExpectedCode: "T7",
+			ShouldMatch:  true,
+		},
+		// T8: табличное умножение
+		{
+			Name:         "T8_multiplication_table",
+			Task:         makeTask(2, "Вычисли по таблице умножения: 7 × 8", nil),
+			Items:        []types.ParseItem{makeItem("Таблица умножения", "arithmetic_fluency", "inline_examples")},
+			ExpectedCode: "T8",
+			ShouldMatch:  true,
+		},
+		// T8: деление на основе таблицы
+		{
+			Name:         "T8_division_table",
+			Task:         makeTask(2, "Найди: 56 : 7 (используй таблицу умножения)", nil),
+			Items:        []types.ParseItem{makeItem("Деление по таблице", "arithmetic_fluency", "inline_examples")},
+			ExpectedCode: "T8",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// T7 vs T12: Equal groups (mul/div meaning) vs Fractions (parts of whole)
+// T7 forbids fraction-related words to prevent confusion
+func TestT7vsT12_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T7: смысл умножения/деления (равные группы) - должен матчиться
+		{
+			Name:         "T7_equal_groups_basic",
+			Task:         makeTask(3, "Разложи 12 конфет поровну по 3 тарелкам. Сколько конфет в каждой?", nil),
+			Items:        []types.ParseItem{makeItem("Поровну", "word_problems", "plain_text")},
+			ExpectedCode: "T7",
+			ShouldMatch:  true,
+		},
+		// T7: ещё один positive кейс
+		{
+			Name:         "T7_equal_groups_each",
+			Task:         makeTask(2, "В каждой коробке по 5 карандашей. Коробок 4. Сколько всего карандашей?", nil),
+			Items:        []types.ParseItem{makeItem("По штук в каждой", "word_problems", "plain_text")},
+			ExpectedCode: "T7",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+
+	// Отдельная проверка: T7 НЕ должен матчиться на задачи с дробями
+	// (они могут пойти в другие шаблоны, но не в T7)
+	fractionTests := []struct {
+		Name string
+		Text string
+	}{
+		{"T7_reject_fraction_dolia", "Раздели яблоко на 4 равные доли поровну"},
+		{"T7_reject_fraction_half", "Раздели пирог на две половины"},
+		{"T7_reject_fraction_third", "Возьми треть от целого яблока"},
+		{"T7_reject_fraction_quarter", "Четверть торта съели. Сколько четвертей осталось?"},
+		{"T7_reject_fraction_notation", "Закрашено 3/8 фигуры. Какая доля не закрашена?"},
+	}
+
+	for _, tc := range fractionTests {
+		t.Run(tc.Name, func(t *testing.T) {
+			task := makeTask(3, tc.Text, nil)
+			items := []types.ParseItem{makeItem("Дроби", "fractions_percent", "plain_text")}
+			ctx := buildRoutingContext(task, items)
+			candidate, found := selectTemplate(ctx)
+
+			if found && candidate.Template.TemplateCode == "T7" {
+				t.Errorf("T7 should NOT match fraction task, but got T7 (rule=%s)", candidate.MatchedRuleID)
+			}
+		})
+	}
+}
+
+// T30 vs T31: Таблицы vs Диаграммы
+// T30 — работа с таблицами, T31 — чтение диаграмм/графиков
+func TestT30vsT31_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T30: чтение таблицы
+		{
+			Name: "T30_read_table",
+			Task: makeTask(3, "По таблице найди, сколько учеников в 3-А классе", []types.VisualFact{
+				{Kind: "table", Value: "таблица классов"},
+			}),
+			Items:        []types.ParseItem{makeItem("По таблице найди", "data_representation", "table")},
+			ExpectedCode: "T30",
+			ShouldMatch:  true,
+		},
+		// T31: чтение диаграммы
+		{
+			Name: "T31_read_chart",
+			Task: makeTask(3, "По столбчатой диаграмме определи максимальное значение", []types.VisualFact{
+				{Kind: "diagram", Value: "столбчатая диаграмма"},
+			}),
+			Items:        []types.ParseItem{makeItem("По диаграмме", "data_representation", "diagram")},
+			ExpectedCode: "T31",
+			ShouldMatch:  true,
+		},
+		// Негативный: "заполни таблицу" — это T30, не T31
+		{
+			Name: "T30_fill_table_not_diagram",
+			Task: makeTask(3, "Заполни пустые ячейки таблицы", []types.VisualFact{
+				{Kind: "table", Value: "таблица с пропусками"},
+			}),
+			Items:        []types.ParseItem{makeItem("Заполни таблицу", "data_representation", "table")},
+			ExpectedCode: "T30",
 			ShouldMatch:  true,
 		},
 	}
