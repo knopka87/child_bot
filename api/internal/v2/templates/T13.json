@@ -111,7 +111,7 @@
               },
               "must_not": {
                 "text_patterns_any": [
-                  "доля|дробь|\\b\\d+\\s*/\\s*\\d+\\b(?!\\s*%)"
+                  "доля|дробь|\\b\\d+\\s*/\\s*\\d+\\b"
                 ],
                 "visual_kinds_any": [
                   "column"
@@ -141,9 +141,9 @@
             }
           ],
           "confusables": [
-            "T12_pedagogical_template",
-            "T14_pedagogical_template",
-            "T21_pedagogical_template"
+            "T12",
+            "T14",
+            "T21"
           ]
         },
         "hint_policy_defaults": {

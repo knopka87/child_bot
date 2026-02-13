@@ -8,10 +8,56 @@
       "notes": "Шаблоны для 1 класса (T45-T50)"
     },
     "enums": {
-      "task_type_enum": ["number_sense", "numeral_systems", "arithmetic_fluency", "fractions_percent", "word_problems", "measurement_units", "geometry", "data_representation", "patterns_logic"],
-      "format_enum": ["plain_text", "inline_examples", "column", "fill_gaps", "table", "diagram", "number_line", "grid", "drawing", "mixed"],
-      "constraints_enum": ["needs_visual", "has_table", "has_diagram", "has_number_line", "has_grid", "has_drawing", "multi_step", "unit_conversion", "roman_numerals", "fraction_notation", "percent", "trick_question"],
-      "template_params_keys": ["ops", "range_max", "written_algorithm", "unknown_component", "compare_mode", "change_mode", "word_model", "unit_kind", "data_task_mode", "geometry_mode", "logic_mode"]
+      "task_type_enum": [
+        "number_sense",
+        "numeral_systems",
+        "arithmetic_fluency",
+        "fractions_percent",
+        "word_problems",
+        "measurement_units",
+        "geometry",
+        "data_representation",
+        "patterns_logic"
+      ],
+      "format_enum": [
+        "plain_text",
+        "inline_examples",
+        "column",
+        "fill_gaps",
+        "table",
+        "diagram",
+        "number_line",
+        "grid",
+        "drawing",
+        "mixed"
+      ],
+      "constraints_enum": [
+        "needs_visual",
+        "has_table",
+        "has_diagram",
+        "has_number_line",
+        "has_grid",
+        "has_drawing",
+        "multi_step",
+        "unit_conversion",
+        "roman_numerals",
+        "fraction_notation",
+        "percent",
+        "trick_question"
+      ],
+      "template_params_keys": [
+        "ops",
+        "range_max",
+        "written_algorithm",
+        "unknown_component",
+        "compare_mode",
+        "change_mode",
+        "word_model",
+        "unit_kind",
+        "data_task_mode",
+        "geometry_mode",
+        "logic_mode"
+      ]
     },
     "templates": [
       {
@@ -20,7 +66,12 @@
         "title": "Сравнение чисел (больше, меньше, равно)",
         "grade_min": 1,
         "grade_max": 1,
-        "formats_allowed": ["plain_text", "fill_gaps", "drawing", "mixed"],
+        "formats_allowed": [
+          "plain_text",
+          "fill_gaps",
+          "drawing",
+          "mixed"
+        ],
         "ped_keys_defaults": {
           "task_type": "number_sense",
           "format": "fill_gaps",
@@ -35,7 +86,12 @@
           "match_keys": {
             "task_type": "number_sense",
             "topic": "compare_numbers_signs",
-            "formats_allowed": ["plain_text", "fill_gaps", "drawing", "mixed"]
+            "formats_allowed": [
+              "plain_text",
+              "fill_gaps",
+              "drawing",
+              "mixed"
+            ]
           },
           "routing_rules": [
             {
@@ -65,7 +121,9 @@
                   "вычисли|реши|сложи|вычти",
                   "уравнен"
                 ],
-                "visual_kinds_any": ["column"]
+                "visual_kinds_any": [
+                  "column"
+                ]
               }
             },
             {
@@ -79,7 +137,10 @@
                   "одинаково или нет"
                 ],
                 "text_patterns_all": [],
-                "visual_kinds_any": ["drawing", "diagram"]
+                "visual_kinds_any": [
+                  "drawing",
+                  "diagram"
+                ]
               },
               "must_not": {
                 "text_patterns_any": [
@@ -90,7 +151,11 @@
               }
             }
           ],
-          "confusables": ["T14_pedagogical_template", "T15_pedagogical_template", "T1_pedagogical_template"]
+          "confusables": [
+            "T14",
+            "T15",
+            "T1"
+          ]
         },
         "hint_policy_defaults": {
           "default_visible": 1,
@@ -151,7 +216,10 @@
         "grade_min": 1,
         "grade_max": 1,
         "register": "kid_friendly_ru",
-        "complexity_rules": ["простые слова", "короткие фразы"]
+        "complexity_rules": [
+          "простые слова",
+          "короткие фразы"
+        ]
       },
       "teaching_pattern": {
         "goal": "Научить сравнивать числа и правильно ставить знаки «больше», «меньше», «равно».",
@@ -162,7 +230,9 @@
             "Знак > — клювик смотрит на большее число (открыт к большему).",
             "Знак = ставим, когда числа одинаковые."
           ],
-          "forbidden": ["давать ответ сразу"]
+          "forbidden": [
+            "давать ответ сразу"
+          ]
         },
         "l2": {
           "format": "Как сравнить",
@@ -171,7 +241,9 @@
             "Или вспомни счёт: 1, 2, 3... — чем дальше, тем больше.",
             "Можно представить предметы: 7 яблок больше, чем 5."
           ],
-          "forbidden": ["давать ответ без объяснения"]
+          "forbidden": [
+            "давать ответ без объяснения"
+          ]
         },
         "l3": {
           "format": "Проверка",
@@ -179,7 +251,9 @@
             "Прочитай вслух: «7 больше 5» — звучит правильно?",
             "Клювик (острый конец) всегда смотрит на меньшее число."
           ],
-          "forbidden": ["решать за ребёнка"]
+          "forbidden": [
+            "решать за ребёнка"
+          ]
         }
       },
       "common_mistakes": [
@@ -190,8 +264,16 @@
         "Сравнивают только первые цифры (15 vs 9 — смотрят на 1 и 9)."
       ],
       "terminology_rules": {
-        "use_terms": ["больше", "меньше", "равно", "одинаково"],
-        "avoid_terms": ["неравенство", "отношение"]
+        "use_terms": [
+          "больше",
+          "меньше",
+          "равно",
+          "одинаково"
+        ],
+        "avoid_terms": [
+          "неравенство",
+          "отношение"
+        ]
       },
       "disclosure_defaults": {
         "show_checks": false

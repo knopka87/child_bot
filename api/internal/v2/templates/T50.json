@@ -8,10 +8,56 @@
       "notes": "Шаблоны для 1 класса (T45-T50)"
     },
     "enums": {
-      "task_type_enum": ["number_sense", "numeral_systems", "arithmetic_fluency", "fractions_percent", "word_problems", "measurement_units", "geometry", "data_representation", "patterns_logic"],
-      "format_enum": ["plain_text", "inline_examples", "column", "fill_gaps", "table", "diagram", "number_line", "grid", "drawing", "mixed"],
-      "constraints_enum": ["needs_visual", "has_table", "has_diagram", "has_number_line", "has_grid", "has_drawing", "multi_step", "unit_conversion", "roman_numerals", "fraction_notation", "percent", "trick_question"],
-      "template_params_keys": ["ops", "range_max", "written_algorithm", "unknown_component", "compare_mode", "change_mode", "word_model", "unit_kind", "data_task_mode", "geometry_mode", "logic_mode"]
+      "task_type_enum": [
+        "number_sense",
+        "numeral_systems",
+        "arithmetic_fluency",
+        "fractions_percent",
+        "word_problems",
+        "measurement_units",
+        "geometry",
+        "data_representation",
+        "patterns_logic"
+      ],
+      "format_enum": [
+        "plain_text",
+        "inline_examples",
+        "column",
+        "fill_gaps",
+        "table",
+        "diagram",
+        "number_line",
+        "grid",
+        "drawing",
+        "mixed"
+      ],
+      "constraints_enum": [
+        "needs_visual",
+        "has_table",
+        "has_diagram",
+        "has_number_line",
+        "has_grid",
+        "has_drawing",
+        "multi_step",
+        "unit_conversion",
+        "roman_numerals",
+        "fraction_notation",
+        "percent",
+        "trick_question"
+      ],
+      "template_params_keys": [
+        "ops",
+        "range_max",
+        "written_algorithm",
+        "unknown_component",
+        "compare_mode",
+        "change_mode",
+        "word_model",
+        "unit_kind",
+        "data_task_mode",
+        "geometry_mode",
+        "logic_mode"
+      ]
     },
     "templates": [
       {
@@ -20,14 +66,21 @@
         "title": "Простые задачи для 1 класса (было-стало, больше-меньше на)",
         "grade_min": 1,
         "grade_max": 1,
-        "formats_allowed": ["plain_text", "drawing", "mixed"],
+        "formats_allowed": [
+          "plain_text",
+          "drawing",
+          "mixed"
+        ],
         "ped_keys_defaults": {
           "task_type": "word_problems",
           "format": "plain_text",
           "topic": "simple_word_problems_grade1",
           "constraints": [],
           "template_params_defaults": {
-            "ops": ["add", "sub"],
+            "ops": [
+              "add",
+              "sub"
+            ],
             "range_max": 10,
             "word_model": "was_became"
           }
@@ -36,7 +89,11 @@
           "match_keys": {
             "task_type": "word_problems",
             "topic": "simple_word_problems_grade1",
-            "formats_allowed": ["plain_text", "drawing", "mixed"]
+            "formats_allowed": [
+              "plain_text",
+              "drawing",
+              "mixed"
+            ]
           },
           "routing_rules": [
             {
@@ -74,7 +131,9 @@
                   "периметр|площадь",
                   "\\b[1-9][0-9]{2,}\\b"
                 ],
-                "visual_kinds_any": ["column"]
+                "visual_kinds_any": [
+                  "column"
+                ]
               }
             },
             {
@@ -89,7 +148,9 @@
                   "в коробк.*сколько"
                 ],
                 "text_patterns_all": [],
-                "visual_kinds_any": ["drawing"]
+                "visual_kinds_any": [
+                  "drawing"
+                ]
               },
               "must_not": {
                 "text_patterns_any": [
@@ -101,7 +162,11 @@
               }
             }
           ],
-          "confusables": ["T14_pedagogical_template", "T16_pedagogical_template", "T49_pedagogical_template"]
+          "confusables": [
+            "T14",
+            "T16",
+            "T49"
+          ]
         },
         "hint_policy_defaults": {
           "default_visible": 1,
@@ -174,7 +239,11 @@
         "grade_min": 1,
         "grade_max": 1,
         "register": "kid_friendly_ru",
-        "complexity_rules": ["простейшие слова", "очень короткие фразы", "понятные примеры"]
+        "complexity_rules": [
+          "простейшие слова",
+          "очень короткие фразы",
+          "понятные примеры"
+        ]
       },
       "teaching_pattern": {
         "goal": "Научить понимать простые текстовые задачи и выбирать правильное действие.",
@@ -185,7 +254,10 @@
             "Что было сначала? Что случилось потом?",
             "Что нужно найти: сколько стало или сколько осталось?"
           ],
-          "forbidden": ["давать ответ сразу", "называть действие без понимания"]
+          "forbidden": [
+            "давать ответ сразу",
+            "называть действие без понимания"
+          ]
         },
         "l2": {
           "format": "Выбор действия",
@@ -194,7 +266,9 @@
             "Если УБРАЛИ (взяли, улетели, ушли, съели) — это ВЫЧИТАНИЕ (−).",
             "«На 2 больше» — прибавляем 2. «На 2 меньше» — отнимаем 2."
           ],
-          "forbidden": ["давать формулу без объяснения смысла"]
+          "forbidden": [
+            "давать формулу без объяснения смысла"
+          ]
         },
         "l3": {
           "format": "Проверка",
@@ -202,7 +276,9 @@
             "Проверь смысл ответа: если улетели — осталось МЕНЬШЕ, чем было.",
             "Перечитай вопрос: ты ответил именно на него?"
           ],
-          "forbidden": ["решать за ребёнка"]
+          "forbidden": [
+            "решать за ребёнка"
+          ]
         }
       },
       "common_mistakes": [
@@ -213,8 +289,20 @@
         "Забывают написать наименование (яблок, птиц, конфет)."
       ],
       "terminology_rules": {
-        "use_terms": ["было", "стало", "осталось", "всего", "прибавить", "отнять"],
-        "avoid_terms": ["сумма", "разность", "слагаемое", "уменьшаемое"]
+        "use_terms": [
+          "было",
+          "стало",
+          "осталось",
+          "всего",
+          "прибавить",
+          "отнять"
+        ],
+        "avoid_terms": [
+          "сумма",
+          "разность",
+          "слагаемое",
+          "уменьшаемое"
+        ]
       },
       "disclosure_defaults": {
         "show_checks": false

@@ -8,10 +8,56 @@
       "notes": "New 1st grade templates batch (T45-T50) for better grade 1 coverage."
     },
     "enums": {
-      "task_type_enum": ["number_sense", "numeral_systems", "arithmetic_fluency", "fractions_percent", "word_problems", "measurement_units", "geometry", "data_representation", "patterns_logic"],
-      "format_enum": ["plain_text", "inline_examples", "column", "fill_gaps", "table", "diagram", "number_line", "grid", "drawing", "mixed"],
-      "constraints_enum": ["needs_visual", "has_table", "has_diagram", "has_number_line", "has_grid", "has_drawing", "multi_step", "unit_conversion", "roman_numerals", "fraction_notation", "percent", "trick_question"],
-      "template_params_keys": ["ops", "range_max", "written_algorithm", "unknown_component", "compare_mode", "change_mode", "word_model", "unit_kind", "data_task_mode", "geometry_mode", "logic_mode"]
+      "task_type_enum": [
+        "number_sense",
+        "numeral_systems",
+        "arithmetic_fluency",
+        "fractions_percent",
+        "word_problems",
+        "measurement_units",
+        "geometry",
+        "data_representation",
+        "patterns_logic"
+      ],
+      "format_enum": [
+        "plain_text",
+        "inline_examples",
+        "column",
+        "fill_gaps",
+        "table",
+        "diagram",
+        "number_line",
+        "grid",
+        "drawing",
+        "mixed"
+      ],
+      "constraints_enum": [
+        "needs_visual",
+        "has_table",
+        "has_diagram",
+        "has_number_line",
+        "has_grid",
+        "has_drawing",
+        "multi_step",
+        "unit_conversion",
+        "roman_numerals",
+        "fraction_notation",
+        "percent",
+        "trick_question"
+      ],
+      "template_params_keys": [
+        "ops",
+        "range_max",
+        "written_algorithm",
+        "unknown_component",
+        "compare_mode",
+        "change_mode",
+        "word_model",
+        "unit_kind",
+        "data_task_mode",
+        "geometry_mode",
+        "logic_mode"
+      ]
     },
     "templates": [
       {
@@ -42,7 +88,12 @@
           "match_keys": {
             "task_type": "number_sense",
             "topic": "counting_objects",
-            "formats_allowed": ["drawing", "diagram", "plain_text", "mixed"]
+            "formats_allowed": [
+              "drawing",
+              "diagram",
+              "plain_text",
+              "mixed"
+            ]
           },
           "routing_rules": [
             {
@@ -100,8 +151,8 @@
             }
           ],
           "confusables": [
-            "T36_pedagogical_template",
-            "T14_pedagogical_template"
+            "T36",
+            "T14"
           ]
         },
         "hint_policy_defaults": {
@@ -212,8 +263,15 @@
         "Торопятся и называют примерное число вместо точного."
       ],
       "terminology_rules": {
-        "use_terms": ["посчитай", "сколько", "всего"],
-        "avoid_terms": ["сумма", "количество элементов"]
+        "use_terms": [
+          "посчитай",
+          "сколько",
+          "всего"
+        ],
+        "avoid_terms": [
+          "сумма",
+          "количество элементов"
+        ]
       },
       "disclosure_defaults": {
         "show_checks": false

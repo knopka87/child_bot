@@ -147,10 +147,10 @@
             }
           ],
           "confusables": [
-            "T40_pedagogical_template",
-            "T39_pedagogical_template",
-            "T24_pedagogical_template",
-            "T26_pedagogical_template"
+            "T40",
+            "T39",
+            "T24",
+            "T26"
           ]
         },
         "hint_policy_defaults": {
