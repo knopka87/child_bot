@@ -72,7 +72,8 @@
         "grade_max": 4,
         "formats_allowed": [
           "drawing",
-          "mixed"
+          "mixed",
+          "plain_text"
         ],
         "ped_keys_defaults": {
           "task_type": "geometry",

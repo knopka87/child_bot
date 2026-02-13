@@ -147,11 +147,11 @@
             }
           ],
           "confusables": [
-            "T10_pedagogical_template",
-            "T15_pedagogical_template",
-            "T14_pedagogical_template",
-            "T7_pedagogical_template",
-            "T18_pedagogical_template"
+            "T10",
+            "T15",
+            "T14",
+            "T7",
+            "T18"
           ]
         },
         "hint_policy_defaults": {

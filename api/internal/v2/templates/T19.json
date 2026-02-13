@@ -128,10 +128,10 @@
             }
           ],
           "confusables": [
-            "T18_pedagogical_template",
-            "T21_pedagogical_template",
-            "T20_pedagogical_template",
-            "T22_pedagogical_template"
+            "T18",
+            "T21",
+            "T20",
+            "T22"
           ]
         },
         "hint_policy_defaults": {

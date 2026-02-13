@@ -145,8 +145,8 @@
             }
           ],
           "confusables": [
-            "T23_pedagogical_template",
-            "T24_pedagogical_template"
+            "T23",
+            "T24"
           ]
         },
         "hint_policy_defaults": {

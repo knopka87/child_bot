@@ -143,9 +143,9 @@
             }
           ],
           "confusables": [
-            "T21_pedagogical_template",
-            "T19_pedagogical_template",
-            "T16_pedagogical_template"
+            "T21",
+            "T19",
+            "T16"
           ]
         },
         "hint_policy_defaults": {

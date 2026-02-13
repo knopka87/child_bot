@@ -156,9 +156,9 @@
             }
           ],
           "confusables": [
-            "T35_pedagogical_template",
-            "T37_pedagogical_template",
-            "T4_pedagogical_template"
+            "T35",
+            "T37",
+            "T4"
           ]
         },
         "hint_policy_defaults": {

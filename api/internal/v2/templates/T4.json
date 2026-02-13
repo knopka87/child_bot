@@ -156,11 +156,11 @@
             }
           ],
           "confusables": [
-            "T5_pedagogical_template",
-            "T6_pedagogical_template",
-            "T3_pedagogical_template",
-            "T15_pedagogical_template",
-            "T35_pedagogical_template"
+            "T5",
+            "T6",
+            "T3",
+            "T15",
+            "T35"
           ]
         },
         "hint_policy_defaults": {

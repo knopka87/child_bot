@@ -8,10 +8,56 @@
       "notes": "Шаблоны для 1 класса (T45-T50)"
     },
     "enums": {
-      "task_type_enum": ["number_sense", "numeral_systems", "arithmetic_fluency", "fractions_percent", "word_problems", "measurement_units", "geometry", "data_representation", "patterns_logic"],
-      "format_enum": ["plain_text", "inline_examples", "column", "fill_gaps", "table", "diagram", "number_line", "grid", "drawing", "mixed"],
-      "constraints_enum": ["needs_visual", "has_table", "has_diagram", "has_number_line", "has_grid", "has_drawing", "multi_step", "unit_conversion", "roman_numerals", "fraction_notation", "percent", "trick_question"],
-      "template_params_keys": ["ops", "range_max", "written_algorithm", "unknown_component", "compare_mode", "change_mode", "word_model", "unit_kind", "data_task_mode", "geometry_mode", "logic_mode"]
+      "task_type_enum": [
+        "number_sense",
+        "numeral_systems",
+        "arithmetic_fluency",
+        "fractions_percent",
+        "word_problems",
+        "measurement_units",
+        "geometry",
+        "data_representation",
+        "patterns_logic"
+      ],
+      "format_enum": [
+        "plain_text",
+        "inline_examples",
+        "column",
+        "fill_gaps",
+        "table",
+        "diagram",
+        "number_line",
+        "grid",
+        "drawing",
+        "mixed"
+      ],
+      "constraints_enum": [
+        "needs_visual",
+        "has_table",
+        "has_diagram",
+        "has_number_line",
+        "has_grid",
+        "has_drawing",
+        "multi_step",
+        "unit_conversion",
+        "roman_numerals",
+        "fraction_notation",
+        "percent",
+        "trick_question"
+      ],
+      "template_params_keys": [
+        "ops",
+        "range_max",
+        "written_algorithm",
+        "unknown_component",
+        "compare_mode",
+        "change_mode",
+        "word_model",
+        "unit_kind",
+        "data_task_mode",
+        "geometry_mode",
+        "logic_mode"
+      ]
     },
     "templates": [
       {
@@ -20,7 +66,12 @@
         "title": "Соседи числа и числовой ряд до 20",
         "grade_min": 1,
         "grade_max": 1,
-        "formats_allowed": ["plain_text", "fill_gaps", "number_line", "mixed"],
+        "formats_allowed": [
+          "plain_text",
+          "fill_gaps",
+          "number_line",
+          "mixed"
+        ],
         "ped_keys_defaults": {
           "task_type": "number_sense",
           "format": "fill_gaps",
@@ -34,7 +85,12 @@
           "match_keys": {
             "task_type": "number_sense",
             "topic": "number_neighbors_sequence",
-            "formats_allowed": ["plain_text", "fill_gaps", "number_line", "mixed"]
+            "formats_allowed": [
+              "plain_text",
+              "fill_gaps",
+              "number_line",
+              "mixed"
+            ]
           },
           "routing_rules": [
             {
@@ -60,7 +116,9 @@
                   "больше.*на|меньше.*на",
                   "римск|[IVXLCDM]"
                 ],
-                "visual_kinds_any": ["column"]
+                "visual_kinds_any": [
+                  "column"
+                ]
               }
             },
             {
@@ -75,7 +133,9 @@
                   "счёт\\s+(от|до)\\s+\\d+"
                 ],
                 "text_patterns_all": [],
-                "visual_kinds_any": ["number_line"]
+                "visual_kinds_any": [
+                  "number_line"
+                ]
               },
               "must_not": {
                 "text_patterns_any": [
@@ -86,7 +146,10 @@
               }
             }
           ],
-          "confusables": ["T1_pedagogical_template", "T34_pedagogical_template"]
+          "confusables": [
+            "T1",
+            "T34"
+          ]
         },
         "hint_policy_defaults": {
           "default_visible": 1,
@@ -150,7 +213,10 @@
         "grade_min": 1,
         "grade_max": 1,
         "register": "kid_friendly_ru",
-        "complexity_rules": ["простые слова", "короткие фразы"]
+        "complexity_rules": [
+          "простые слова",
+          "короткие фразы"
+        ]
       },
       "teaching_pattern": {
         "goal": "Научить находить соседей числа и понимать порядок чисел в ряду.",
@@ -161,7 +227,9 @@
             "Сосед слева — на 1 меньше (предыдущее число).",
             "Сосед справа — на 1 больше (следующее число)."
           ],
-          "forbidden": ["давать ответ сразу"]
+          "forbidden": [
+            "давать ответ сразу"
+          ]
         },
         "l2": {
           "format": "Как найти",
@@ -170,7 +238,9 @@
             "Найди своё число и посмотри, что стоит до и после него.",
             "Например, для 7: ...6, 7, 8... — соседи 6 и 8."
           ],
-          "forbidden": ["давать ответ без объяснения"]
+          "forbidden": [
+            "давать ответ без объяснения"
+          ]
         },
         "l3": {
           "format": "Проверка",
@@ -178,7 +248,9 @@
             "Проверь: сосед слева + 1 = твоё число.",
             "Проверь: твоё число + 1 = сосед справа."
           ],
-          "forbidden": ["решать за ребёнка"]
+          "forbidden": [
+            "решать за ребёнка"
+          ]
         }
       },
       "common_mistakes": [
@@ -189,8 +261,18 @@
         "Забывают, что сосед слева меньше, а справа — больше."
       ],
       "terminology_rules": {
-        "use_terms": ["сосед", "перед", "после", "между", "следующее", "предыдущее"],
-        "avoid_terms": ["предшествующее", "последующее"]
+        "use_terms": [
+          "сосед",
+          "перед",
+          "после",
+          "между",
+          "следующее",
+          "предыдущее"
+        ],
+        "avoid_terms": [
+          "предшествующее",
+          "последующее"
+        ]
       },
       "disclosure_defaults": {
         "show_checks": false

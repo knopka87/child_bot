@@ -148,8 +148,8 @@
             }
           ],
           "confusables": [
-            "T13_pedagogical_template",
-            "T19_pedagogical_template"
+            "T13",
+            "T19"
           ]
         },
         "hint_policy_defaults": {
