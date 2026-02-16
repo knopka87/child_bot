@@ -26,13 +26,30 @@ func (r *Router) checkSolution(ctx context.Context, chatID int64, userID *int64,
 		return
 	}
 
+	ph := msg.Photo[len(msg.Photo)-1] // последнее
+	r.checkSolutionWithFileID(ctx, chatID, userID, ph.FileID, llmName)
+}
+
+// checkSolutionFromDocument — проверка решения из документа-изображения
+func (r *Router) checkSolutionFromDocument(ctx context.Context, chatID int64, userID *int64, msg tgbotapi.Message) {
+	llmName := r.LlmManager.Get(util.GetChatIDFromTgMessage(msg))
+
+	if msg.Document == nil {
+		util.PrintInfo("Check", llmName, chatID, "not found document")
+		return
+	}
+
+	r.checkSolutionWithFileID(ctx, chatID, userID, msg.Document.FileID, llmName)
+}
+
+// checkSolutionWithFileID — общая логика проверки решения по fileID
+func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, userID *int64, fileID string, llmName string) {
 	setState(chatID, Check)
 	sid, _ := r.getSession(chatID)
 
 	time1 := r.sendAlert(chatID, CheckAlert, 0, 15)
 
-	ph := msg.Photo[len(msg.Photo)-1] // последнее
-	data, mime, err := r.downloadFileBytes(ph.FileID)
+	data, mime, err := r.downloadFileBytes(fileID)
 	if err != nil {
 		r.sendError(chatID, fmt.Errorf("не удалось получить фото: %v", err))
 		return

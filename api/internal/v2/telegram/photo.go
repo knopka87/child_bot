@@ -66,6 +66,43 @@ func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	b.mu.Unlock()
 }
 
+func (r *Router) acceptDocument(cid int64, msg tgbotapi.Message) {
+	if msg.Document == nil {
+		r.sendError(cid, fmt.Errorf("document is nil"))
+		return
+	}
+	file, err := r.Bot.GetFile(tgbotapi.FileConfig{FileID: msg.Document.FileID})
+	if err != nil {
+		r.sendError(cid, err)
+		return
+	}
+	url := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", r.Bot.Token, file.FilePath)
+	imgBytes, err := download(url)
+	if err != nil {
+		r.sendError(cid, err)
+		return
+	}
+
+	key := "chat:" + fmt.Sprint(cid)
+	if msg.MediaGroupID != "" {
+		key = "grp:" + msg.MediaGroupID
+	}
+
+	bi, _ := batches.LoadOrStore(key, &photoBatch{
+		ChatID: cid, Key: key, MediaGroupID: msg.MediaGroupID, images: make([][]byte, 0, 2),
+	})
+	b := bi.(*photoBatch)
+
+	b.mu.Lock()
+	b.images = append(b.images, imgBytes)
+	if b.timer != nil {
+		b.timer.Stop()
+	}
+	userID := util.GetUserIDFromTgMessage(msg)
+	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, userID) })
+	b.mu.Unlock()
+}
+
 func (r *Router) processBatch(key string, userID *int64) {
 	ctx := context.Background()
 	bi, ok := batches.Load(key)

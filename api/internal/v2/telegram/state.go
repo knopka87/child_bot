@@ -211,6 +211,14 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 		return CollectingPages, true // прислано фото задания/страницы
 	}
 
+	// 4.1) Документ-изображение (фото отправлено как файл)
+	if upd.Message.Document != nil && strings.HasPrefix(upd.Message.Document.MimeType, "image/") {
+		if cur == AwaitSolution {
+			return Check, true
+		}
+		return CollectingPages, true
+	}
+
 	// 5) Текст
 	if s := strings.TrimSpace(upd.Message.Text); s != "" {
 		if cur == AwaitSolution {
