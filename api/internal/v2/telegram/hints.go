@@ -19,6 +19,7 @@ type hintSession struct {
 	Detect       types.DetectResponse
 	EngineName   string
 	NextLevel    int
+	MaxHints     int
 }
 
 func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSession) {
@@ -94,7 +95,7 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 			CreatedAt:     time.Time{},
 		})
 	}
-	r.send(chatID, formatHint(hrNew, level), makeHintButtons(level, true))
+	r.send(chatID, formatHint(hrNew, level), makeHintButtons(level, appliedPolicy.MaxHints, true))
 }
 
 func formatHint(hr types.HintResponse, level int) string {

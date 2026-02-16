@@ -93,9 +93,14 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 	_ = r.Store.MarkAcceptedParseBySID(context.Background(), sid, "user_yes")
 
 	llmName := r.LlmManager.Get(chatID)
+	maxHints := 3 // default
+	if len(p.PR.Items) > 0 {
+		maxHints = p.PR.Items[0].HintPolicy.MaxHints
+	}
 	hs := &hintSession{
 		Image: p.Sc.Image, Mime: p.Sc.Mime, MediaGroupID: p.Sc.MediaGroupID,
 		Parse: p.PR, Detect: p.Sc.Detect, EngineName: llmName, NextLevel: 1,
+		MaxHints: maxHints,
 	}
 	hintState.Store(chatID, hs)
 
@@ -115,7 +120,7 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		return
 	}
 	hs := v.(*hintSession)
-	if hs.NextLevel > 3 {
+	if hs.NextLevel > hs.MaxHints {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
 		r.send(chatID, HintFinishText, makeFinishHintButtons())
@@ -127,7 +132,7 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 	r.sendHint(context.Background(), chatID, msgID, hs)
 
 	hs.NextLevel++
-	if hs.NextLevel > 3 {
+	if hs.NextLevel > hs.MaxHints {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
 	}
