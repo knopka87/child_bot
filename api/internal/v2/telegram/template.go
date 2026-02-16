@@ -819,3 +819,15 @@ func getTemplate(task types.ParseTask, items []types.ParseItem) string {
 
 	return string(js)
 }
+
+// getTemplateID возвращает только ID выбранного шаблона
+func getTemplateID(task types.ParseTask, items []types.ParseItem) string {
+	ctx := buildRoutingContext(task, items)
+
+	candidate, found := selectTemplate(ctx)
+	if !found {
+		return ""
+	}
+
+	return candidate.Template.TemplateID
+}
