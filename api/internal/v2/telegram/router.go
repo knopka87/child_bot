@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -195,6 +196,23 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		r.setSession(cid, sid)
 
 		r.acceptPhoto(cid, *upd.Message)
+		return
+	}
+
+	// 7.1) Документ-изображение (фото отправлено как файл)
+	if upd.Message.Document != nil && strings.HasPrefix(upd.Message.Document.MimeType, "image/") {
+		if getMode(cid) == "await_solution" {
+			r.send(cid, CheckAnswerText, nil)
+			userID := util.GetUserIDFromTgUpdate(upd)
+			r.checkSolutionFromDocument(ctx, cid, userID, *upd.Message)
+			clearMode(cid)
+			return
+		}
+		clearMode(cid)
+		sid := uuid.NewString()
+		r.setSession(cid, sid)
+
+		r.acceptDocument(cid, *upd.Message)
 		return
 	}
 
