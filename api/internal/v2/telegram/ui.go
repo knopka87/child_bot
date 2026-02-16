@@ -23,8 +23,6 @@ const (
 	AnalogueTaskText        = "*%s*\n\nПопробуй вернуться к заданию и решить его. 💪"
 	CheckAnswerClick        = "🔎 Проверим твой ответ? ✨\n📸 Пришли фото своего решения — я посмотрю, всё ли верно 😊\nНо я ещё учусь проверять, поэтому могу ошибаться."
 	CheckAnswerText         = "🤓 Вижу твоё решение!"
-	NormaliseAlert1         = "⏳ Проверяю, как ты справился 🧐"
-	NormaliseAlert2         = "🔍 Смотрю, всё ли аккуратно…"
 	CheckAlert              = "🤔 Проверяю каждый шаг…"
 	AnswerCorrectText       = "🎉 Всё верно! Отличная работа 💪\nТы понял, как это работает 🌟"
 	AnswerIncorrectText     = "Почти получилось! 💪\nВот что можно поправить 💡\n\n*%s*"
@@ -98,9 +96,9 @@ func makeFinishHintButtons() [][]tgbotapi.InlineKeyboardButton {
 	}
 }
 
-func makeHintButtons(level int, showAnalogue bool) [][]tgbotapi.InlineKeyboardButton {
+func makeHintButtons(level, maxHints int, showAnalogue bool) [][]tgbotapi.InlineKeyboardButton {
 	rows := make([][]tgbotapi.InlineKeyboardButton, 0, 4)
-	if level < 3 {
+	if level < maxHints {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnNextHint))
 	} else if showAnalogue {
 		rows = append(rows, tgbotapi.NewInlineKeyboardRow(btnAnalogue))

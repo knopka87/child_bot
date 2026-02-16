@@ -8,7 +8,6 @@ require (
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
-	golang.org/x/text v0.29.0
 )
 
 require (
@@ -18,4 +17,5 @@ require (
 	github.com/stretchr/testify v1.10.0 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 )
