@@ -334,6 +334,27 @@ func buildRoutingContext(task types.ParseTask, items []types.ParseItem) RoutingC
 	taskType := getMostFrequent(taskTypeCount)
 	format := getMostFrequent(formatCount)
 
+	// Нормализация taskType перед маппингом
+	rawTaskType := taskType
+	taskType = strings.ToLower(strings.TrimSpace(taskType))
+	taskType = strings.Trim(taskType, ".:;,")
+
+	// Маппинг нестандартных task_type от LLM к нашим шаблонам
+	taskTypeMapping := map[string]string{
+		"expressions": "arithmetic_fluency",
+		"calculation": "arithmetic_fluency",
+		"compute":     "arithmetic_fluency",
+		"algebra":     "patterns_logic",
+		"equation":    "patterns_logic",
+		"equations":   "patterns_logic",
+	}
+	if mapped, ok := taskTypeMapping[taskType]; ok {
+		if rawTaskType != taskType {
+			log.Printf("[template] taskType normalized: %q -> %q -> %q", rawTaskType, taskType, mapped)
+		}
+		taskType = mapped
+	}
+
 	return RoutingContext{
 		TextAll:     textAll,
 		VisualKinds: visualKinds,
@@ -541,6 +562,13 @@ func selectTemplate(ctx RoutingContext) (*TemplateCandidate, bool) {
 	// Fallback: если кандидатов нет, ищем без учёта task_type
 	if len(candidates) == 0 {
 		candidates = findCandidatesWithTrace(ctx, registries, false, trace)
+	}
+
+	// Fallback 2: если всё ещё нет кандидатов, проверяем общие арифметические паттерны
+	if len(candidates) == 0 {
+		if fallback := tryArithmeticFallback(ctx, registries); fallback != nil {
+			candidates = append(candidates, *fallback)
+		}
 	}
 
 	if len(candidates) == 0 {
@@ -830,4 +858,68 @@ func getTemplateID(task types.ParseTask, items []types.ParseItem) string {
 	}
 
 	return candidate.Template.TemplateID
+}
+
+// tryArithmeticFallback проверяет общие арифметические паттерны и возвращает fallback шаблон
+func tryArithmeticFallback(ctx RoutingContext, registries []TemplateRegistry) *TemplateCandidate {
+	// Паттерны, указывающие на арифметическую задачу
+	arithmeticPatterns := []string{
+		"вычисли",
+		"посчитай",
+		"найди значение",
+		"реши пример",
+		"сколько будет",
+		"выполни действ",
+		"\\d+\\s*[+\\-×·\\*:]\\s*\\d+", // числа с операциями
+		"\\d+\\s*\\+\\s*\\d+",          // сложение
+		"\\d+\\s*-\\s*\\d+",            // вычитание
+		"\\d+\\s*[×·\\*]\\s*\\d+",      // умножение
+		"\\d+\\s*[:/÷]\\s*\\d+",        // деление
+		"сравни.*\\d+",                 // сравнение чисел
+		"больше|меньше|равно",
+		"сложи|вычти|умнож|раздели",
+		"сумм|разност|произведен|частно",
+	}
+
+	matched := false
+	for _, pattern := range arithmeticPatterns {
+		re, err := regexp.Compile("(?i)" + pattern)
+		if err == nil && re.MatchString(ctx.TextAll) {
+			matched = true
+			break
+		}
+	}
+
+	if !matched {
+		return nil
+	}
+
+	// Ищем T35 (порядок действий) или T11 (свойства) как fallback
+	fallbackTemplates := []string{"T35", "T11", "T8"}
+
+	for _, tmplCode := range fallbackTemplates {
+		for i := range registries {
+			reg := &registries[i]
+			for j := range reg.Registry.Templates {
+				tmpl := &reg.Registry.Templates[j]
+				if tmpl.TemplateCode == tmplCode {
+					// Найден fallback шаблон
+					var profile *TemplateProfile
+					if reg.Profiles != nil {
+						if p, ok := reg.Profiles[tmpl.TemplateID]; ok {
+							profile = &p
+						}
+					}
+					return &TemplateCandidate{
+						Template:      tmpl,
+						Profile:       profile,
+						Score:         10, // низкий score для fallback
+						MatchedRuleID: "ARITHMETIC_FALLBACK",
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
