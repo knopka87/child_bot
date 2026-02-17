@@ -848,16 +848,53 @@ func getTemplate(task types.ParseTask, items []types.ParseItem) string {
 	return string(js)
 }
 
-// getTemplateID возвращает только ID выбранного шаблона
-func getTemplateID(task types.ParseTask, items []types.ParseItem) string {
+// TemplateRoutingResult содержит результат роутинга шаблона
+type TemplateRoutingResult struct {
+	TemplateID string
+	Found      bool
+	DebugInfo  map[string]interface{}
+}
+
+// getTemplateIDWithDebug возвращает ID шаблона и debug-информацию
+func getTemplateIDWithDebug(task types.ParseTask, items []types.ParseItem) TemplateRoutingResult {
 	ctx := buildRoutingContext(task, items)
 
 	candidate, found := selectTemplate(ctx)
 	if !found {
-		return ""
+		return TemplateRoutingResult{
+			TemplateID: "",
+			Found:      false,
+			DebugInfo: map[string]interface{}{
+				"reason":    "no_template_found",
+				"subject":   ctx.Subject,
+				"task_type": ctx.TaskType,
+				"format":    ctx.Format,
+				"grade":     ctx.Grade,
+				"text_preview": func() string {
+					if len(ctx.TextAll) > 100 {
+						return ctx.TextAll[:100] + "..."
+					}
+					return ctx.TextAll
+				}(),
+			},
+		}
 	}
 
-	return candidate.Template.TemplateID
+	return TemplateRoutingResult{
+		TemplateID: candidate.Template.TemplateID,
+		Found:      true,
+		DebugInfo: map[string]interface{}{
+			"template_code": candidate.Template.TemplateCode,
+			"matched_rule":  candidate.MatchedRuleID,
+			"score":         candidate.Score,
+		},
+	}
+}
+
+// getTemplateID возвращает только ID выбранного шаблона (для обратной совместимости)
+func getTemplateID(task types.ParseTask, items []types.ParseItem) string {
+	result := getTemplateIDWithDebug(task, items)
+	return result.TemplateID
 }
 
 // tryArithmeticFallback проверяет общие арифметические паттерны и возвращает fallback шаблон
