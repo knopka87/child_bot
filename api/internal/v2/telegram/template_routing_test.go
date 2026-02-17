@@ -2181,13 +2181,13 @@ func TestNewTemplatesEdgeCases(t *testing.T) {
 		},
 
 		// Negative: Grade 2 task with two-digit numbers should NOT match T49
-		// T49 is for within 10, so two-digit numbers exclude it
+		// T49 is for within 10, so two-digit numbers should match T35 (order of operations) instead
 		{
 			Name:         "T49_excluded_two_digit",
 			Task:         makeTask(2, "Вычисли: 47 + 28 = ?", nil),
 			Items:        []types.ParseItem{makeItem("Сложение", "arithmetic_fluency", "inline_examples")},
-			ExpectedCode: "T49",
-			ShouldMatch:  false, // T49 rejects two-digit numbers via must_not
+			ExpectedCode: "T35", // T49 rejects two-digit numbers, so T35 matches instead
+			ShouldMatch:  true,
 		},
 	}
 
@@ -3318,6 +3318,251 @@ func TestT30vsT31_ConfusablePair(t *testing.T) {
 	runTestCases(t, tests)
 }
 
+// =============================================================================
+// T51: Множества — элементы, подмножества, операции
+// task_type: sets_logic
+// Patterns: "множеств", "элемент", "подмножеств", "диаграмм Эйлера-Венна"
+// =============================================================================
+
+func TestT51_SetsAndElements(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "T51_describe_sets",
+			Task: makeTask(3, "Опиши множества, которые можно назвать: хор, оркестр, бригада.", nil),
+			Items: []types.ParseItem{
+				makeItem("Опиши множества", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_name_elements",
+			Task: makeTask(3, "Назови 5 элементов множества ягод.", nil),
+			Items: []types.ParseItem{
+				makeItem("Элементы множества", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_venn_diagram",
+			Task: makeTask(3, "Нарисуй диаграмму Эйлера-Венна множеств М и К.", nil),
+			Items: []types.ParseItem{
+				makeItem("Диаграмма Венна", "sets_logic", "diagram"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_subset",
+			Task: makeTask(3, "Является ли множество А подмножеством множества В?", nil),
+			Items: []types.ParseItem{
+				makeItem("Подмножество", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_intersection",
+			Task: makeTask(3, "Найди пересечение множеств А = {1, 2, 3} и В = {2, 3, 4}.", nil),
+			Items: []types.ParseItem{
+				makeItem("Пересечение множеств", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_union",
+			Task: makeTask(3, "Найди объединение множеств М и К.", nil),
+			Items: []types.ParseItem{
+				makeItem("Объединение множеств", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_belongs_to_set",
+			Task: makeTask(3, "Принадлежит ли число 5 множеству чётных чисел?", nil),
+			Items: []types.ParseItem{
+				makeItem("Принадлежит множеству", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_set_notation",
+			Task: makeTask(3, "Запиши множество делителей числа 12.", nil),
+			Items: []types.ParseItem{
+				makeItem("Запиши множество", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T51_empty_set",
+			Task: makeTask(3, "Является ли пустое множество подмножеством любого множества?", nil),
+			Items: []types.ParseItem{
+				makeItem("Пустое множество", "sets_logic", "plain_text"),
+			},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+	}
+
+	runTestCases(t, tests)
+}
+
+// =============================================================================
+// T52: Творческие задачи — составь, придумай, объясни
+// task_type: creative_composition
+// Patterns: "составь выражени", "придумай задач", "объясни", "что означа"
+// =============================================================================
+
+func TestT52_CreativeComposition(t *testing.T) {
+	tests := []TestCase{
+		{
+			Name: "T52_compose_expression",
+			Task: makeTask(3, "Составь выражение по задаче и найди его значение.", nil),
+			Items: []types.ParseItem{
+				makeItem("Составь выражение", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_create_problem",
+			Task: makeTask(3, "Придумай задачу по схеме и реши её.", nil),
+			Items: []types.ParseItem{
+				makeItem("Придумай задачу", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_explain_why",
+			Task: makeTask(3, "Объясни, почему это равенство верно.", nil),
+			Items: []types.ParseItem{
+				makeItem("Объясни", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_what_means",
+			Task: makeTask(3, "Что означают выражения a + b и a - b?", nil),
+			Items: []types.ParseItem{
+				makeItem("Что означают", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_is_it_true",
+			Task: makeTask(3, "Верно ли, что сумма двух чётных чисел всегда чётная?", nil),
+			Items: []types.ParseItem{
+				makeItem("Верно ли", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_justify",
+			Task: makeTask(3, "Обоснуй свой ответ.", nil),
+			Items: []types.ParseItem{
+				makeItem("Обоснуй", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_prove",
+			Task: makeTask(3, "Докажи, что это утверждение верно.", nil),
+			Items: []types.ParseItem{
+				makeItem("Докажи", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_what_common",
+			Task: makeTask(3, "Что общего в выражениях: а · 15 + а и 5 · (3 · b)?", nil),
+			Items: []types.ParseItem{
+				makeItem("Что общего", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_how_differ",
+			Task: makeTask(3, "Чем похожи и чем различаются выражения (30 – d) : 3 и 30 – d : 3?", nil),
+			Items: []types.ParseItem{
+				makeItem("Чем похожи и различаются", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		{
+			Name: "T52_compose_problem_by_expression",
+			Task: makeTask(3, "Составь задачу, которая решается так: (а – b) : 2. Подбери данные.", nil),
+			Items: []types.ParseItem{
+				makeItem("Составь задачу по выражению", "creative_composition", "plain_text"),
+			},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+	}
+
+	runTestCases(t, tests)
+}
+
+// T51 vs T33: Множества vs Статистика
+// T51 — теория множеств, T33 — простая статистика (среднее, мода)
+func TestT51vsT33_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T51: множества
+		{
+			Name:         "T51_set_elements_not_stats",
+			Task:         makeTask(3, "Перечисли элементы множества А = {1, 2, 3, 4, 5}.", nil),
+			Items:        []types.ParseItem{makeItem("Элементы множества", "sets_logic", "plain_text")},
+			ExpectedCode: "T51",
+			ShouldMatch:  true,
+		},
+		// T33: статистика
+		{
+			Name:         "T33_average_not_sets",
+			Task:         makeTask(3, "Найди среднее арифметическое чисел 4, 6, 8.", nil),
+			Items:        []types.ParseItem{makeItem("Среднее арифметическое", "data_representation", "plain_text")},
+			ExpectedCode: "T33",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
+// T52 vs T1: Творческие vs Вычисления
+// T52 — составь/объясни, T1 — простые вычисления
+func TestT52vsT1_ConfusablePair(t *testing.T) {
+	tests := []TestCase{
+		// T52: составь выражение
+		{
+			Name:         "T52_compose_not_calculate",
+			Task:         makeTask(3, "Составь выражение и найди его значение при x = 5.", nil),
+			Items:        []types.ParseItem{makeItem("Составь выражение", "creative_composition", "plain_text")},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+		// T52: придумай задачу — не должен совпадать с T1
+		{
+			Name:         "T52_create_problem_not_T1",
+			Task:         makeTask(3, "Придумай задачу, которая решается выражением a + b.", nil),
+			Items:        []types.ParseItem{makeItem("Придумай задачу", "creative_composition", "plain_text")},
+			ExpectedCode: "T52",
+			ShouldMatch:  true,
+		},
+	}
+	runTestCases(t, tests)
+}
+
 func BenchmarkSelectTemplate(b *testing.B) {
 	task := makeTask(3, "Прямоугольник разрезали на 9 неодинаковых квадратов. Покажи длины сторон остальных квадратов.", []types.VisualFact{
 		{Kind: "diagram", Value: "Прямоугольник из квадратов"},
@@ -3330,5 +3575,112 @@ func BenchmarkSelectTemplate(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		selectTemplate(ctx)
+	}
+}
+
+// TestTaskTypeMappingNormalization проверяет нормализацию task_type
+// и корректность маппинга equations/algebra → patterns_logic (T37)
+func TestTaskTypeMappingNormalization(t *testing.T) {
+	tests := []struct {
+		name             string
+		taskType         string
+		taskText         string
+		expectedTemplate string
+	}{
+		// Тесты нормализации: пробелы, регистр, точки
+		{
+			name:             "equations_with_spaces",
+			taskType:         " Equations ",
+			taskText:         "Реши уравнение: x + 5 = 10",
+			expectedTemplate: "T37",
+		},
+		{
+			name:             "equation_uppercase",
+			taskType:         "EQUATION",
+			taskText:         "Реши уравнение: x + 5 = 10",
+			expectedTemplate: "T37",
+		},
+		{
+			name:             "equations_with_dot",
+			taskType:         "equations.",
+			taskText:         "Найди неизвестное: x - 3 = 7",
+			expectedTemplate: "T37",
+		},
+		{
+			name:             "algebra_lowercase",
+			taskType:         "algebra",
+			taskText:         "Реши уравнение: 2 * x = 8",
+			expectedTemplate: "T37",
+		},
+		// Тесты что канонические значения НЕ меняются
+		{
+			name:             "sets_logic_unchanged",
+			taskType:         "sets_logic",
+			taskText:         "Назови 5 элементов множества ягод",
+			expectedTemplate: "T51",
+		},
+		{
+			name:             "creative_composition_unchanged",
+			taskType:         "creative_composition",
+			taskText:         "Составь задачу по схеме",
+			expectedTemplate: "T52",
+		},
+		{
+			name:             "patterns_logic_unchanged",
+			taskType:         "patterns_logic",
+			taskText:         "Реши уравнение: x + 5 = 10",
+			expectedTemplate: "T37",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			task := makeTask(3, tc.taskText, nil)
+			items := []types.ParseItem{makeItem(tc.taskText, tc.taskType, "plain_text")}
+
+			ctx := buildRoutingContext(task, items)
+			candidate, found := selectTemplate(ctx)
+
+			if !found {
+				t.Errorf("Шаблон не найден для task_type=%q", tc.taskType)
+				return
+			}
+
+			if candidate.Template.TemplateCode != tc.expectedTemplate {
+				t.Errorf("task_type=%q: ожидали %s, получили %s",
+					tc.taskType, tc.expectedTemplate, candidate.Template.TemplateCode)
+			}
+		})
+	}
+}
+
+// TestTaskTypeMappingCanonicalUnchanged проверяет что канонические task_type не изменяются маппингом
+func TestTaskTypeMappingCanonicalUnchanged(t *testing.T) {
+	canonicalTypes := []string{
+		"number_sense",
+		"numeral_systems",
+		"arithmetic_fluency",
+		"fractions_percent",
+		"word_problems",
+		"measurement_units",
+		"geometry",
+		"data_representation",
+		"patterns_logic",
+		"sets_logic",
+		"creative_composition",
+	}
+
+	for _, taskType := range canonicalTypes {
+		t.Run(taskType, func(t *testing.T) {
+			task := makeTask(3, "Тестовая задача", nil)
+			items := []types.ParseItem{makeItem("Тестовая задача", taskType, "plain_text")}
+
+			ctx := buildRoutingContext(task, items)
+
+			// Проверяем что taskType в контексте не изменился
+			if ctx.TaskType != taskType {
+				t.Errorf("Канонический task_type %q изменился на %q", taskType, ctx.TaskType)
+			}
+		})
 	}
 }

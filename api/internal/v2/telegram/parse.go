@@ -146,6 +146,8 @@ func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse) {
 	// Добавляем информацию о педагогическом шаблоне
 	if templateID := getTemplateID(pr.Task, pr.Items); templateID != "" {
 		b.WriteString(fmt.Sprintf("\n🎓 Шаблон: `%s`", templateID))
+	} else {
+		b.WriteString("\n🎓 Шаблон: не удалось подобрать")
 	}
 
 	text := fmt.Sprintf(TaskViewText, b.String())
