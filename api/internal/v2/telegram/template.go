@@ -251,9 +251,14 @@ func ResetTemplatesCache() {
 // loadTemplates загружает все шаблоны из папки templates
 func loadTemplates() []TemplateRegistry {
 	templatesCacheOnce.Do(func() {
-		files, err := filepath.Glob(filepath.Join(templatesDir, "T*.json"))
+		pattern := filepath.Join(templatesDir, "T*.json")
+		files, err := filepath.Glob(pattern)
 		if err != nil {
+			log.Printf("[template] loadTemplates: glob error for %s: %v", pattern, err)
 			return
+		}
+		if len(files) == 0 {
+			log.Printf("[template] loadTemplates: WARNING no template files found in %s (pattern: %s)", templatesDir, pattern)
 		}
 		for _, f := range files {
 			data, err := os.ReadFile(f)
@@ -268,6 +273,7 @@ func loadTemplates() []TemplateRegistry {
 			}
 			templatesCache = append(templatesCache, reg)
 		}
+		log.Printf("[template] loadTemplates: loaded %d templates from %s", len(templatesCache), templatesDir)
 	})
 	return templatesCache
 }
@@ -859,17 +865,22 @@ type TemplateRoutingResult struct {
 func getTemplateIDWithDebug(task types.ParseTask, items []types.ParseItem) TemplateRoutingResult {
 	ctx := buildRoutingContext(task, items)
 
+	// Загружаем шаблоны чтобы знать сколько их
+	registries := loadTemplates()
+
 	candidate, found := selectTemplate(ctx)
 	if !found {
 		return TemplateRoutingResult{
 			TemplateID: "",
 			Found:      false,
 			DebugInfo: map[string]interface{}{
-				"reason":    "no_template_found",
-				"subject":   ctx.Subject,
-				"task_type": ctx.TaskType,
-				"format":    ctx.Format,
-				"grade":     ctx.Grade,
+				"reason":           "no_template_found",
+				"templates_loaded": len(registries),
+				"templates_dir":    templatesDir,
+				"subject":          ctx.Subject,
+				"task_type":        ctx.TaskType,
+				"format":           ctx.Format,
+				"grade":            ctx.Grade,
 				"text_preview": func() string {
 					if len(ctx.TextAll) > 100 {
 						return ctx.TextAll[:100] + "..."
