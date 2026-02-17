@@ -144,10 +144,13 @@ func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse) {
 	}
 
 	// Добавляем информацию о педагогическом шаблоне
-	if templateID := getTemplateID(pr.Task, pr.Items); templateID != "" {
-		b.WriteString(fmt.Sprintf("\n🎓 Шаблон: `%s`", templateID))
+	templateResult := getTemplateIDWithDebug(pr.Task, pr.Items)
+	if templateResult.Found {
+		b.WriteString(fmt.Sprintf("\n🎓 Шаблон: `%s`", templateResult.TemplateID))
 	} else {
 		b.WriteString("\n🎓 Шаблон: не удалось подобрать")
+		// Отправляем debug-информацию админам
+		r.sendDebug(chatID, "template_routing_failed", templateResult.DebugInfo)
 	}
 
 	text := fmt.Sprintf(TaskViewText, b.String())
