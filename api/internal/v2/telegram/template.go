@@ -234,7 +234,7 @@ func FormatRoutingTrace(trace *RoutingTrace) string {
 var (
 	templatesCache     []TemplateRegistry
 	templatesCacheOnce sync.Once
-	templatesDir       = "api/internal/v2/templates"
+	templatesDir       = "internal/v2/templates"
 )
 
 // SetTemplatesDir sets the templates directory (for testing)

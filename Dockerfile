@@ -38,6 +38,9 @@ COPY --from=build /out/migrate /usr/local/bin/migrate
 COPY --from=build /out/migrations /app/migrations
 COPY --from=build /out/entrypoint.sh /app/entrypoint.sh
 
+# шаблоны для роутинга задач
+COPY --from=build /src/api/internal/v2/templates /app/internal/v2/templates
+
 ENV PORT=8080 \
     MIGRATIONS_DIR=/app/migrations
 
