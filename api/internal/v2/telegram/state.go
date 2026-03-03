@@ -13,18 +13,61 @@ const (
 	maxPixels = 18_000_000
 )
 
+// TTL-кэши для разных типов данных
 var (
-	pendingCtx sync.Map // chatID -> *selectionContext
-	parseWait  sync.Map // chatID -> *parsePending
-	hintState  sync.Map // chatID -> *hintSession
-	chatMode   sync.Map // chatID -> string: "", "await_solution", "await_new_task"
-	chatState  sync.Map // chatID -> State
-	userInfo   sync.Map // chatID -> User
-	chatInfo   sync.Map // chatID -> Chat
+	// Временные данные обработки (короткий TTL)
+	pendingCtx = NewTTLCache("pendingCtx", PendingTTL)
+	parseWait  = NewTTLCache("parseWait", PendingTTL)
+
+	// Сессионные данные (средний TTL)
+	hintState = NewTTLCache("hintState", SessionTTL)
+	chatMode  = NewTTLCache("chatMode", SessionTTL)
+	chatState = NewTTLCache("chatState", SessionTTL)
+
+	// Данные пользователя (длинный TTL)
+	userInfo = NewTTLCache("userInfo", UserDataTTL)
+	chatInfo = NewTTLCache("chatInfo", UserDataTTL)
+
+	// Флаг инициализации очистки
+	cleanupInitOnce sync.Once
+
+	// Per-chat locks для синхронизации state transitions
+	chatLocks sync.Map // chatID -> *sync.Mutex
 )
 
-// хелперы
-func setMode(chatID int64, mode string) { chatMode.Store(chatID, mode) }
+// InitCacheCleanup запускает фоновую очистку кэшей
+// Вызывать один раз при старте приложения
+func InitCacheCleanup() {
+	cleanupInitOnce.Do(func() {
+		manager := GetCacheManager()
+		manager.Register(pendingCtx)
+		manager.Register(parseWait)
+		manager.Register(hintState)
+		manager.Register(chatMode)
+		manager.Register(chatState)
+		manager.Register(userInfo)
+		manager.Register(chatInfo)
+		manager.Register(sessionByChat)
+		manager.Register(batchSessionKeys) // для отслеживания session ID альбомов
+		manager.Start()
+	})
+}
+
+// StopCacheCleanup останавливает фоновую очистку (для graceful shutdown)
+func StopCacheCleanup() {
+	GetCacheManager().Stop()
+}
+
+// GetCacheStats возвращает статистику всех кэшей
+func GetCacheStats() map[string]map[string]int64 {
+	return GetCacheManager().GetAllStats()
+}
+
+// хелперы для режима чата
+func setMode(chatID int64, mode string) {
+	chatMode.Store(chatID, mode)
+}
+
 func getMode(chatID int64) string {
 	if v, ok := chatMode.Load(chatID); ok {
 		if s, _ := v.(string); s != "" {
@@ -33,7 +76,10 @@ func getMode(chatID int64) string {
 	}
 	return ""
 }
-func clearMode(chatID int64) { chatMode.Delete(chatID) }
+
+func clearMode(chatID int64) {
+	chatMode.Delete(chatID)
+}
 
 type State string
 
@@ -81,19 +127,63 @@ func canTransition(from, to State) bool {
 	return false
 }
 
+// getChatLock возвращает mutex для конкретного chatID
+func getChatLock(chatID int64) *sync.Mutex {
+	mu, _ := chatLocks.LoadOrStore(chatID, &sync.Mutex{})
+	if m, ok := mu.(*sync.Mutex); ok {
+		return m
+	}
+	// Fallback: создаём новый мьютекс если тип неверный (не должно происходить)
+	newMu := &sync.Mutex{}
+	chatLocks.Store(chatID, newMu)
+	return newMu
+}
+
 func getState(chatID int64) State {
 	if v, ok := chatState.Load(chatID); ok {
 		if s, ok2 := v.(State); ok2 {
+			// Touch безопасен даже если запись была удалена между Load и Touch
+			// (он просто ничего не сделает если запись не найдена)
+			chatState.Touch(chatID)
 			return s
 		}
 	}
 
+	// Используем Store вместо LoadOrStore для простоты
+	// Если конкурентный Store произошёл - ничего страшного, состояние идемпотентно
 	chatState.Store(chatID, AwaitingTask)
 	return AwaitingTask
 }
 
 func setState(chatID int64, s State) {
 	chatState.Store(chatID, s)
+}
+
+// getAndSetState атомарно получает текущее состояние и устанавливает новое
+// Возвращает предыдущее состояние
+func getAndSetState(chatID int64, newState State) State {
+	mu := getChatLock(chatID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	current := getState(chatID)
+	setState(chatID, newState)
+	return current
+}
+
+// tryTransition пытается выполнить переход в новое состояние
+// Возвращает (текущее состояние, успех перехода)
+func tryTransition(chatID int64, newState State) (State, bool) {
+	mu := getChatLock(chatID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	current := getState(chatID)
+	if !canTransition(current, newState) {
+		return current, false
+	}
+	setState(chatID, newState)
+	return current, true
 }
 
 func friendlyState(s State) string {
