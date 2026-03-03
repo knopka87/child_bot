@@ -27,16 +27,16 @@ type cacheMetrics struct {
 
 // Конфигурация TTL для разных типов данных
 const (
-	// Сессионные данные (задача, подсказки) — 2 часа
+	// SessionTTL Сессионные данные (задача, подсказки) — 2 часа
 	SessionTTL = 2 * time.Hour
 
-	// Временные данные (pending контексты) — 10 минут
+	// PendingTTL Временные данные (pending контексты) — 10 минут
 	PendingTTL = 10 * time.Minute
 
-	// Данные пользователя (класс, настройки) — 24 часа
+	// UserDataTTL Данные пользователя (класс, настройки) — 24 часа
 	UserDataTTL = 24 * time.Hour
 
-	// Интервал очистки
+	// CleanupInterval Интервал очистки
 	CleanupInterval = 5 * time.Minute
 )
 
@@ -67,7 +67,16 @@ func (c *TTLCache) Load(key int64) (interface{}, bool) {
 		return nil, false
 	}
 
-	entry := v.(cacheEntry)
+	entry, ok := v.(cacheEntry)
+	if !ok {
+		// Unexpected type - delete corrupted entry and return false
+		c.data.Delete(key)
+		c.metrics.mu.Lock()
+		c.metrics.misses++
+		c.metrics.mu.Unlock()
+		return nil, false
+	}
+
 	if time.Now().After(entry.expiresAt) {
 		// TTL истек — удаляем и возвращаем false
 		c.data.Delete(key)
@@ -85,12 +94,33 @@ func (c *TTLCache) Load(key int64) (interface{}, bool) {
 }
 
 // Touch обновляет TTL для существующей записи
+// Использует атомарную операцию для избежания race condition
+// Максимум 3 попытки, чтобы избежать бесконечного цикла при высокой конкуренции
 func (c *TTLCache) Touch(key int64) {
-	if v, ok := c.data.Load(key); ok {
-		entry := v.(cacheEntry)
-		entry.expiresAt = time.Now().Add(c.ttl)
-		c.data.Store(key, entry)
+	const maxRetries = 3
+	for i := 0; i < maxRetries; i++ {
+		v, ok := c.data.Load(key)
+		if !ok {
+			return
+		}
+		entry, ok := v.(cacheEntry)
+		if !ok {
+			// Unexpected type - delete and return
+			c.data.Delete(key)
+			return
+		}
+		newEntry := cacheEntry{
+			value:     entry.value,
+			expiresAt: time.Now().Add(c.ttl),
+		}
+		// CompareAndSwap ensures atomicity - if another goroutine modified
+		// the entry between Load and here, this will fail and we retry
+		if c.data.CompareAndSwap(key, v, newEntry) {
+			return
+		}
+		// Entry was modified by another goroutine, retry (with limit)
 	}
+	// После maxRetries попыток просто выходим — TTL не критичен
 }
 
 // Delete удаляет запись
@@ -104,7 +134,13 @@ func (c *TTLCache) Cleanup() int {
 	now := time.Now()
 
 	c.data.Range(func(key, value interface{}) bool {
-		entry := value.(cacheEntry)
+		entry, ok := value.(cacheEntry)
+		if !ok {
+			// Unexpected type - delete corrupted entry
+			c.data.Delete(key)
+			count++
+			return true
+		}
 		if now.After(entry.expiresAt) {
 			c.data.Delete(key)
 			count++
@@ -144,9 +180,11 @@ func (c *TTLCache) Stats() (hits, misses, evicted int64, size int) {
 
 // CacheManager управляет всеми кэшами и их очисткой
 type CacheManager struct {
+	mu       sync.RWMutex
 	caches   []*TTLCache
 	stopChan chan struct{}
 	wg       sync.WaitGroup
+	stopOnce sync.Once // защита от повторного вызова Stop()
 }
 
 var (
@@ -167,6 +205,8 @@ func GetCacheManager() *CacheManager {
 
 // Register добавляет кэш под управление менеджера
 func (m *CacheManager) Register(cache *TTLCache) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.caches = append(m.caches, cache)
 }
 
@@ -204,14 +244,21 @@ func (m *CacheManager) Start() {
 	}()
 }
 
-// Stop останавливает фоновую очистку
+// Stop останавливает фоновую очистку (безопасен для повторного вызова)
 func (m *CacheManager) Stop() {
-	close(m.stopChan)
+	m.stopOnce.Do(func() {
+		close(m.stopChan)
+	})
 	m.wg.Wait()
 }
 
 func (m *CacheManager) cleanup() {
-	for _, cache := range m.caches {
+	m.mu.RLock()
+	caches := make([]*TTLCache, len(m.caches))
+	copy(caches, m.caches)
+	m.mu.RUnlock()
+
+	for _, cache := range caches {
 		cache.Cleanup()
 	}
 	// Также очищаем зависшие батчи фото
@@ -220,8 +267,13 @@ func (m *CacheManager) cleanup() {
 
 // GetAllStats возвращает статистику всех кэшей
 func (m *CacheManager) GetAllStats() map[string]map[string]int64 {
+	m.mu.RLock()
+	caches := make([]*TTLCache, len(m.caches))
+	copy(caches, m.caches)
+	m.mu.RUnlock()
+
 	stats := make(map[string]map[string]int64)
-	for _, cache := range m.caches {
+	for _, cache := range caches {
 		hits, misses, evicted, size := cache.Stats()
 		stats[cache.name] = map[string]int64{
 			"hits":    hits,

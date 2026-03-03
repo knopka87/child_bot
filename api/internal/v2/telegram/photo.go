@@ -9,9 +9,7 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"math"
-	"net/http"
 	"sync"
 	"time"
 
@@ -20,27 +18,90 @@ import (
 	"child-bot/api/internal/util"
 )
 
+const (
+	// Максимальное время жизни батча фото (защита от зависших батчей)
+	batchMaxAge = 5 * time.Minute
+)
+
 var batches sync.Map // key -> *photoBatch
+
+// createBatchTimer создаёт таймер с трекингом для graceful shutdown
+// Возвращает таймер, который автоматически отслеживается ShutdownManager
+func (r *Router) createBatchTimer(delay time.Duration, key string, userID *int64, cid int64, source string) *time.Timer {
+	shutdown := GetShutdownManager()
+
+	// Не создаём таймер если идёт shutdown
+	if shutdown.IsShutdown() {
+		return time.NewTimer(0) // dummy timer
+	}
+
+	// Регистрируем горутину ДО создания таймера
+	done := shutdown.TrackGoroutine()
+
+	return time.AfterFunc(delay, func() {
+		defer done()
+
+		// Проверяем shutdown перед выполнением
+		if shutdown.IsShutdown() {
+			return
+		}
+
+		defer func() {
+			if rec := recover(); rec != nil {
+				util.PrintError(source, "", cid, "panic in timer callback", fmt.Errorf("%v", rec))
+			}
+		}()
+		r.processBatch(key, userID)
+	})
+}
+
 type photoBatch struct {
 	ChatID       int64
 	Key          string // "grp:<mediaGroupID>" | "chat:<chatID>"
 	MediaGroupID string
 
-	mu     sync.Mutex
-	images [][]byte
-	timer  *time.Timer
-	lastAt time.Time
+	mu        sync.Mutex
+	images    [][]byte
+	timer     *time.Timer
+	createdAt time.Time // время создания батча
+	lastAt    time.Time
+	processed bool // флаг, что batch уже обработан
+}
+
+// cleanupStaleBatches удаляет зависшие батчи старше batchMaxAge
+func cleanupStaleBatches() int {
+	var count int
+	now := time.Now()
+
+	batches.Range(func(key, value interface{}) bool {
+		b, ok := value.(*photoBatch)
+		if !ok {
+			// Unexpected type - delete corrupted entry
+			batches.Delete(key)
+			count++
+			return true
+		}
+		b.mu.Lock()
+		age := now.Sub(b.createdAt)
+		b.mu.Unlock()
+
+		if age > batchMaxAge {
+			// Останавливаем таймер если он ещё активен
+			if b.timer != nil {
+				b.timer.Stop()
+			}
+			batches.Delete(key)
+			count++
+		}
+		return true
+	})
+
+	return count
 }
 
 func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	ph := msg.Photo[len(msg.Photo)-1]
-	file, err := r.Bot.GetFile(tgbotapi.FileConfig{FileID: ph.FileID})
-	if err != nil {
-		r.sendError(cid, err)
-		return
-	}
-	url := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", r.Bot.Token, file.FilePath)
-	imgBytes, err := download(url)
+	imgBytes, err := r.Bot.DownloadFile(ph.FileID)
 	if err != nil {
 		r.sendError(cid, err)
 		return
@@ -52,17 +113,44 @@ func (r *Router) acceptPhoto(cid int64, msg tgbotapi.Message) {
 	}
 
 	bi, _ := batches.LoadOrStore(key, &photoBatch{
-		ChatID: cid, Key: key, MediaGroupID: msg.MediaGroupID, images: make([][]byte, 0, 2),
+		ChatID:       cid,
+		Key:          key,
+		MediaGroupID: msg.MediaGroupID,
+		images:       make([][]byte, 0, 2),
+		createdAt:    time.Now(),
 	})
-	b := bi.(*photoBatch)
+	b, ok := bi.(*photoBatch)
+	if !ok {
+		r.sendError(cid, fmt.Errorf("internal error: invalid batch type"))
+		batches.Delete(key)
+		return
+	}
 
 	b.mu.Lock()
+	// Проверяем, не обработан ли уже batch
+	if b.processed {
+		b.mu.Unlock()
+		// Batch уже обработан — создаём новый
+		newBatch := &photoBatch{
+			ChatID:       cid,
+			Key:          key,
+			MediaGroupID: msg.MediaGroupID,
+			images:       [][]byte{imgBytes},
+			createdAt:    time.Now(),
+			lastAt:       time.Now(),
+		}
+		userID := util.GetUserIDFromTgMessage(msg)
+		newBatch.timer = r.createBatchTimer(debounce, key, userID, cid, "acceptPhoto.newBatch")
+		batches.Store(key, newBatch)
+		return
+	}
 	b.images = append(b.images, imgBytes)
+	b.lastAt = time.Now()
 	if b.timer != nil {
 		b.timer.Stop()
 	}
 	userID := util.GetUserIDFromTgMessage(msg)
-	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, userID) })
+	b.timer = r.createBatchTimer(debounce, key, userID, cid, "acceptPhoto")
 	b.mu.Unlock()
 }
 
@@ -71,13 +159,7 @@ func (r *Router) acceptDocument(cid int64, msg tgbotapi.Message) {
 		r.sendError(cid, fmt.Errorf("document is nil"))
 		return
 	}
-	file, err := r.Bot.GetFile(tgbotapi.FileConfig{FileID: msg.Document.FileID})
-	if err != nil {
-		r.sendError(cid, err)
-		return
-	}
-	url := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", r.Bot.Token, file.FilePath)
-	imgBytes, err := download(url)
+	imgBytes, err := r.Bot.DownloadFile(msg.Document.FileID)
 	if err != nil {
 		r.sendError(cid, err)
 		return
@@ -89,34 +171,85 @@ func (r *Router) acceptDocument(cid int64, msg tgbotapi.Message) {
 	}
 
 	bi, _ := batches.LoadOrStore(key, &photoBatch{
-		ChatID: cid, Key: key, MediaGroupID: msg.MediaGroupID, images: make([][]byte, 0, 2),
+		ChatID:       cid,
+		Key:          key,
+		MediaGroupID: msg.MediaGroupID,
+		images:       make([][]byte, 0, 2),
+		createdAt:    time.Now(),
 	})
-	b := bi.(*photoBatch)
+	b, ok := bi.(*photoBatch)
+	if !ok {
+		r.sendError(cid, fmt.Errorf("internal error: invalid batch type"))
+		batches.Delete(key)
+		return
+	}
 
 	b.mu.Lock()
+	// Проверяем, не обработан ли уже batch
+	if b.processed {
+		b.mu.Unlock()
+		// Batch уже обработан — создаём новый
+		newBatch := &photoBatch{
+			ChatID:       cid,
+			Key:          key,
+			MediaGroupID: msg.MediaGroupID,
+			images:       [][]byte{imgBytes},
+			createdAt:    time.Now(),
+			lastAt:       time.Now(),
+		}
+		userID := util.GetUserIDFromTgMessage(msg)
+		newBatch.timer = r.createBatchTimer(debounce, key, userID, cid, "acceptDocument.newBatch")
+		batches.Store(key, newBatch)
+		return
+	}
 	b.images = append(b.images, imgBytes)
+	b.lastAt = time.Now()
 	if b.timer != nil {
 		b.timer.Stop()
 	}
 	userID := util.GetUserIDFromTgMessage(msg)
-	b.timer = time.AfterFunc(debounce, func() { r.processBatch(key, userID) })
+	b.timer = r.createBatchTimer(debounce, key, userID, cid, "acceptDocument")
 	b.mu.Unlock()
 }
 
 func (r *Router) processBatch(key string, userID *int64) {
-	ctx := context.Background()
+	// Используем context с таймаутом вместо Background
+	// Также проверяем shutdown статус
+	shutdown := GetShutdownManager()
+	if shutdown.IsShutdown() {
+		return
+	}
+
+	// Создаём context с таймаутом для всей операции (3 минуты)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
 	bi, ok := batches.Load(key)
 	if !ok {
 		return
 	}
-	b := bi.(*photoBatch)
+	b, ok := bi.(*photoBatch)
+	if !ok {
+		batches.Delete(key)
+		return
+	}
 
+	// Захватываем lock и проверяем, не обработан ли уже batch
 	b.mu.Lock()
+	if b.processed {
+		// Batch уже обработан другой горутиной
+		b.mu.Unlock()
+		return
+	}
+	// Помечаем как обработанный до разблокировки
+	b.processed = true
 	images := append([][]byte(nil), b.images...)
 	chatID := b.ChatID
 	mediaGroupID := b.MediaGroupID
-	batches.Delete(key)
 	b.mu.Unlock()
+
+	// Удаляем из map после разблокировки
+	batches.Delete(key)
 
 	if len(images) == 0 {
 		return
@@ -230,21 +363,4 @@ func scaleDownNN(src image.Image, newW, newH int) *image.RGBA {
 		}
 	}
 	return dst
-}
-
-func download(url string) ([]byte, error) {
-	resp, err := httpClient().Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(b))
-	}
-	return io.ReadAll(resp.Body)
-}
-
-func httpClient() *http.Client {
-	return &http.Client{Timeout: 60 * time.Second}
 }

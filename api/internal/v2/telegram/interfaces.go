@@ -35,7 +35,12 @@ func (w *BotAPIWrapper) GetToken() string {
 	return w.Token
 }
 
+// maxFileDownloadSize — максимальный размер скачиваемого файла (20MB)
+// Защита от OOM при скачивании больших файлов
+const maxFileDownloadSize = 20 * 1024 * 1024
+
 // DownloadFile downloads file bytes using the Telegram API
+// Ограничивает размер скачиваемого файла для защиты от OOM
 func (w *BotAPIWrapper) DownloadFile(fileID string) ([]byte, error) {
 	url, err := w.GetFileDirectURL(fileID)
 	if err != nil {
@@ -49,9 +54,22 @@ func (w *BotAPIWrapper) DownloadFile(fileID string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		// Ограничиваем чтение тела ошибки
+		limitedBody := io.LimitReader(resp.Body, 4096)
+		body, _ := io.ReadAll(limitedBody)
 		return nil, fmt.Errorf("download failed: status %d: %s", resp.StatusCode, string(body))
 	}
 
-	return io.ReadAll(resp.Body)
+	// Ограничиваем размер скачиваемого файла для защиты от OOM
+	limitedReader := io.LimitReader(resp.Body, maxFileDownloadSize+1)
+	data, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+
+	if len(data) > maxFileDownloadSize {
+		return nil, fmt.Errorf("file size exceeds maximum allowed (%d bytes)", maxFileDownloadSize)
+	}
+
+	return data, nil
 }
