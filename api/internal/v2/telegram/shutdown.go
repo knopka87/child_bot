@@ -74,10 +74,14 @@ func (m *ShutdownManager) Shutdown(timeout time.Duration) error {
 		close(done)
 	}()
 
+	// Используем NewTimer вместо After для возможности остановки и избежания утечки
+	timer := time.NewTimer(timeout)
+	defer timer.Stop() // Гарантированно освобождаем ресурсы таймера
+
 	select {
 	case <-done:
 		return nil
-	case <-time.After(timeout):
+	case <-timer.C:
 		return context.DeadlineExceeded
 	}
 }

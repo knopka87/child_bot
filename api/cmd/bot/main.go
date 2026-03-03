@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -78,8 +80,9 @@ func main() {
 
 	switch cfg.TelegramBotVersion {
 	case "v2":
+		t2.InitCacheCleanup() // запуск фоновой очистки TTL-кэшей
 		r = &t2.Router{
-			Bot:        bot,
+			Bot:        t2.NewBotAPIWrapper(bot),
 			LlmManager: llmManager,
 			LLMClient:  llmClient,
 			Store:      st,
@@ -109,19 +112,20 @@ func main() {
 	})
 
 	addr := "0.0.0.0:" + cfg.Port
+	isV2 := cfg.TelegramBotVersion == "v2"
 
 	// --- Choose mode: Webhook vs Polling ---
 	webhookURL := strings.TrimSpace(cfg.WebhookURL)
 	if webhookURL != "" {
-		startWebhookMode(addr, bot, r, llmManager, webhookURL)
+		startWebhookMode(addr, bot, r, llmManager, webhookURL, db, isV2)
 	} else {
-		startPollingMode(addr, bot, r, llmManager)
+		startPollingMode(addr, bot, r, llmManager, db, isV2)
 	}
 }
 
 // ---------------- Modes -----------------
 
-func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llmManager *service.LlmManager, baseURL string) {
+func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llmManager *service.LlmManager, baseURL string, db *sql.DB, isV2 bool) {
 	// секретный путь вебхука
 	path := "/webhook/" + shortHash(r.GetToken())
 	public := strings.TrimRight(baseURL, "/") + path
@@ -138,21 +142,71 @@ func startWebhookMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llm
 	// tgbotapi.ListenForWebhook регистрирует обработчик на DefaultServeMux
 	updates := bot.ListenForWebhook(path)
 
+	// Контекст для graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
-		for upd := range updates {
-			r.HandleUpdate(upd, llmManager.Get(util.GetChatIDByTgUpdate(upd)))
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("webhook updates handler: context cancelled")
+				return
+			case upd, ok := <-updates:
+				if !ok {
+					log.Printf("webhook updates channel closed")
+					return
+				}
+				r.HandleUpdate(upd, llmManager.Get(util.GetChatIDByTgUpdate(upd)))
+			}
 		}
-		log.Printf("webhook updates channel closed")
+	}()
+
+	// HTTP server с возможностью graceful shutdown
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: nil, // DefaultServeMux
+	}
+
+	// Обработка сигналов
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		log.Printf("received signal %v, starting graceful shutdown...", sig)
+
+		cancel() // останавливаем обработку updates
+
+		// Graceful shutdown v2 компонентов
+		if isV2 {
+			if err := t2.GracefulShutdown(10 * time.Second); err != nil {
+				log.Printf("v2 graceful shutdown error: %v", err)
+			}
+		}
+
+		// Закрываем БД
+		if err := db.Close(); err != nil {
+			log.Printf("db close error: %v", err)
+		}
+
+		// Останавливаем HTTP server
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer shutdownCancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("http server shutdown error: %v", err)
+		}
 	}()
 
 	log.Printf("health server listening on %s/healthz", addr)
 	log.Printf("webhook listening on %s%s", addr, path)
-	if err := http.ListenAndServe(addr, nil); err != nil { // DefaultServeMux
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+	log.Printf("server stopped")
 }
 
-func startPollingMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llmManager *service.LlmManager) {
+func startPollingMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llmManager *service.LlmManager, db *sql.DB, isV2 bool) {
 	// Ensure webhook is fully disabled before using getUpdates (polling).
 	// Otherwise Telegram returns: "Conflict: can't use getUpdates method while webhook is active".
 	{
@@ -163,19 +217,57 @@ func startPollingMode(addr string, bot *tgbotapi.BotAPI, r service.TgRouter, llm
 		}
 	}
 
-	// Запускаем HTTP server (healthz), хотя для polling он не обязателен
+	// HTTP server с возможностью graceful shutdown
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: nil, // DefaultServeMux
+	}
+
 	go func() {
 		log.Printf("health server listening on %s/healthz", addr)
-		if err := http.ListenAndServe(addr, nil); err != nil { // DefaultServeMux
-			log.Fatal(err)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("health server error: %v", err)
 		}
 	}()
 
-	// Устойчивый поллинг с backoff без log.Fatal/os.Exit
-	ctx := context.Background()
+	// Контекст для graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Обработка сигналов
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		log.Printf("received signal %v, starting graceful shutdown...", sig)
+
+		cancel() // останавливаем polling
+
+		// Graceful shutdown v2 компонентов
+		if isV2 {
+			if err := t2.GracefulShutdown(10 * time.Second); err != nil {
+				log.Printf("v2 graceful shutdown error: %v", err)
+			}
+		}
+
+		// Закрываем БД
+		if err := db.Close(); err != nil {
+			log.Printf("db close error: %v", err)
+		}
+
+		// Останавливаем HTTP server
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("http server shutdown error: %v", err)
+		}
+	}()
+
+	// Устойчивый поллинг с backoff
 	runPolling(ctx, bot, func(upd tgbotapi.Update) {
-		r.HandleUpdate(upd, llmManager.Get(util.GetChatIDByTgUpdate(upd))) // engines менеджер внутри роутера
+		r.HandleUpdate(upd, llmManager.Get(util.GetChatIDByTgUpdate(upd)))
 	})
+	log.Printf("polling stopped")
 }
 
 // ---------------- Polling loop -----------------
