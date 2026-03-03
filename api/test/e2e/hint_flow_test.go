@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	testdataDir = "testdata"
-	tasksDir    = "testdata/tasks" // Фото заданий
+	tasksDir = "testdata/tasks" // Фото заданий
 )
 
 // TestE2E_HintFlow tests the complete hint flow for all task images:
@@ -156,7 +155,7 @@ func runHintFlowForImage(t *testing.T, cfg *TestConfig, llmClient *llmclient.Cli
 	}
 
 	result.EndTime = time.Now()
-	result.Success = true
+	result.PipelineOK = true
 	result.HintsCount = hintCount
 
 	// Fetch timeline events from database
@@ -358,6 +357,7 @@ func fetchTimelineEvents(t *testing.T, st *store.Store, chatID int64, result *Te
 	}
 
 	// Convert to TimelineRecord
+	var records []TimelineRecord
 	for _, e := range events {
 		record := TimelineRecord{
 			TaskSessionID: e.TaskSessionID,
@@ -374,8 +374,11 @@ func fetchTimelineEvents(t *testing.T, st *store.Store, chatID int64, result *Te
 		if e.Error != nil {
 			record.Error = e.Error.Error()
 		}
-		result.TimelineEvents = append(result.TimelineEvents, record)
+		records = append(records, record)
 	}
+
+	// P2.3: Sanitize to remove base64 images from logs
+	result.TimelineEvents = SanitizeTimelineEvents(records)
 
 	t.Logf("Loaded %d timeline events from database", len(events))
 }

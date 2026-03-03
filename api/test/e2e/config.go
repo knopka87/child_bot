@@ -7,7 +7,7 @@ import (
 
 // TestConfig holds configuration for E2E tests
 type TestConfig struct {
-	LLMProxyURL string // e.g., "http://138.124.55.145:80" or real proxy
+	LLMProxyURL string // e.g., "http://138.124.55.145:8000" or real proxy
 	DatabaseURL string // PostgreSQL connection string
 	LLMName     string // LLM name: "gpt", "gemini", etc.
 }
@@ -17,7 +17,7 @@ func loadTestConfig(t *testing.T) *TestConfig {
 	t.Helper()
 
 	cfg := &TestConfig{
-		LLMProxyURL: getEnvOrDefault("TEST_LLM_PROXY_URL", "http://138.124.55.145:80"),
+		LLMProxyURL: getEnvOrDefault("TEST_LLM_PROXY_URL", "http://138.124.55.145:8000"),
 		DatabaseURL: getEnvOrDefault("TEST_DATABASE_URL", "postgres://localhost:5432/child_bot_test?sslmode=disable"),
 		LLMName:     getEnvOrDefault("TEST_LLM_NAME", "gpt"),
 	}

@@ -27,12 +27,12 @@ type FileData struct {
 
 // CapturedMessage represents a message captured by the mock bot
 type CapturedMessage struct {
-	ChatID    int64            `json:"chat_id"`
-	Text      string           `json:"text"`
-	ParseMode string           `json:"parse_mode,omitempty"`
-	Buttons   [][]ButtonInfo   `json:"buttons,omitempty"`
-	Timestamp time.Time        `json:"timestamp"`
-	Type      string           `json:"type"` // "text", "edit_markup", "callback_ack"
+	ChatID    int64          `json:"chat_id"`
+	Text      string         `json:"text"`
+	ParseMode string         `json:"parse_mode,omitempty"`
+	Buttons   [][]ButtonInfo `json:"buttons,omitempty"`
+	Timestamp time.Time      `json:"timestamp"`
+	Type      string         `json:"type"` // "text", "edit_markup", "callback_ack"
 }
 
 // ButtonInfo represents a button in a message

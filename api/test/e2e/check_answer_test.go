@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	answersDir = "testdata/answers" // Пары task_X + answer_X
+	answersDir     = "testdata/answers" // Пары task_X + answer_X
+	perTestTimeout = 5 * time.Minute    // Таймаут на одно задание
 )
 
 // TaskAnswerPair holds a pair of task and answer images
@@ -27,13 +28,28 @@ type TaskAnswerPair struct {
 	AnswerPath string // path to answer_homework1.jpg
 }
 
+// CheckDecision represents the outcome of answer checking (P0.3)
+type CheckDecision string
+
+const (
+	DecisionCorrect               CheckDecision = "correct"
+	DecisionIncorrect             CheckDecision = "incorrect"
+	DecisionNoVisibleAnswer       CheckDecision = "no_visible_answer"
+	DecisionNeedAnnotation        CheckDecision = "need_annotation"
+	DecisionInvalidExpectedAnswer CheckDecision = "invalid_expected_answer"
+	DecisionUnknown               CheckDecision = "unknown"
+)
+
 // CheckAnswerResult extends TestResult with check-specific fields
 type CheckAnswerResult struct {
 	*TestResult
-	TaskImagePath   string `json:"task_image_path"`
-	AnswerImagePath string `json:"answer_image_path"`
-	CheckResult     string `json:"check_result"` // "correct", "incorrect", "error"
-	CheckFeedback   string `json:"check_feedback,omitempty"`
+	TaskImagePath   string        `json:"task_image_path"`
+	AnswerImagePath string        `json:"answer_image_path"`
+	Decision        CheckDecision `json:"decision"` // P0.3: enum instead of string
+	CheckFeedback   string        `json:"check_feedback,omitempty"`
+	// P2.2: Diagnostic fields
+	CanEvaluate  bool `json:"can_evaluate"`  // whether evaluation was possible
+	VerdictReady bool `json:"verdict_ready"` // whether we got a definitive answer
 }
 
 // TestE2E_CheckAnswer tests the complete answer checking flow:
@@ -50,6 +66,9 @@ func TestE2E_CheckAnswer(t *testing.T) {
 
 	// Load config from environment
 	cfg := loadTestConfig(t)
+
+	// Clean up old results before running tests
+	cleanResultsDir(t, "results")
 
 	// Find all task-answer pairs
 	pairs := findTaskAnswerPairs(t, answersDir)
@@ -75,7 +94,19 @@ func TestE2E_CheckAnswer(t *testing.T) {
 		userID := int64(88889001 + i)
 
 		t.Run(pair.Name, func(t *testing.T) {
-			runCheckAnswerForPair(t, cfg, llmClient, st, pair, chatID, userID)
+			// Per-test timeout: run in goroutine with deadline
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				runCheckAnswerForPair(t, cfg, llmClient, st, pair, chatID, userID)
+			}()
+
+			select {
+			case <-done:
+				// Test completed normally
+			case <-time.After(perTestTimeout):
+				t.Fatalf("Test %s timed out after %v", pair.Name, perTestTimeout)
+			}
 		})
 	}
 }
@@ -232,36 +263,62 @@ func runCheckAnswerForPair(t *testing.T, cfg *TestConfig, llmClient *llmclient.C
 			strings.Contains(text, "поправ") ||
 			strings.Contains(text, "отлично") ||
 			strings.Contains(text, "не видно") ||
-			strings.Contains(text, "не удалось")
+			strings.Contains(text, "не удалось") ||
+			// need_annotation patterns
+			strings.Contains(text, "подпиши") ||
+			strings.Contains(text, "сфотографируй ещё раз") ||
+			strings.Contains(text, "переснять") ||
+			strings.Contains(text, "ближе и чётче") ||
+			strings.Contains(text, "пожалуйста")
 	})
 
 	// Analyze check result
-	// IMPORTANT: Check negative patterns FIRST because "неверно" contains "верно"
+	// IMPORTANT: Check patterns in order of specificity
+	// Order matters:
+	// 1. incorrect must be checked BEFORE correct (because "неправильно" contains "правильно")
+	// 2. correct/incorrect must be checked BEFORE need_annotation (feedback may contain polite phrases)
 	checkText := strings.ToLower(checkMsg.Text)
 	if strings.Contains(checkText, "не видно") || strings.Contains(checkText, "не удалось") {
-		result.CheckResult = "no_visible_answer"
+		result.Decision = DecisionNoVisibleAnswer
+		result.CanEvaluate = false
+		result.VerdictReady = false
 	} else if strings.Contains(checkText, "неверно") ||
 		strings.Contains(checkText, "неправильно") ||
 		strings.Contains(checkText, "ошибк") ||
 		strings.Contains(checkText, "поправ") ||
 		strings.Contains(checkText, "почти получилось") ||
 		strings.Contains(checkText, "что можно поправить") {
-		result.CheckResult = "incorrect"
+		// incorrect: check FIRST because "неправильно" contains "правильно"
+		result.Decision = DecisionIncorrect
+		result.CanEvaluate = true
+		result.VerdictReady = true
 	} else if strings.Contains(checkText, "всё верно") ||
 		strings.Contains(checkText, "правильно") ||
 		strings.Contains(checkText, "молодец") ||
 		strings.Contains(checkText, "отлично") {
-		result.CheckResult = "correct"
+		result.Decision = DecisionCorrect
+		result.CanEvaluate = true
+		result.VerdictReady = true
+	} else if strings.Contains(checkText, "подпиши") ||
+		strings.Contains(checkText, "сфотографируй ещё раз") ||
+		strings.Contains(checkText, "переснять") ||
+		strings.Contains(checkText, "ближе и чётче") {
+		// need_annotation: bot asks to clarify/re-take photo
+		result.Decision = DecisionNeedAnnotation
+		result.CanEvaluate = false
+		result.VerdictReady = false
 	} else {
-		result.CheckResult = "unknown"
+		result.Decision = DecisionUnknown
+		result.CanEvaluate = false
+		result.VerdictReady = false
 	}
 	result.CheckFeedback = checkMsg.Text
 
-	t.Logf("Check result: %s", result.CheckResult)
+	t.Logf("Decision: %s (can_evaluate=%v, verdict_ready=%v)", result.Decision, result.CanEvaluate, result.VerdictReady)
 	t.Logf("Check feedback: %s", truncateText(checkMsg.Text, 200))
 
 	result.EndTime = time.Now()
-	result.Success = true
+	result.PipelineOK = true
 
 	// Fetch timeline events from database
 	fetchTimelineEvents(t, st, chatID, result.TestResult)
@@ -271,7 +328,7 @@ func runCheckAnswerForPair(t *testing.T, cfg *TestConfig, llmClient *llmclient.C
 	saveCheckResults(t, resultsPath, result)
 
 	t.Logf("Test completed for pair %s!", pair.Name)
-	t.Logf("  - Check result: %s", result.CheckResult)
+	t.Logf("  - Decision: %s", result.Decision)
 	t.Logf("  - Total duration: %v", result.Duration())
 	t.Logf("  - Results saved to: %s", resultsPath)
 }
@@ -300,4 +357,38 @@ func saveCheckResults(t *testing.T, path string, result *CheckAnswerResult) {
 	}
 
 	t.Logf("Test results saved to: %s", path)
+}
+
+// cleanResultsDir removes all JSON files from the results directory before running tests
+func cleanResultsDir(t *testing.T, dir string) {
+	t.Helper()
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		// Directory doesn't exist yet, that's fine
+		if os.IsNotExist(err) {
+			return
+		}
+		t.Logf("Warning: failed to read results directory: %v", err)
+		return
+	}
+
+	removed := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue // Skip subdirectories (like "old")
+		}
+		if strings.HasSuffix(entry.Name(), ".json") {
+			path := filepath.Join(dir, entry.Name())
+			if err := os.Remove(path); err != nil {
+				t.Logf("Warning: failed to remove %s: %v", path, err)
+			} else {
+				removed++
+			}
+		}
+	}
+
+	if removed > 0 {
+		t.Logf("Cleaned up %d old result files from %s", removed, dir)
+	}
 }
