@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -44,7 +42,7 @@ func (r *Router) checkSolutionFromDocument(ctx context.Context, chatID int64, us
 
 // checkSolutionWithFileID — общая логика проверки решения по fileID
 func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, userID *int64, fileID string, llmName string) {
-	setState(chatID, Check)
+	r.setStateWithPersist(chatID, Check)
 	sid, _ := r.getSession(chatID)
 
 	time1 := r.sendAlert(chatID, CheckAlert, 0, 15)
@@ -74,6 +72,8 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 	grade := int64(0)
 	rawTaskText := ""
 	var taskStruct types.TaskStructCheck
+	taskStructLoaded := false
+
 	if pr, ok := r.Store.FindLastConfirmedParse(ctx, sid); ok {
 		if s := strings.TrimSpace(pr.Subject); s != "" {
 			subj = s
@@ -84,13 +84,24 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 			var parseResp types.ParseResponse
 			if err := json.Unmarshal(pr.ResultJSON, &parseResp); err == nil {
 				taskStruct = types.TaskStructCheck{
-					TaskTextClean: parseResp.Task.TaskTextClean,
-					VisualFacts:   parseResp.Task.VisualFacts,
-					QualityFlags:  parseResp.Task.Quality,
-					Items:         parseResp.Items,
+					TaskTextClean:   parseResp.Task.TaskTextClean,
+					VisualReasoning: parseResp.Task.VisualReasoning,
+					VisualFacts:     parseResp.Task.VisualFacts,
+					QualityFlags:    parseResp.Task.Quality,
+					Items:           parseResp.Items,
 				}
+				taskStructLoaded = true
+			} else {
+				util.PrintError("checkSolutionWithFileID", llmName, chatID,
+					"failed to unmarshal ParseResponse from DB, check will proceed without task context", err)
 			}
 		}
+	}
+
+	// Логируем предупреждение если проверка идёт без контекста задачи
+	if !taskStructLoaded {
+		util.PrintInfo("checkSolutionWithFileID", llmName, chatID,
+			"proceeding without task structure context - check accuracy may be reduced")
 	}
 
 	in := types.CheckRequest{
@@ -159,46 +170,85 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 	r.sendCheckResponse(chatID, res)
 }
 
-// sendCheckResponse — вывод краткого результата проверки (с учётом новой схемы v1.2)
+// sendCheckResponse — вывод краткого результата проверки (P0.3: использует Decision enum)
 func (r *Router) sendCheckResponse(chatID int64, cr types.CheckResponse) {
-	var b strings.Builder
-
-	if cr.IsCorrect != nil && *cr.IsCorrect {
-		setState(chatID, Correct)
-		clearMode(chatID)
+	// P0.3: Используем Decision вместо IsCorrect
+	switch cr.Decision {
+	case types.CheckDecisionCorrect:
+		r.setStateWithPersist(chatID, Correct)
+		r.clearModeWithPersist(chatID)
 		r.clearSession(chatID)
 		r.send(chatID, AnswerCorrectText, makeCorrectAnswerButtons())
 		return
+
+	case types.CheckDecisionIncorrect:
+		r.setStateWithPersist(chatID, Incorrect)
+		text := fmt.Sprintf(AnswerIncorrectText, cr.Feedback)
+		r.send(chatID, text, makeIncorrectAnswerButtons())
+		return
+
+	case types.CheckDecisionNeedAnnotation:
+		// Нужна аннотация рисунка
+		r.setStateWithPersist(chatID, AwaitSolution)
+		r.send(chatID, "Подпиши вершины или обведи искомую область на рисунке, чтобы я мог точно проверить.", nil)
+		return
+
+	case types.CheckDecisionInvalidExpected:
+		// P0.1: Противоречие в эталоне - внутренняя ошибка, не показываем техническое сообщение
+		r.setStateWithPersist(chatID, AwaitSolution)
+		r.send(chatID, "Не удалось проверить ответ. Попробуй отправить фото ещё раз.", nil)
+		return
+
+	case types.CheckDecisionCannotEvaluate:
+		// Не удалось проверить — показываем feedback если есть (не технический)
+		r.setStateWithPersist(chatID, AwaitSolution)
+		if cr.Feedback != "" && !strings.Contains(cr.Feedback, "эталон") {
+			r.send(chatID, cr.Feedback, nil)
+		} else {
+			r.send(chatID, "Не удалось проверить ответ. Попробуй переснять фото.", nil)
+		}
+		return
+
+	default:
+		// Fallback для неизвестного Decision (обратная совместимость)
+		if cr.IsCorrect != nil && *cr.IsCorrect {
+			r.setStateWithPersist(chatID, Correct)
+			r.clearModeWithPersist(chatID)
+			r.clearSession(chatID)
+			r.send(chatID, AnswerCorrectText, makeCorrectAnswerButtons())
+		} else {
+			r.setStateWithPersist(chatID, Incorrect)
+			text := fmt.Sprintf(AnswerIncorrectText, cr.Feedback)
+			r.send(chatID, text, makeIncorrectAnswerButtons())
+		}
 	}
-
-	setState(chatID, Incorrect)
-
-	if cr.Feedback != "" {
-		b.WriteString("\n" + cr.Feedback + "\n")
-	}
-
-	text := fmt.Sprintf(AnswerIncorrectText, cr.Feedback)
-	r.send(chatID, text, makeIncorrectAnswerButtons())
 }
 
 // downloadFileBytes — скачивает файл Telegram по fileID и возвращает bytes и mime
+// Использует BotSender.DownloadFile для совместимости с моками в тестах
 func (r *Router) downloadFileBytes(fileID string) ([]byte, string, error) {
-	url, err := r.Bot.GetFileDirectURL(fileID)
+	b, err := r.Bot.DownloadFile(fileID)
 	if err != nil {
 		return nil, "", err
 	}
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, "", err
+
+	// Определяем MIME-тип по сигнатуре файла
+	mime := "image/jpeg" // default
+	if len(b) >= 8 {
+		if b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47 {
+			mime = "image/png"
+		} else if len(b) >= 12 {
+			// Check for HEIC/AVIF (ftyp box)
+			if string(b[4:8]) == "ftyp" {
+				brand := string(b[8:12])
+				if brand == "heic" || brand == "heix" || brand == "mif1" {
+					mime = "image/heic"
+				} else if brand == "avif" {
+					mime = "image/avif"
+				}
+			}
+		}
 	}
-	defer resp.Body.Close()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", err
-	}
-	mime := resp.Header.Get("Content-Type")
-	if mime == "" {
-		mime = "image/jpeg"
-	}
+
 	return b, mime, nil
 }
