@@ -20,6 +20,14 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	util.PrintInfo("handleCallback", llmName, cid, message)
 	// r.sendDebug(cid, "message", cb.Message)
 
+	// Безопасное получение MessageID (cb.Message может быть nil для inline callbacks)
+	var msgID int
+	var tgMsgID *int
+	if cb.Message != nil {
+		msgID = cb.Message.MessageID
+		tgMsgID = &msgID
+	}
+
 	sid, _ := r.getSession(cid)
 	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 		ChatID:        cid,
@@ -28,46 +36,61 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		EventType:     "callback_" + data,
 		Provider:      llmName,
 		OK:            true,
-		TgMessageID:   &cb.Message.MessageID,
+		TgMessageID:   tgMsgID,
 	})
+
+	// Для большинства callback'ов требуется Message
+	// Если его нет — игнорируем (кроме grade callbacks, которые не требуют MessageID)
+	if cb.Message == nil {
+		switch data {
+		case "grade1", "grade2", "grade3", "grade4", "report":
+			// Эти callbacks не требуют MessageID
+		default:
+			util.PrintError("handleCallback", llmName, cid, "cb.Message is nil", nil)
+			return
+		}
+	}
 
 	switch data {
 	case "hint_next":
-		r.onHintNext(cid, cb.Message.MessageID)
+		r.onHintNext(cid, msgID)
 	case "parse_yes":
-		r.onParseYes(cid, cb.Message.MessageID)
+		r.onParseYes(cid, msgID)
 	case "dont_like_hint":
-		r.onDontLikeHint(cid, cb.Message.MessageID)
+		r.onDontLikeHint(cid, msgID)
 	case "ready_solution":
 		sid, _ := r.getSession(cid)
 		_ = r.Store.MarkAcceptedParseBySID(context.Background(), sid, "user_yes")
 		// Скрыть старые кнопки у сообщения с колбэком
-		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		setMode(cid, "await_solution")
+		_ = hideKeyboard(cid, msgID, r)
+		r.setModeWithPersist(cid, "await_solution")
 		r.send(cid, CheckAnswerClick, makeCheckAnswerClickButtons())
 	case "analogue_task":
-		_ = hideKeyboard(cid, cb.Message.MessageID, r)
+		_ = hideKeyboard(cid, msgID, r)
 		r.send(cid, AnalogueTaskWaitingText, nil)
 
-		timer1 := r.sendAlert(cid, AnalogueAlert1, 5, 5)
-		timer2 := r.sendAlert(cid, AnalogueAlert2, 10, 5)
-		timer3 := r.sendAlert(cid, AnalogueAlert3, 15, 5)
+		// Используем анонимную функцию с defer для гарантированной остановки таймеров
+		func() {
+			timer1 := r.sendAlert(cid, AnalogueAlert1, 5, 5)
+			timer2 := r.sendAlert(cid, AnalogueAlert2, 10, 5)
+			timer3 := r.sendAlert(cid, AnalogueAlert3, 15, 5)
+			defer timer1.Stop()
+			defer timer2.Stop()
+			defer timer3.Stop()
 
-		userID := util.GetUserIDFromTgCB(cb)
-		if getState(cid) == Incorrect {
-			r.HandleAnalogueCallback(cid, userID, types.ReasonAfterIncorrect)
-		} else {
-			r.HandleAnalogueCallback(cid, userID, types.ReasonAfter3Hints)
-		}
-		timer3.Stop()
-		timer2.Stop()
-		timer1.Stop()
+			userID := util.GetUserIDFromTgCB(cb)
+			if getState(cid) == Incorrect {
+				r.HandleAnalogueCallback(cid, userID, types.ReasonAfterIncorrect)
+			} else {
+				r.HandleAnalogueCallback(cid, userID, types.ReasonAfter3Hints)
+			}
+		}()
 	case "new_task":
-		_ = hideKeyboard(cid, cb.Message.MessageID, r)
-		resetContext(cid)
+		_ = hideKeyboard(cid, msgID, r)
+		r.resetContextWithPersist(cid)
 		r.send(cid, NewTaskText, nil)
 	case "report":
-		setState(cid, Report)
+		r.setStateWithPersist(cid, Report)
 		r.send(cid, ReportText, nil)
 	case "grade1":
 		r.updateGradeUser(cid, 1)
@@ -87,7 +110,11 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 		return
 	}
 	parseWait.Delete(chatID)
-	p := v.(*parsePending)
+	p, ok := v.(*parsePending)
+	if !ok {
+		r.sendError(chatID, fmt.Errorf("invalid parse context type"))
+		return
+	}
 
 	sid, _ := r.getSession(chatID)
 	_ = r.Store.MarkAcceptedParseBySID(context.Background(), sid, "user_yes")
@@ -104,8 +131,10 @@ func (r *Router) onParseYes(chatID int64, msgID int) {
 	}
 	hintState.Store(chatID, hs)
 
-	r.onHintNext(chatID, msgID)
+	// Сохраняем контекст подсказок в БД для восстановления после редеплоя
+	r.saveHintContext(chatID, hs)
 
+	r.onHintNext(chatID, msgID)
 }
 
 func (r *Router) onDontLikeHint(chatID int64, msgID int) {
@@ -119,8 +148,19 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		r.send(chatID, HintNotFoundText, makeErrorButtons())
 		return
 	}
-	hs := v.(*hintSession)
-	if hs.NextLevel > hs.MaxHints {
+	hs, ok := v.(*hintSession)
+	if !ok {
+		r.send(chatID, HintNotFoundText, makeErrorButtons())
+		return
+	}
+
+	// Защита от concurrent access
+	hs.mu.Lock()
+	currentLevel := hs.NextLevel
+	maxHints := hs.MaxHints
+	hs.mu.Unlock()
+
+	if currentLevel > maxHints {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
 		r.send(chatID, HintFinishText, makeFinishHintButtons())
@@ -131,12 +171,20 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 
 	r.sendHint(context.Background(), chatID, msgID, hs)
 
+	// Инкремент уровня под mutex
+	hs.mu.Lock()
 	hs.NextLevel++
-	if hs.NextLevel > hs.MaxHints {
+	nextLevel := hs.NextLevel
+	hs.mu.Unlock()
+
+	if nextLevel > maxHints {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 		_, _ = r.Bot.Send(edit)
 	}
 	hintState.Store(chatID, hs)
+
+	// Сохраняем обновлённый контекст в БД
+	r.saveHintContext(chatID, hs)
 }
 
 func (r *Router) updateGradeUser(cid, grade int64) {
@@ -146,7 +194,7 @@ func (r *Router) updateGradeUser(cid, grade int64) {
 	}
 	_ = r.Store.UpsertUser(context.Background(), user)
 	userInfo.Store(cid, user)
-	setState(cid, AwaitingTask)
+	r.setStateWithPersist(cid, AwaitingTask)
 	r.send(cid, StartMessageText, nil)
 }
 
@@ -165,13 +213,4 @@ func hideKeyboard(chatID int64, msgID int, r *Router) error {
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, err := r.Bot.Send(edit)
 	return err
-}
-
-func resetContext(cid int64) {
-	// Сброс контекстов
-	hintState.Delete(cid)
-	pendingCtx.Delete(cid)
-	parseWait.Delete(cid)
-	setMode(cid, "await_new_task")
-	setState(cid, AwaitingTask)
 }

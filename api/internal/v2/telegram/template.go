@@ -109,13 +109,14 @@ type HintLevel struct {
 
 // RoutingContext — контекст для роутинга
 type RoutingContext struct {
-	TextAll     string
-	VisualKinds map[string]bool
-	HasGap      bool
-	TaskType    string
-	Format      string
-	Grade       int64
-	Subject     types.Subject
+	TextAll         string
+	VisualKinds     map[string]bool
+	HasGap          bool
+	TaskType        string
+	Format          string
+	Grade           int64
+	Subject         types.Subject
+	DetectedSubject types.Subject // Subject из DETECT (первичный источник истины)
 }
 
 // TemplateCandidate — кандидат с оценкой
@@ -232,9 +233,11 @@ func FormatRoutingTrace(trace *RoutingTrace) string {
 }
 
 var (
-	templatesCache     []TemplateRegistry
-	templatesCacheOnce sync.Once
-	templatesDir       = "internal/v2/templates"
+	templatesCache       []TemplateRegistry
+	templatesCacheOnce   sync.Once
+	templatesDir         = "internal/v2/templates"
+	templatesLoadError   bool // флаг ошибки загрузки шаблонов
+	templatesLoadWarning string
 )
 
 // SetTemplatesDir sets the templates directory (for testing)
@@ -249,33 +252,66 @@ func ResetTemplatesCache() {
 }
 
 // loadTemplates загружает все шаблоны из папки templates
+// Гарантирует, что вернётся не nil (минимум пустой slice)
 func loadTemplates() []TemplateRegistry {
 	templatesCacheOnce.Do(func() {
+		// Инициализируем пустым slice чтобы гарантировать не-nil
+		templatesCache = make([]TemplateRegistry, 0)
+		templatesLoadError = false
+		templatesLoadWarning = ""
+
 		pattern := filepath.Join(templatesDir, "T*.json")
 		files, err := filepath.Glob(pattern)
 		if err != nil {
-			log.Printf("[template] loadTemplates: glob error for %s: %v", pattern, err)
+			templatesLoadError = true
+			templatesLoadWarning = fmt.Sprintf("glob error for %s: %v", pattern, err)
+			log.Printf("[template] CRITICAL loadTemplates: %s", templatesLoadWarning)
 			return
 		}
 		if len(files) == 0 {
-			log.Printf("[template] loadTemplates: WARNING no template files found in %s (pattern: %s)", templatesDir, pattern)
+			templatesLoadError = true
+			templatesLoadWarning = fmt.Sprintf("no template files found in %s (pattern: %s)", templatesDir, pattern)
+			log.Printf("[template] CRITICAL loadTemplates: %s", templatesLoadWarning)
+			return
 		}
+
+		loaded := 0
+		failedFiles := make([]string, 0)
 		for _, f := range files {
 			data, err := os.ReadFile(f)
 			if err != nil {
 				log.Printf("[template] failed to read %s: %v", f, err)
+				failedFiles = append(failedFiles, filepath.Base(f))
 				continue
 			}
 			var reg TemplateRegistry
 			if err := json.Unmarshal(data, &reg); err != nil {
 				log.Printf("[template] failed to parse %s: %v", f, err)
+				failedFiles = append(failedFiles, filepath.Base(f))
 				continue
 			}
 			templatesCache = append(templatesCache, reg)
+			loaded++
 		}
-		log.Printf("[template] loadTemplates: loaded %d templates from %s", len(templatesCache), templatesDir)
+
+		if loaded == 0 {
+			templatesLoadError = true
+			templatesLoadWarning = fmt.Sprintf("all %d template files failed to load: %v", len(files), failedFiles)
+			log.Printf("[template] CRITICAL loadTemplates: %s", templatesLoadWarning)
+		} else if len(failedFiles) > 0 {
+			templatesLoadWarning = fmt.Sprintf("loaded %d templates, but %d files failed: %v", loaded, len(failedFiles), failedFiles)
+			log.Printf("[template] WARNING loadTemplates: %s", templatesLoadWarning)
+		} else {
+			log.Printf("[template] loadTemplates: successfully loaded %d templates from %s", loaded, templatesDir)
+		}
 	})
 	return templatesCache
+}
+
+// TemplatesLoadStatus возвращает статус загрузки шаблонов для мониторинга
+func TemplatesLoadStatus() (loaded int, hasError bool, warning string) {
+	templates := loadTemplates()
+	return len(templates), templatesLoadError, templatesLoadWarning
 }
 
 // normalizeText нормализует текст для сравнения:
@@ -308,7 +344,8 @@ func normalizeText(s string) string {
 }
 
 // buildRoutingContext строит контекст роутинга из ParseResponse
-func buildRoutingContext(task types.ParseTask, items []types.ParseItem) RoutingContext {
+// detectedSubject - subject из DETECT (первичный источник истины), может быть пустым
+func buildRoutingContext(task types.ParseTask, items []types.ParseItem, detectedSubject ...types.Subject) RoutingContext {
 	// Собираем весь текст
 	var textParts []string
 	textParts = append(textParts, task.TaskTextClean)
@@ -361,14 +398,21 @@ func buildRoutingContext(task types.ParseTask, items []types.ParseItem) RoutingC
 		taskType = mapped
 	}
 
+	// Определяем detected subject (если передан)
+	var detSubj types.Subject
+	if len(detectedSubject) > 0 {
+		detSubj = detectedSubject[0]
+	}
+
 	return RoutingContext{
-		TextAll:     textAll,
-		VisualKinds: visualKinds,
-		HasGap:      strings.Contains(textAll, "__gap__"),
-		TaskType:    taskType,
-		Format:      format,
-		Grade:       task.Grade,
-		Subject:     task.Subject,
+		TextAll:         textAll,
+		VisualKinds:     visualKinds,
+		HasGap:          strings.Contains(textAll, "__gap__"),
+		TaskType:        taskType,
+		Format:          format,
+		Grade:           task.Grade,
+		Subject:         task.Subject,
+		DetectedSubject: detSubj,
 	}
 }
 
@@ -553,6 +597,26 @@ func selectTemplate(ctx RoutingContext) (*TemplateCandidate, bool) {
 	// Только для math
 	if ctx.Subject != types.SubjectMath {
 		if trace != nil {
+			traceMutex.Lock()
+			lastRoutingTrace = trace
+			traceMutex.Unlock()
+		}
+		return nil, false
+	}
+
+	// КРИТИЧЕСКАЯ ПРОВЕРКА: защита от нарушения роутинга по предмету (audit 3.1)
+	// Если DETECT определил предмет как НЕ math, но PARSE вернул math - это subject mismatch
+	// В этом случае не используем math-шаблоны, чтобы избежать "придумывания" математики
+	if ctx.DetectedSubject != "" && ctx.DetectedSubject != types.SubjectMath {
+		log.Printf("[template] SUBJECT_MISMATCH: detect=%s, parse=%s - blocking math templates",
+			ctx.DetectedSubject, ctx.Subject)
+		if trace != nil {
+			trace.Entries = append(trace.Entries, RoutingTraceEntry{
+				TemplateCode: "BLOCKED",
+				RuleID:       "SUBJECT_MISMATCH",
+				Status:       "rejected_subject_mismatch",
+				RejectedBy:   []string{fmt.Sprintf("detect=%s but parse=%s", ctx.DetectedSubject, ctx.Subject)},
+			})
 			traceMutex.Lock()
 			lastRoutingTrace = trace
 			traceMutex.Unlock()
@@ -828,8 +892,9 @@ func compareCandidates(a, b TemplateCandidate) int {
 }
 
 // getTemplate выбирает шаблон и возвращает template_profile_core как JSON
-func getTemplate(task types.ParseTask, items []types.ParseItem) string {
-	ctx := buildRoutingContext(task, items)
+// detectedSubject - subject из DETECT для проверки согласованности (опционально)
+func getTemplate(task types.ParseTask, items []types.ParseItem, detectedSubject ...types.Subject) string {
+	ctx := buildRoutingContext(task, items, detectedSubject...)
 
 	candidate, found := selectTemplate(ctx)
 	if !found || candidate.Profile == nil {
@@ -862,22 +927,32 @@ type TemplateRoutingResult struct {
 }
 
 // getTemplateIDWithDebug возвращает ID шаблона и debug-информацию
-func getTemplateIDWithDebug(task types.ParseTask, items []types.ParseItem) TemplateRoutingResult {
-	ctx := buildRoutingContext(task, items)
+// detectedSubject - subject из DETECT для проверки согласованности (опционально)
+func getTemplateIDWithDebug(task types.ParseTask, items []types.ParseItem, detectedSubject ...types.Subject) TemplateRoutingResult {
+	ctx := buildRoutingContext(task, items, detectedSubject...)
 
 	// Загружаем шаблоны чтобы знать сколько их
 	registries := loadTemplates()
 
 	candidate, found := selectTemplate(ctx)
 	if !found {
+		// Определяем причину отсутствия шаблона
+		reason := "no_template_found"
+		if ctx.DetectedSubject != "" && ctx.DetectedSubject != types.SubjectMath && ctx.Subject == types.SubjectMath {
+			reason = "subject_mismatch_blocked"
+		} else if ctx.Subject != types.SubjectMath {
+			reason = "non_math_subject"
+		}
+
 		return TemplateRoutingResult{
 			TemplateID: "",
 			Found:      false,
 			DebugInfo: map[string]interface{}{
-				"reason":           "no_template_found",
+				"reason":           reason,
 				"templates_loaded": len(registries),
 				"templates_dir":    templatesDir,
 				"subject":          ctx.Subject,
+				"detected_subject": ctx.DetectedSubject, // Добавлено для отладки
 				"task_type":        ctx.TaskType,
 				"format":           ctx.Format,
 				"grade":            ctx.Grade,
@@ -903,13 +978,29 @@ func getTemplateIDWithDebug(task types.ParseTask, items []types.ParseItem) Templ
 }
 
 // getTemplateID возвращает только ID выбранного шаблона (для обратной совместимости)
-func getTemplateID(task types.ParseTask, items []types.ParseItem) string {
-	result := getTemplateIDWithDebug(task, items)
+// detectedSubject - subject из DETECT для проверки согласованности (опционально)
+func getTemplateID(task types.ParseTask, items []types.ParseItem, detectedSubject ...types.Subject) string {
+	result := getTemplateIDWithDebug(task, items, detectedSubject...)
 	return result.TemplateID
 }
 
 // tryArithmeticFallback проверяет общие арифметические паттерны и возвращает fallback шаблон
 func tryArithmeticFallback(ctx RoutingContext, registries []TemplateRegistry) *TemplateCandidate {
+	// КРИТИЧЕСКАЯ ЗАЩИТА (audit 3.1): если DETECT сказал не math - не применяем арифметический fallback
+	if ctx.DetectedSubject != "" && ctx.DetectedSubject != types.SubjectMath {
+		log.Printf("[template] ARITHMETIC_FALLBACK_BLOCKED: detect=%s - refusing to apply math fallback",
+			ctx.DetectedSubject)
+		return nil
+	}
+
+	// КРИТИЧЕСКАЯ ЗАЩИТА (audit 3.2): проверяем реальное наличие чисел в тексте
+	// Это защита от "абсурда" - fallback не должен применяться к нематематическому контенту
+	hasNumbers := regexp.MustCompile(`\d`).MatchString(ctx.TextAll)
+	if !hasNumbers {
+		log.Printf("[template] ARITHMETIC_FALLBACK_BLOCKED: no numbers found in text - refusing fallback")
+		return nil
+	}
+
 	// Паттерны, указывающие на арифметическую задачу
 	arithmeticPatterns := []string{
 		"вычисли",
