@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"child-bot/api/internal/store"
@@ -12,6 +13,7 @@ import (
 )
 
 type hintSession struct {
+	mu           sync.Mutex // защита от concurrent access
 	Image        []byte
 	Mime         string
 	MediaGroupID string
@@ -23,7 +25,13 @@ type hintSession struct {
 }
 
 func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSession) {
+	// Копируем данные под защитой мьютекса чтобы избежать race condition
+	hs.mu.Lock()
 	level := hs.NextLevel
+	parseData := hs.Parse
+	detectData := hs.Detect
+	hs.mu.Unlock()
+
 	sid, _ := r.getSession(chatID)
 
 	// Определяем режим подсказки
@@ -34,8 +42,8 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 
 	// Определяем политику подсказок из первого item, если есть
 	var appliedPolicy types.HintPolicy
-	if len(hs.Parse.Items) > 0 {
-		appliedPolicy = hs.Parse.Items[0].HintPolicy
+	if len(parseData.Items) > 0 {
+		appliedPolicy = parseData.Items[0].HintPolicy
 	} else {
 		appliedPolicy = types.HintPolicy{
 			MaxHints:       3,
@@ -45,11 +53,11 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 	}
 
 	in := types.HintRequest{
-		Task:          hs.Parse.Task,
+		Task:          parseData.Task,
 		Mode:          mode,
-		Items:         hs.Parse.Items,
+		Items:         parseData.Items,
 		AppliedPolicy: appliedPolicy,
-		Template:      getTemplate(hs.Parse.Task, hs.Parse.Items),
+		Template:      getTemplate(parseData.Task, parseData.Items, detectData.Classification.SubjectCandidate),
 	}
 
 	llmName := r.LlmManager.Get(chatID)

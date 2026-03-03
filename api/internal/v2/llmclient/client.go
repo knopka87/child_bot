@@ -73,7 +73,9 @@ func (c *Client) CheckSolution(ctx context.Context, llmName string, cin types.Ch
 	if err := c.post(ctx, "/v2/check_solution", in, &out); err != nil {
 		return types.CheckResponse{}, err
 	}
-
+	// P0.3: Нормализация для обратной совместимости (если сервер вернул старый формат)
+	out.NormalizeDecision()
+	out.SetIsCorrectFromDecision()
 	return out, nil
 }
 

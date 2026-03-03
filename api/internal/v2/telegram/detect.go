@@ -22,7 +22,7 @@ func (r *Router) hasPendingCorrection(chatID int64) bool { _, ok := parseWait.Lo
 func (r *Router) clearPendingCorrection(chatID int64)    { parseWait.Delete(chatID) }
 
 func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *int64, image []byte, mediaGroupID string) {
-	setState(chatID, Detect)
+	r.setStateWithPersist(chatID, Detect)
 	mime := util.SniffMimeHTTP(image)
 	llmName := r.LlmManager.Get(chatID)
 
@@ -66,6 +66,19 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 				"recommend_retake":  dres.Quality.RecommendRetake,
 			},
 		})
+
+		// Проверка предмета на этапе DETECT (audit 3.1)
+		// Если предмет определён как НЕ математика с высокой уверенностью — останавливаемся
+		const highConfidenceThreshold = 0.7
+		if dres.Classification.SubjectCandidate != types.SubjectMath &&
+			dres.Classification.Confidence >= highConfidenceThreshold {
+			util.PrintInfo("runDetectThenParse", llmName, chatID,
+				fmt.Sprintf("Subject not supported: %s (confidence=%.2f) - stopping",
+					dres.Classification.SubjectCandidate, dres.Classification.Confidence))
+			r.send(chatID, SubjectNotSupportedText, makeErrorButtons())
+			r.setStateWithPersist(chatID, AwaitingTask)
+			return
+		}
 	} else {
 		_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 			Stage:      "detect",
