@@ -24,6 +24,15 @@ var adminsChatID = []int64{
 	310452272,
 }
 
+func IsAdmin(chatID int64) bool {
+	for _, adminsChatID := range adminsChatID {
+		if chatID == adminsChatID {
+			return true
+		}
+	}
+	return false
+}
+
 type imageFile struct {
 	Data []byte
 	Mime string

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/google/uuid"
 
 	"child-bot/api/internal/llmclient"
 	"child-bot/api/internal/service"
@@ -18,14 +18,14 @@ import (
 )
 
 type Router struct {
-	Bot        *tgbotapi.BotAPI
+	Bot        BotSender
 	LlmManager *service.LlmManager
 	LLMClient  *llmclient.Client
 	Store      *store.Store
 }
 
 func (r *Router) GetToken() string {
-	return r.Bot.Token
+	return r.Bot.GetToken()
 }
 
 func (r *Router) GetLLMClient() *llmclientv2.Client {
@@ -36,10 +36,14 @@ func (r *Router) HandleCommand(upd tgbotapi.Update) {
 	cid := util.GetChatIDByTgUpdate(upd)
 	switch upd.Message.Command() {
 	case "start":
-		resetContext(cid)
+		r.resetContextWithPersist(cid)
 		r.send(cid, StartMessageText, nil)
 	case "health":
 		r.send(cid, OkText, nil)
+	case "cachestats":
+		if IsAdmin(cid) {
+			r.sendDebug(cid, "cache_stats", GetCacheStats())
+		}
 	default:
 		r.send(cid, UnderFoundCommandText, nil)
 	}
@@ -54,13 +58,16 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	stopTyping := r.startTyping(cid, upd.Message, tgbotapi.ChatTyping, 4*time.Second)
 	defer stopTyping()
 
+	// Восстанавливаем состояние из БД если его нет в кэше (после редеплоя)
+	r.restoreStateFromDB(cid)
+
 	cur := getState(cid)
 
 	if cur != AwaitGrade {
 		if _, ok := userInfo.Load(cid); !ok {
 			user, err := r.Store.FindUserByChatID(ctx, cid)
 			if err != nil || user.Grade == nil {
-				setState(cid, AwaitGrade)
+				r.setStateWithPersist(cid, AwaitGrade)
 				r.send(cid, GradePreviewText, makeGradeListButtons())
 				return
 			}
@@ -68,8 +75,9 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		}
 	}
 
-	chat, ok := chatInfo.Load(cid)
-	if !ok || chat.(store.Chat).Username == nil || *chat.(store.Chat).Username == "" {
+	chatVal, chatOk := chatInfo.Load(cid)
+	chat, chatTypeOk := chatVal.(store.Chat)
+	if !chatOk || !chatTypeOk || chat.Username == nil || *chat.Username == "" {
 		chat, err := r.Store.FindChatByID(ctx, cid)
 		if err != nil || chat.Username == nil || *chat.Username == "" {
 			chat = store.Chat{
@@ -95,23 +103,23 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 
 	// r.sendDebug(cid, "last_state", cur)
 
-	if ns, ok := inferNextState(upd, cur); ok && ns != cur {
+	if ns, inferred := inferNextState(upd, cur); inferred && ns != cur {
 		// r.sendDebug(cid, "new_state", ns)
 
-		if !canTransition(cur, ns) {
+		// Используем атомарный переход состояния
+		actualCur, transitioned := tryTransition(cid, ns)
+		if !transitioned {
 			// Запрещённый переход — сообщим пользователю
 			msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
-				friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
+				friendlyState(actualCur), friendlyState(ns), allowedStateHints(actualCur))
 			b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
 			b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData(SendReportButton, "report")))
 			r.send(cid, msg, b)
-
 			return
 		}
-		// Переход допустим — фиксируем новое состояние
-		setState(cid, ns)
-	} else if !ok {
-		// Запрещённый переход — сообщим пользователю
+		// Переход выполнен успешно
+	} else if !inferred {
+		// Не удалось определить следующее состояние — сообщим пользователю
 		msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
 			friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
 		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
@@ -150,7 +158,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	if upd.Message.Text != "" && !upd.Message.IsCommand() {
 		switch getState(cid) {
 		case Report:
-			resetContext(cid)
+			r.resetContextWithPersist(cid)
 			r.send(cid, SendReportText, nil)
 			_ = r.SendSessionReport(ctx, cid, upd.Message.Text)
 		case AwaitingTask:
@@ -187,13 +195,13 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			r.send(cid, CheckAnswerText, nil)
 			userID := util.GetUserIDFromTgUpdate(upd)
 			r.checkSolution(ctx, cid, userID, *upd.Message)
-			clearMode(cid)
+			r.clearModeWithPersist(cid)
 			return
 		}
 		// Иначе — это фото задачи/страницы
-		clearMode(cid)
-		sid := uuid.NewString()
-		r.setSession(cid, sid)
+		r.clearModeWithPersist(cid)
+		// Session создаётся только если нет активного batch (для альбомов session один на все фото)
+		r.ensureSessionForNewTask(cid, upd.Message.MediaGroupID)
 
 		r.acceptPhoto(cid, *upd.Message)
 		return
@@ -205,12 +213,12 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 			r.send(cid, CheckAnswerText, nil)
 			userID := util.GetUserIDFromTgUpdate(upd)
 			r.checkSolutionFromDocument(ctx, cid, userID, *upd.Message)
-			clearMode(cid)
+			r.clearModeWithPersist(cid)
 			return
 		}
-		clearMode(cid)
-		sid := uuid.NewString()
-		r.setSession(cid, sid)
+		r.clearModeWithPersist(cid)
+		// Session создаётся только если нет активного batch (для альбомов session один на все фото)
+		r.ensureSessionForNewTask(cid, upd.Message.MediaGroupID)
 
 		r.acceptDocument(cid, *upd.Message)
 		return
@@ -237,11 +245,41 @@ func (r *Router) sendMarkdown(chatID int64, text string, buttons [][]tgbotapi.In
 }
 
 func (r *Router) sendAlert(chatID int64, text string, postpone, delay time.Duration) *time.Timer {
-	return time.AfterFunc(postpone*time.Second, func() {
-		msg := tgbotapi.NewMessage(chatID, text)
-		sent, _ := r.Bot.Send(msg)
+	shutdown := GetShutdownManager()
 
-		time.AfterFunc((delay)*time.Second, func() {
+	// Не запускаем если идёт shutdown
+	if shutdown.IsShutdown() {
+		return time.NewTimer(0) // возвращаем dummy timer
+	}
+
+	// Регистрируем горутину ДО создания таймера
+	// Используем канал для сигнализации о завершении
+	outerDone := shutdown.TrackGoroutine()
+
+	return time.AfterFunc(postpone*time.Second, func() {
+		defer outerDone() // освобождаем регистрацию при выходе из callback
+
+		// Проверяем shutdown перед отправкой
+		if shutdown.IsShutdown() {
+			return
+		}
+
+		msg := tgbotapi.NewMessage(chatID, text)
+		sent, err := r.Bot.Send(msg)
+		if err != nil {
+			return
+		}
+
+		// Регистрируем внутреннюю горутину ДО создания таймера
+		innerDone := shutdown.TrackGoroutine()
+
+		time.AfterFunc(delay*time.Second, func() {
+			defer innerDone()
+
+			if shutdown.IsShutdown() {
+				return
+			}
+
 			del := tgbotapi.DeleteMessageConfig{ChatID: chatID, MessageID: sent.MessageID}
 			_, _ = r.Bot.Request(del)
 		})
@@ -327,11 +365,22 @@ func (r *Router) _sendWithError(chatID int64, text, parseMode string, buttons []
 // cfg.MessageThreadID at the call site where the thread id is available.
 func (r *Router) startTyping(chatID int64, _ *tgbotapi.Message, action string, interval time.Duration) (stop func()) {
 	done := make(chan struct{})
+	shutdown := GetShutdownManager()
+
+	// Не запускаем новые горутины если идёт shutdown
+	if shutdown.IsShutdown() {
+		return func() {}
+	}
 
 	// базовый конфиг; без thread id для совместимости со старыми версиями
 	cfg := tgbotapi.NewChatAction(chatID, action)
 
+	// Регистрируем горутину для отслеживания
+	goroutineDone := shutdown.TrackGoroutine()
+
 	go func() {
+		defer goroutineDone()
+
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		_, _ = r.Bot.Request(cfg) // первая отсылка сразу
@@ -341,8 +390,15 @@ func (r *Router) startTyping(chatID int64, _ *tgbotapi.Message, action string, i
 				_, _ = r.Bot.Request(cfg)
 			case <-done:
 				return
+			case <-shutdown.Done():
+				// Graceful shutdown — завершаем горутину
+				return
 			}
 		}
 	}()
-	return func() { close(done) }
+
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(done) })
+	}
 }

@@ -27,7 +27,7 @@ type parsePending struct {
 }
 
 func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, userID *int64, sc *selectionContext, subjectCandidate types.Subject) {
-	setState(chatID, Parse)
+	r.setStateWithPersist(chatID, Parse)
 	imgHash := util.SHA256Hex(sc.Image)
 	llmName := r.LlmManager.Get(chatID)
 	sid, _ := r.getSession(chatID)
@@ -86,6 +86,16 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	r.sendDebug(chatID, "parse_req", in)
 	r.sendDebug(chatID, "parse_res", pr)
 
+	// Проверка предмета на этапе PARSE
+	// Если предмет определён как НЕ математика — останавливаемся
+	if pr.Task.Subject != types.SubjectMath {
+		util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID,
+			fmt.Sprintf("Subject not supported after PARSE: %s - stopping", pr.Task.Subject))
+		r.send(chatID, SubjectNotSupportedText, makeErrorButtons())
+		r.setStateWithPersist(chatID, AwaitingTask)
+		return
+	}
+
 	// 3) Метрики строго по новой структуре
 	taskType := ""
 	if len(pr.Items) > 0 {
@@ -130,12 +140,13 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 		util.PrintError("runParseAndMaybeConfirm", llmName, chatID, "error upsert parsed_tasks", errP)
 	}
 
-	r.askParseConfirmation(chatID, pr)
+	r.askParseConfirmation(chatID, pr, sc.Detect.Classification.SubjectCandidate)
 	parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
 }
 
 // Показ запроса подтверждения распознанного текста
-func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse) {
+// detectedSubject - subject из DETECT для проверки согласованности
+func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse, detectedSubject types.Subject) {
 	var b strings.Builder
 	if s := strings.TrimSpace(pr.Task.TaskTextClean); s != "" {
 		b.WriteString("```\n")
@@ -144,7 +155,8 @@ func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse) {
 	}
 
 	// Добавляем информацию о педагогическом шаблоне
-	templateResult := getTemplateIDWithDebug(pr.Task, pr.Items)
+	// Передаём detected subject для проверки согласованности
+	templateResult := getTemplateIDWithDebug(pr.Task, pr.Items, detectedSubject)
 	if templateResult.Found {
 		b.WriteString(fmt.Sprintf("\n🎓 Шаблон: `%s`", templateResult.TemplateID))
 	} else {
