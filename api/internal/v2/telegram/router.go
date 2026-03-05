@@ -61,6 +61,9 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// Восстанавливаем состояние из БД если его нет в кэше (после редеплоя)
 	r.restoreStateFromDB(cid)
 
+	// Скрываем кнопки предыдущего сообщения при получении нового сообщения от пользователя
+	r.hidePreviousButtons(cid)
+
 	cur := getState(cid)
 
 	if cur != AwaitGrade {
@@ -239,6 +242,15 @@ func (r *Router) send(chatID int64, text string, buttons [][]tgbotapi.InlineKeyb
 	r._sendWithError(chatID, text, "", buttons, nil)
 }
 
+// hidePreviousButtons скрывает кнопки у предыдущего сообщения, если они есть
+func (r *Router) hidePreviousButtons(chatID int64) {
+	if msgID := getLastButtonMsgID(chatID); msgID > 0 {
+		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
+		_, _ = r.Bot.Send(edit)
+		clearLastButtonMsgID(chatID)
+	}
+}
+
 func (r *Router) sendMarkdown(chatID int64, text string, buttons [][]tgbotapi.InlineKeyboardButton) {
 	r._sendWithError(chatID, text, "Markdown", buttons, nil)
 }
@@ -413,6 +425,11 @@ func (r *Router) _sendWithError(chatID int64, text, parseMode string, buttons []
 	}
 
 	m, _ := r.Bot.Send(msg)
+
+	// Отслеживаем сообщение с кнопками для последующего скрытия
+	if buttons != nil && m.MessageID > 0 {
+		setLastButtonMsgID(chatID, m.MessageID)
+	}
 
 	sid, _ := r.getSession(chatID)
 
