@@ -61,9 +61,11 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 	}
 
 	llmName := r.LlmManager.Get(chatID)
+	stopProgress := r.startHintProgress(chatID)
 	start := time.Now()
 	hrNew, err := r.GetLLMClient().Hint(context.Background(), llmName, in)
 	latency := time.Since(start).Milliseconds()
+	stopProgress()
 
 	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 		ChatID:        chatID,

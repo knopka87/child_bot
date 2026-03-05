@@ -94,8 +94,9 @@ func (r *Router) runDetectThenParse(ctx context.Context, chatID int64, userID *i
 	}
 
 	// без выбора — сразу PARSE
-	r.send(chatID, ReadTaskText, nil)
+	stopProgress := r.startParseProgress(chatID)
 	sc := &selectionContext{Image: image, Mime: mime, MediaGroupID: mediaGroupID, Detect: dres}
 	r.runParseAndMaybeConfirm(ctx, chatID, userID, sc, dres.Classification.SubjectCandidate)
+	stopProgress()
 	util.PrintInfo("runDetectThenParse", llmName, chatID, fmt.Sprintf("Total time: %d", time.Since(start).Milliseconds()))
 }

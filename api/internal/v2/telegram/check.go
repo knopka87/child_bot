@@ -45,7 +45,8 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 	r.setStateWithPersist(chatID, Check)
 	sid, _ := r.getSession(chatID)
 
-	time1 := r.sendAlert(chatID, CheckAlert, 0, 15)
+	stopProgress := r.startCheckProgress(chatID)
+	defer stopProgress()
 
 	data, mime, err := r.downloadFileBytes(fileID)
 	if err != nil {
@@ -166,7 +167,6 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 		},
 	})
 
-	time1.Stop()
 	r.sendCheckResponse(chatID, res)
 }
 
