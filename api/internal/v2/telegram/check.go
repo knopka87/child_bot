@@ -72,6 +72,8 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 	subj := "generic"
 	grade := int64(0)
 	rawTaskText := ""
+	templateID := ""
+	taskType := ""
 	var taskStruct types.TaskStructCheck
 	taskStructLoaded := false
 
@@ -80,6 +82,7 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 			subj = s
 			grade = pr.Grade
 			rawTaskText = pr.RawTaskText
+			taskType = pr.TaskType
 
 			// Восстанавливаем ParseResponse из сохранённого JSON
 			var parseResp types.ParseResponse
@@ -92,6 +95,8 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 					Items:           parseResp.Items,
 				}
 				taskStructLoaded = true
+				// Извлекаем template_id для метрик
+				templateID = getTemplateID(parseResp.Task, parseResp.Items, types.Subject(subj))
 			} else {
 				util.PrintError("checkSolutionWithFileID", llmName, chatID,
 					"failed to unmarshal ParseResponse from DB, check will proceed without task context", err)
@@ -161,9 +166,13 @@ func (r *Router) checkSolutionWithFileID(ctx context.Context, chatID int64, user
 		ChatID:     &chatID,
 		UserIDAnon: userID,
 		Details: map[string]any{
-			"subject":    subj,
-			"confidence": res.Confidence,
-			"is_correct": res.IsCorrect,
+			"subject":     subj,
+			"confidence":  res.Confidence,
+			"is_correct":  res.IsCorrect,
+			"decision":    string(res.Decision),
+			"template_id": templateID,
+			"task_type":   taskType,
+			"grade":       grade,
 		},
 	})
 

@@ -67,6 +67,19 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 	latency := time.Since(start).Milliseconds()
 	stopProgress()
 
+	// Получаем template_id и task_type для метрик
+	templateID := getTemplateID(parseData.Task, parseData.Items, detectData.Classification.SubjectCandidate)
+	taskType := ""
+	if len(parseData.Items) > 0 {
+		taskType = parseData.Items[0].PedKeys.TaskType
+	}
+
+	// Получаем класс пользователя
+	var grade int64
+	if user, userErr := r.Store.FindUserByChatID(context.Background(), chatID); userErr == nil && user.Grade != nil {
+		grade = *user.Grade
+	}
+
 	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 		ChatID:        chatID,
 		TaskSessionID: sid,
@@ -81,9 +94,40 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 		Error:         err,
 	})
 	if err != nil {
+		_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+			Stage:      "hint",
+			Provider:   llmName,
+			OK:         false,
+			Error:      err.Error(),
+			DurationMS: latency,
+			ChatID:     &chatID,
+			Details: map[string]any{
+				"hint_level":  level,
+				"template_id": templateID,
+				"task_type":   taskType,
+				"grade":       grade,
+			},
+		})
 		r.sendError(chatID, fmt.Errorf("не удалось получить подсказку L%d: %s", level, err.Error()))
 		return
 	}
+
+	// Метрика успешной подсказки
+	_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+		Stage:      "hint",
+		Provider:   llmName,
+		OK:         true,
+		DurationMS: latency,
+		ChatID:     &chatID,
+		Details: map[string]any{
+			"hint_level":  level,
+			"max_hints":   appliedPolicy.MaxHints,
+			"template_id": templateID,
+			"task_type":   taskType,
+			"grade":       grade,
+			"mode":        mode,
+		},
+	})
 	js, _ := json.Marshal(hrNew)
 	data := store.HintCache{
 		SessionID: sid,
