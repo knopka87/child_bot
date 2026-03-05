@@ -261,16 +261,12 @@ func lvlToConst(n int) types.HintLevel {
 }
 
 func hideKeyboard(chatID int64, msgID int, r *Router) error {
-	util.PrintInfo("hideKeyboard", "", chatID, fmt.Sprintf("hiding buttons on msgID=%d", msgID))
-	// Явно указываем пустой массив кнопок, а не nil
+	// Используем make() для создания пустого slice — рекомендация из go-telegram-bot-api
 	emptyKB := tgbotapi.InlineKeyboardMarkup{
 		InlineKeyboard: make([][]tgbotapi.InlineKeyboardButton, 0),
 	}
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, emptyKB)
 	_, err := r.Bot.Send(edit)
-	if err != nil {
-		util.PrintError("hideKeyboard", "", chatID, fmt.Sprintf("failed to hide buttons on msgID=%d", msgID), err)
-	}
 	// Очищаем кэш, чтобы не пытаться скрыть те же кнопки повторно
 	clearLastButtonMsgID(chatID)
 	return err
