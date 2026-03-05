@@ -10,6 +10,44 @@ import (
 	"child-bot/api/internal/v2/types"
 )
 
+// tryTransitionWithPersist выполняет переход состояния и сохраняет в БД
+// Возвращает (предыдущее состояние, успех перехода)
+func (r *Router) tryTransitionWithPersist(chatID int64, newState State) (State, bool) {
+	prev, ok := tryTransition(chatID, newState)
+	if ok {
+		// Сохраняем новое состояние в БД асинхронно
+		r.persistCurrentState(chatID)
+	}
+	return prev, ok
+}
+
+// persistCurrentState сохраняет текущее состояние и режим в БД
+func (r *Router) persistCurrentState(chatID int64) {
+	shutdown := GetShutdownManager()
+	if shutdown.IsShutdown() {
+		return
+	}
+
+	// Копируем данные перед запуском горутины
+	stateStr := string(getState(chatID))
+	modeStr := getMode(chatID)
+	var modePtr *string
+	if modeStr != "" {
+		modePtr = &modeStr
+	}
+
+	done := shutdown.TrackGoroutine()
+	go func() {
+		defer done()
+		if shutdown.IsShutdown() {
+			return
+		}
+		if err := r.Store.UpdateSessionState(context.Background(), chatID, &stateStr, modePtr); err != nil {
+			log.Printf("[state_persistence] failed to persist state for chat %d: %v", chatID, err)
+		}
+	}()
+}
+
 // setStateWithPersist устанавливает состояние и сохраняет в БД
 func (r *Router) setStateWithPersist(chatID int64, s State) {
 	setState(chatID, s)

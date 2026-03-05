@@ -109,8 +109,8 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	if ns, inferred := inferNextState(upd, cur); inferred && ns != cur {
 		// r.sendDebug(cid, "new_state", ns)
 
-		// Используем атомарный переход состояния
-		actualCur, transitioned := tryTransition(cid, ns)
+		// Используем атомарный переход состояния с сохранением в БД
+		actualCur, transitioned := r.tryTransitionWithPersist(cid, ns)
 		if !transitioned {
 			// Запрещённый переход — сообщим пользователю
 			msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
