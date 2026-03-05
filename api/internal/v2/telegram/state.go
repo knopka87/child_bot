@@ -20,9 +20,10 @@ var (
 	parseWait  = NewTTLCache("parseWait", PendingTTL)
 
 	// Сессионные данные (средний TTL)
-	hintState = NewTTLCache("hintState", SessionTTL)
-	chatMode  = NewTTLCache("chatMode", SessionTTL)
-	chatState = NewTTLCache("chatState", SessionTTL)
+	hintState        = NewTTLCache("hintState", SessionTTL)
+	chatMode         = NewTTLCache("chatMode", SessionTTL)
+	chatState        = NewTTLCache("chatState", SessionTTL)
+	lastButtonMsgID  = NewTTLCache("lastButtonMsgID", SessionTTL) // ID последнего сообщения с кнопками
 
 	// Данные пользователя (длинный TTL)
 	userInfo = NewTTLCache("userInfo", UserDataTTL)
@@ -79,6 +80,24 @@ func getMode(chatID int64) string {
 
 func clearMode(chatID int64) {
 	chatMode.Delete(chatID)
+}
+
+// хелперы для отслеживания последнего сообщения с кнопками
+func setLastButtonMsgID(chatID int64, msgID int) {
+	lastButtonMsgID.Store(chatID, msgID)
+}
+
+func getLastButtonMsgID(chatID int64) int {
+	if v, ok := lastButtonMsgID.Load(chatID); ok {
+		if id, ok := v.(int); ok {
+			return id
+		}
+	}
+	return 0
+}
+
+func clearLastButtonMsgID(chatID int64) {
+	lastButtonMsgID.Delete(chatID)
 }
 
 type State string

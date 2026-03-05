@@ -112,15 +112,20 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		r.resetContextWithPersist(cid)
 		r.send(cid, NewTaskText, nil)
 	case "report":
+		_ = hideKeyboard(cid, msgID, r)
 		r.setStateWithPersist(cid, Report)
 		r.send(cid, ReportText, nil)
 	case "grade1":
+		_ = hideKeyboard(cid, msgID, r)
 		r.updateGradeUser(cid, 1)
 	case "grade2":
+		_ = hideKeyboard(cid, msgID, r)
 		r.updateGradeUser(cid, 2)
 	case "grade3":
+		_ = hideKeyboard(cid, msgID, r)
 		r.updateGradeUser(cid, 3)
 	case "grade4":
+		_ = hideKeyboard(cid, msgID, r)
 		r.updateGradeUser(cid, 4)
 	}
 }
@@ -252,5 +257,7 @@ func lvlToConst(n int) types.HintLevel {
 func hideKeyboard(chatID int64, msgID int, r *Router) error {
 	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
 	_, err := r.Bot.Send(edit)
+	// Очищаем кэш, чтобы не пытаться скрыть те же кнопки повторно
+	clearLastButtonMsgID(chatID)
 	return err
 }
