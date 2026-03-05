@@ -286,6 +286,80 @@ func (r *Router) sendAlert(chatID int64, text string, postpone, delay time.Durat
 	})
 }
 
+// startProgress отправляет сообщение с прогрессом и периодически его обновляет.
+// stages — этапы прогресса, interval — интервал между этапами.
+// Возвращает функцию stop(), которую нужно вызвать после завершения операции.
+func (r *Router) startProgress(chatID int64, stages []string, interval time.Duration) func() {
+	shutdown := GetShutdownManager()
+
+	if shutdown.IsShutdown() || len(stages) == 0 {
+		return func() {}
+	}
+
+	msg := tgbotapi.NewMessage(chatID, stages[0])
+	sent, err := r.Bot.Send(msg)
+	if err != nil {
+		return func() {}
+	}
+
+	done := make(chan struct{})
+	var once sync.Once
+
+	outerDone := shutdown.TrackGoroutine()
+
+	go func() {
+		defer outerDone()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		stage := 1
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if shutdown.IsShutdown() {
+					return
+				}
+				if stage < len(stages) {
+					edit := tgbotapi.NewEditMessageText(chatID, sent.MessageID, stages[stage])
+					_, _ = r.Bot.Send(edit)
+					stage++
+				}
+			}
+		}
+	}()
+
+	return func() {
+		once.Do(func() {
+			close(done)
+			if !shutdown.IsShutdown() {
+				del := tgbotapi.DeleteMessageConfig{ChatID: chatID, MessageID: sent.MessageID}
+				_, _ = r.Bot.Request(del)
+			}
+		})
+	}
+}
+
+// startParseProgress — прогресс для этапа парсинга.
+func (r *Router) startParseProgress(chatID int64) func() {
+	stages := []string{ParseProgress1, ParseProgress2, ParseProgress3, ParseProgress4}
+	return r.startProgress(chatID, stages, 3*time.Second)
+}
+
+// startHintProgress — прогресс для генерации подсказки.
+func (r *Router) startHintProgress(chatID int64) func() {
+	stages := []string{HintProgress1, HintProgress2, HintProgress3}
+	return r.startProgress(chatID, stages, 4*time.Second)
+}
+
+// startCheckProgress — прогресс для проверки решения.
+func (r *Router) startCheckProgress(chatID int64) func() {
+	stages := []string{CheckProgress1, CheckProgress2, CheckProgress3, CheckProgress4}
+	return r.startProgress(chatID, stages, 3*time.Second)
+}
+
 func (r *Router) sendDebug(chatID int64, name string, v any) {
 	find := false
 	for _, adminID := range adminsChatID {

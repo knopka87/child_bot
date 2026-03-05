@@ -61,7 +61,7 @@ var States = map[State][]State{
 	Detect:          {Parse, Report},
 	Parse:           {Hints, AwaitSolution, Report},
 	Hints:           {AwaitSolution, AwaitingTask, Analogue, Hints, Report},
-	AwaitSolution:   {OCR, Normalize, Report},
+	AwaitSolution:   {OCR, Normalize, Report, AwaitingTask},
 	OCR:             {Normalize, Report},
 	Normalize:       {Check, Report},
 	Check:           {Correct, Incorrect, Report, AwaitingTask, CollectingPages, Analogue},
