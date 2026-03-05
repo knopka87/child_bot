@@ -244,20 +244,13 @@ func (r *Router) send(chatID int64, text string, buttons [][]tgbotapi.InlineKeyb
 
 // hidePreviousButtons скрывает кнопки у предыдущего сообщения, если они есть
 func (r *Router) hidePreviousButtons(chatID int64) {
-	msgID := getLastButtonMsgID(chatID)
-	util.PrintInfo("hidePreviousButtons", "", chatID, fmt.Sprintf("lastButtonMsgID=%d", msgID))
-	if msgID > 0 {
+	if msgID := getLastButtonMsgID(chatID); msgID > 0 {
 		// Используем make() для создания пустого slice — рекомендация из go-telegram-bot-api
 		emptyKB := tgbotapi.InlineKeyboardMarkup{
 			InlineKeyboard: make([][]tgbotapi.InlineKeyboardButton, 0),
 		}
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, emptyKB)
-		_, err := r.Bot.Send(edit)
-		if err != nil {
-			util.PrintError("hidePreviousButtons", "", chatID, fmt.Sprintf("failed to hide buttons on msgID=%d", msgID), err)
-		} else {
-			util.PrintInfo("hidePreviousButtons", "", chatID, fmt.Sprintf("hidden buttons on msgID=%d", msgID))
-		}
+		_, _ = r.Bot.Send(edit)
 		clearLastButtonMsgID(chatID)
 	}
 }
@@ -435,14 +428,11 @@ func (r *Router) _sendWithError(chatID int64, text, parseMode string, buttons []
 		msg.ParseMode = parseMode
 	}
 
-	m, sendErr := r.Bot.Send(msg)
+	m, _ := r.Bot.Send(msg)
 
 	// Отслеживаем сообщение с кнопками для последующего скрытия
 	if buttons != nil && m.MessageID > 0 {
 		setLastButtonMsgID(chatID, m.MessageID)
-		util.PrintInfo("_sendWithError", "", chatID, fmt.Sprintf("stored lastButtonMsgID=%d", m.MessageID))
-	} else if buttons != nil {
-		util.PrintError("_sendWithError", "", chatID, fmt.Sprintf("failed to store lastButtonMsgID: MessageID=%d", m.MessageID), sendErr)
 	}
 
 	sid, _ := r.getSession(chatID)
