@@ -1,2 +1,6 @@
 !vendor
 /.env
+/api/test/e2e/testdata/answers/*.jpg
+/api/test/e2e/testdata/tasks/*.jpg
+/api/test/e2e/results/*.json
+/tools/textbook_parser/output
