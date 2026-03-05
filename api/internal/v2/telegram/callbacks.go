@@ -188,7 +188,10 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 	hs.mu.Unlock()
 
 	if currentLevel > maxHints {
-		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
+		emptyKB := tgbotapi.InlineKeyboardMarkup{
+			InlineKeyboard: make([][]tgbotapi.InlineKeyboardButton, 0),
+		}
+		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, emptyKB)
 		_, _ = r.Bot.Send(edit)
 		r.send(chatID, HintFinishText, makeFinishHintButtons())
 		return
@@ -205,7 +208,10 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 	hs.mu.Unlock()
 
 	if nextLevel > maxHints {
-		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
+		emptyKB := tgbotapi.InlineKeyboardMarkup{
+			InlineKeyboard: make([][]tgbotapi.InlineKeyboardButton, 0),
+		}
+		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, emptyKB)
 		_, _ = r.Bot.Send(edit)
 	}
 	hintState.Store(chatID, hs)
@@ -255,8 +261,16 @@ func lvlToConst(n int) types.HintLevel {
 }
 
 func hideKeyboard(chatID int64, msgID int, r *Router) error {
-	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, tgbotapi.InlineKeyboardMarkup{})
+	util.PrintInfo("hideKeyboard", "", chatID, fmt.Sprintf("hiding buttons on msgID=%d", msgID))
+	// Явно указываем пустой массив кнопок, а не nil
+	emptyKB := tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: make([][]tgbotapi.InlineKeyboardButton, 0),
+	}
+	edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, emptyKB)
 	_, err := r.Bot.Send(edit)
+	if err != nil {
+		util.PrintError("hideKeyboard", "", chatID, fmt.Sprintf("failed to hide buttons on msgID=%d", msgID), err)
+	}
 	// Очищаем кэш, чтобы не пытаться скрыть те же кнопки повторно
 	clearLastButtonMsgID(chatID)
 	return err
