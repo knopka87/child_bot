@@ -5,6 +5,9 @@ import (
 )
 
 const (
+	// Визуальный разделитель
+	Divider = "━━━━━━━━━━━━━━━━━━━━"
+
 	OkText                  = "✅ OK"
 	UnderFoundCommandText   = "Неизвестная команда. Я знаю только команду /start"
 	StartMessageText        = "🎒 Поехали!\nОтправь фото задания — разберёмся вместе 🤓"
@@ -21,22 +24,22 @@ const (
 	CheckProgress2          = "🔍 Проверяю шаги…"
 	CheckProgress3          = "🧮 Сверяю ответ…"
 	CheckProgress4          = "✨ Почти готово…"
-	TaskViewText            = "📸 Вот что я прочитал:\nПроверь меня, вот что я понял с картинки:\n\n*%s*\n\nВсё верно? 🤔"
+	TaskViewText            = "📸 *Вот что я прочитал:*\n" + Divider + "\n\n%s\n\n" + Divider + "\n\nВсё верно? 🤔"
 	HintNotFoundText        = "🤔 Подсказки недоступны: сначала пришлите фото задания 📸"
 	HintFinishText          = "🤔 Все подсказки уже показаны. Могу показать аналогичную задачу 🧩"
-	HINT1Text               = "✨ Первая подсказка:\n\n*%s*\n\nПопробуй выполнить сам 😉"
-	HINT2Text               = "💡 Вторая подсказка:\n\n*%s*\n\nПопробуй выполнить задание 😉"
-	HINT3Text               = "🌟 Почти разобрались!\nВот третья подсказка:\n\n*%s*\n\nПопробуй применить это к своему заданию 🚀"
+	HINT1Text               = "✨ *Подсказка 1*\n" + Divider + "\n\n%s\n\n" + Divider + "\n\nПопробуй выполнить сам 😉"
+	HINT2Text               = "💡 *Подсказка 2*\n" + Divider + "\n\n%s\n\n" + Divider + "\n\nПопробуй выполнить задание 😉"
+	HINT3Text               = "🌟 *Подсказка 3*\n" + Divider + "\n\n%s\n\n" + Divider + "\n\nПопробуй применить это к своему заданию 🚀"
 	AnalogueTaskWaitingText = "🎯 Молодец!\n⏳ Думаю и подбираю похожее задание, чтобы объяснить на примере…"
 	AnalogueAlert1          = "🔍 Подбираю пример…"
 	AnalogueAlert2          = "🤔 Ищу лучший вариант…"
 	AnalogueAlert3          = "💡 Выбираю похожее задание…"
-	AnalogueTaskText        = "*%s*\n\nПопробуй вернуться к заданию и решить его. 💪"
+	AnalogueTaskText        = "🧩 *Похожее задание*\n" + Divider + "\n\n%s\n\n" + Divider + "\n\nПопробуй вернуться к заданию и решить его 💪"
 	CheckAnswerClick        = "🔎 Проверим твой ответ? ✨\n📸 Пришли фото своего решения — я посмотрю, всё ли верно 😊\nНо я ещё учусь проверять, поэтому могу ошибаться."
 	CheckAnswerText         = "🤓 Вижу твоё решение!"
 	CheckAlert              = "🤔 Проверяю каждый шаг…"
-	AnswerCorrectText       = "🎉 Всё верно! Отличная работа 💪\nТы понял, как это работает 🌟"
-	AnswerIncorrectText     = "Почти получилось! 💪\nВот что можно поправить 💡\n\n*%s*"
+	AnswerCorrectText       = "🎉 *ВЕРНО!*\n" + Divider + "\n\nОтличная работа! Ты понял, как это работает 💪🌟"
+	AnswerIncorrectText     = "💪 *Почти получилось!*\n" + Divider + "\n\n%s\n\n" + Divider
 	ReportText              = "Отлично, спасибо, что заметил! 📝\nЧтобы я стал лучше, напиши, в чем ошибка?\nНапример:\n• я неправильно прочитал часть задания;\n• подсказка не помогла или была непонятной;\n• я объяснил не то задание;\n• другое (опиши своими словами).\n💬 Напиши коротко, что именно было не так.\n👉 После сообщения мы продолжим разбор задания."
 	SendReportText          = "👋 Спасибо, что помогаешь мне стать лучше!\n🎒Давай продолжим. Отправь фото задания — разберёмся вместе 🤓"
 	DontLikeHint            = "😌 Понял тебя!\nСпасибо за отзыв — попробую объяснить по-другому 💡"
@@ -78,10 +81,8 @@ var (
 
 func makeGradeListButtons() [][]tgbotapi.InlineKeyboardButton {
 	return [][]tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardRow(btnGrade1),
-		tgbotapi.NewInlineKeyboardRow(btnGrade2),
-		tgbotapi.NewInlineKeyboardRow(btnGrade3),
-		tgbotapi.NewInlineKeyboardRow(btnGrade4),
+		tgbotapi.NewInlineKeyboardRow(btnGrade1, btnGrade2),
+		tgbotapi.NewInlineKeyboardRow(btnGrade3, btnGrade4),
 	}
 }
 
