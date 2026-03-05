@@ -191,8 +191,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// 7) Фото/альбом
 	if len(upd.Message.Photo) > 0 {
 		if getMode(cid) == "await_solution" {
-			// Фото с ответом ученика
-			r.send(cid, CheckAnswerText, nil)
+			// Фото с ответом ученика — прогресс показывается в checkSolution
 			userID := util.GetUserIDFromTgUpdate(upd)
 			r.checkSolution(ctx, cid, userID, *upd.Message)
 			r.clearModeWithPersist(cid)
@@ -210,7 +209,7 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 	// 7.1) Документ-изображение (фото отправлено как файл)
 	if upd.Message.Document != nil && strings.HasPrefix(upd.Message.Document.MimeType, "image/") {
 		if getMode(cid) == "await_solution" {
-			r.send(cid, CheckAnswerText, nil)
+			// Фото с ответом ученика — прогресс показывается в checkSolutionFromDocument
 			userID := util.GetUserIDFromTgUpdate(upd)
 			r.checkSolutionFromDocument(ctx, cid, userID, *upd.Message)
 			r.clearModeWithPersist(cid)
@@ -350,14 +349,14 @@ func (r *Router) startParseProgress(chatID int64) func() {
 
 // startHintProgress — прогресс для генерации подсказки.
 func (r *Router) startHintProgress(chatID int64) func() {
-	stages := []string{HintProgress1, HintProgress2, HintProgress3}
-	return r.startProgress(chatID, stages, 4*time.Second)
+	stages := []string{HintProgress1, HintProgress2, HintProgress3, HintProgress4}
+	return r.startProgress(chatID, stages, 10*time.Second)
 }
 
 // startCheckProgress — прогресс для проверки решения.
 func (r *Router) startCheckProgress(chatID int64) func() {
 	stages := []string{CheckProgress1, CheckProgress2, CheckProgress3, CheckProgress4}
-	return r.startProgress(chatID, stages, 3*time.Second)
+	return r.startProgress(chatID, stages, 4*time.Second)
 }
 
 func (r *Router) sendDebug(chatID int64, name string, v any) {
