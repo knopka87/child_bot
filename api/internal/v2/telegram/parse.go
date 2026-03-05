@@ -154,13 +154,17 @@ func (r *Router) askParseConfirmation(chatID int64, pr types.ParseResponse, dete
 		b.WriteString("\n```\n")
 	}
 
-	// Добавляем информацию о педагогическом шаблоне
+	// Добавляем информацию о педагогическом шаблоне только для админов
 	// Передаём detected subject для проверки согласованности
 	templateResult := getTemplateIDWithDebug(pr.Task, pr.Items, detectedSubject)
-	if templateResult.Found {
-		b.WriteString(fmt.Sprintf("\n🎓 Шаблон: `%s`", templateResult.TemplateID))
-	} else {
-		b.WriteString("\n🎓 Шаблон: не удалось подобрать")
+	if IsAdmin(chatID) {
+		if templateResult.Found {
+			b.WriteString(fmt.Sprintf("\n🎓 Шаблон: `%s`", templateResult.TemplateID))
+		} else {
+			b.WriteString("\n🎓 Шаблон: не удалось подобрать")
+		}
+	}
+	if !templateResult.Found {
 		// Отправляем debug-информацию админам
 		r.sendDebug(chatID, "template_routing_failed", templateResult.DebugInfo)
 	}
