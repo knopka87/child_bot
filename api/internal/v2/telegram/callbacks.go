@@ -29,6 +29,8 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	}
 
 	sid, _ := r.getSession(cid)
+	fromState := string(getState(cid))
+
 	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
 		ChatID:        cid,
 		TaskSessionID: sid,
@@ -37,6 +39,26 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		Provider:      llmName,
 		OK:            true,
 		TgMessageID:   tgMsgID,
+	})
+
+	// Получаем grade пользователя для метрик
+	var userGrade int64
+	if user, err := r.Store.FindUserByChatID(context.Background(), cid); err == nil && user.Grade != nil {
+		userGrade = *user.Grade
+	}
+
+	// Метрика действия пользователя
+	_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+		Stage:    "user_action",
+		Provider: llmName,
+		OK:       true,
+		ChatID:   &cid,
+		Details: map[string]any{
+			"action":     data,
+			"from_state": fromState,
+			"session_id": sid,
+			"grade":      userGrade,
+		},
 	})
 
 	// Для большинства callback'ов требуется Message
@@ -188,12 +210,30 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 }
 
 func (r *Router) updateGradeUser(cid, grade int64) {
+	// Получаем предыдущий grade для метрики
+	var prevGrade int64
+	if user, err := r.Store.FindUserByChatID(context.Background(), cid); err == nil && user.Grade != nil {
+		prevGrade = *user.Grade
+	}
+
 	user := store.User{
 		ID:    cid,
 		Grade: &grade,
 	}
 	_ = r.Store.UpsertUser(context.Background(), user)
 	userInfo.Store(cid, user)
+
+	// Метрика изменения класса
+	_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+		Stage:  "grade_change",
+		OK:     true,
+		ChatID: &cid,
+		Details: map[string]any{
+			"prev_grade": prevGrade,
+			"new_grade":  grade,
+		},
+	})
+
 	r.setStateWithPersist(cid, AwaitingTask)
 	r.send(cid, StartMessageText, nil)
 }

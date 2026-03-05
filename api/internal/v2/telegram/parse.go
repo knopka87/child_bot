@@ -101,6 +101,7 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	if len(pr.Items) > 0 {
 		taskType = pr.Items[0].PedKeys.TaskType
 	}
+	templateID := getTemplateID(pr.Task, pr.Items, subjectCandidate)
 	_ = r.Store.InsertEvent(ctx, store.MetricEvent{
 		Stage:      "parse",
 		Provider:   llmName,
@@ -112,6 +113,8 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 			"subject":     pr.Task.Subject,
 			"task_type":   taskType,
 			"items_count": len(pr.Items),
+			"template_id": templateID,
+			"grade":       grade,
 		},
 	})
 	util.PrintInfo("runParseAndMaybeConfirm", llmName, chatID, fmt.Sprintf("Received a response from LLMClient: %d", time.Since(start).Milliseconds()))
