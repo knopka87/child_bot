@@ -368,14 +368,19 @@ func (r *Router) restoreHintSession(hintContextJSON []byte) (*hintSession, error
 	return hs, nil
 }
 
-// resetContextWithPersist сбрасывает контекст и очищает в БД
+// resetContextWithPersist сбрасывает контекст, очищает в БД и создаёт новую сессию
 func (r *Router) resetContextWithPersist(cid int64) {
 	// Очищаем кэши
 	hintState.Delete(cid)
 	pendingCtx.Delete(cid)
 	parseWait.Delete(cid)
+	batchSessionKeys.Delete(cid)
 	setMode(cid, "await_new_task")
 	setState(cid, AwaitingTask)
+
+	// Очищаем старую сессию и создаём новую, чтобы последующие действия были привязаны к ней
+	r.clearSession(cid)
+	r.ensureSession(cid)
 
 	shutdown := GetShutdownManager()
 	if shutdown.IsShutdown() {
