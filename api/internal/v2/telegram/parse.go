@@ -144,7 +144,11 @@ func (r *Router) runParseAndMaybeConfirm(ctx context.Context, chatID int64, user
 	}
 
 	r.askParseConfirmation(chatID, pr, sc.Detect.Classification.SubjectCandidate)
-	parseWait.Store(chatID, &parsePending{Sc: sc, PR: pr, LLM: llmName})
+	pp := &parsePending{Sc: sc, PR: pr, LLM: llmName}
+	parseWait.Store(chatID, pp)
+
+	// Сохраняем контекст в БД для восстановления после редеплоя или истечения TTL кэша
+	r.saveParseContext(chatID, pp)
 }
 
 // Показ запроса подтверждения распознанного текста
