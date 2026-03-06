@@ -186,8 +186,8 @@ func (r *Router) sendCheckResponse(chatID int64, cr types.CheckResponse) {
 	case types.CheckDecisionCorrect:
 		r.setStateWithPersist(chatID, Correct)
 		r.clearModeWithPersist(chatID)
-		r.clearSession(chatID)
 		r.send(chatID, AnswerCorrectText, makeCorrectAnswerButtons())
+		r.clearSession(chatID) // Очищаем session ПОСЛЕ логирования сообщения
 		return
 
 	case types.CheckDecisionIncorrect:
@@ -223,8 +223,8 @@ func (r *Router) sendCheckResponse(chatID int64, cr types.CheckResponse) {
 		if cr.IsCorrect != nil && *cr.IsCorrect {
 			r.setStateWithPersist(chatID, Correct)
 			r.clearModeWithPersist(chatID)
-			r.clearSession(chatID)
 			r.send(chatID, AnswerCorrectText, makeCorrectAnswerButtons())
+			r.clearSession(chatID) // Очищаем session ПОСЛЕ логирования сообщения
 		} else {
 			r.setStateWithPersist(chatID, Incorrect)
 			text := fmt.Sprintf(AnswerIncorrectText, cr.Feedback)
