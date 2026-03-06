@@ -128,16 +128,40 @@ func (r *Router) clearModeWithPersist(chatID int64) {
 // restoreStateFromDB восстанавливает состояние из БД если его нет в кэше
 // Возвращает true если состояние было восстановлено
 func (r *Router) restoreStateFromDB(chatID int64) bool {
-	// Если состояние уже есть в кэше — не восстанавливаем
+	// Проверяем, есть ли состояние в кэше
+	stateInCache := false
 	if v, ok := chatState.Load(chatID); ok {
 		if _, ok2 := v.(State); ok2 {
-			return false
+			stateInCache = true
 		}
+	}
+
+	// Проверяем, есть ли session_id в кэше
+	sessionInCache := false
+	if v, ok := sessionByChat.Load(chatID); ok {
+		if sid, ok2 := v.(string); ok2 && sid != "" {
+			sessionInCache = true
+		}
+	}
+
+	// Если оба в кэше — ничего не делаем
+	if stateInCache && sessionInCache {
+		return false
 	}
 
 	// Пробуем загрузить из БД
 	session, err := r.Store.FindSession(context.Background(), chatID)
 	if err != nil || session.SessionID == "" {
+		return false
+	}
+
+	// Кэшируем session_id для быстрого доступа через getSession
+	if !sessionInCache {
+		sessionByChat.Store(chatID, session.SessionID)
+	}
+
+	// Если состояние уже в кэше — не восстанавливаем остальное
+	if stateInCache {
 		return false
 	}
 
