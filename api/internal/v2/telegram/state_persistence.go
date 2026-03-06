@@ -201,30 +201,54 @@ func (r *Router) restoreStateFromDB(chatID int64) bool {
 	// Проверяем консистентность состояния и контекста
 	// Некоторые состояния требуют наличия контекста для продолжения работы
 	if restored {
-		needsContextReset := false
+		var newState State
+		var newMode string
 
 		switch restoredState {
+		case CollectingPages:
+			// Сбор фото альбома — pendingCtx не персистится
+			// После редеплоя пользователю нужно заново загрузить фото
+			log.Printf("[state_persistence] state '%s' requires pending context which is not persisted, resetting to AwaitingTask for chat %d",
+				restoredState, chatID)
+			newState = AwaitingTask
+			newMode = "await_new_task"
+
 		case Detect, Parse:
 			// Эти состояния требуют parseWait контекст, который не персистится
 			// После редеплоя пользователю нужно заново загрузить фото
 			log.Printf("[state_persistence] state '%s' requires parse context which is not persisted, resetting to AwaitingTask for chat %d",
 				restoredState, chatID)
-			needsContextReset = true
+			newState = AwaitingTask
+			newMode = "await_new_task"
 
 		case Hints:
 			// Состояние Hints требует hintContext
 			if !hintContextRestored {
 				log.Printf("[state_persistence] state 'Hints' requires hint context which is missing, resetting to AwaitingTask for chat %d",
 					chatID)
-				needsContextReset = true
+				newState = AwaitingTask
+				newMode = "await_new_task"
 			}
+
+		case Check:
+			// Проверка решения — промежуточное состояние, данные в памяти
+			// После редеплоя пользователю нужно заново отправить решение
+			log.Printf("[state_persistence] state 'Check' is transient, resetting to AwaitSolution for chat %d", chatID)
+			newState = AwaitSolution
+			newMode = "await_solution"
+
+		case Analogue:
+			// Генерация аналогичной задачи — данные в памяти
+			// После редеплоя пользователю нужно запросить аналогию заново или начать новую задачу
+			log.Printf("[state_persistence] state 'Analogue' is transient, resetting to AwaitingTask for chat %d", chatID)
+			newState = AwaitingTask
+			newMode = "await_new_task"
 		}
 
-		if needsContextReset {
-			// Сбрасываем состояние на AwaitingTask
-			chatState.Store(chatID, AwaitingTask)
-			chatMode.Store(chatID, "await_new_task")
-			log.Printf("[state_persistence] reset to AwaitingTask due to missing context for chat %d", chatID)
+		if newState != "" {
+			chatState.Store(chatID, newState)
+			chatMode.Store(chatID, newMode)
+			log.Printf("[state_persistence] reset to %s due to missing context for chat %d", newState, chatID)
 		}
 	}
 
