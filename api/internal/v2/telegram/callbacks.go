@@ -28,18 +28,7 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		tgMsgID = &msgID
 	}
 
-	sid, _ := r.getSession(cid)
 	fromState := string(getState(cid))
-
-	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
-		ChatID:        cid,
-		TaskSessionID: sid,
-		Direction:     "button",
-		EventType:     "callback_" + data,
-		Provider:      llmName,
-		OK:            true,
-		TgMessageID:   tgMsgID,
-	})
 
 	// Получаем grade пользователя для метрик
 	var userGrade int64
@@ -47,19 +36,34 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 		userGrade = *user.Grade
 	}
 
-	// Метрика действия пользователя
-	_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
-		Stage:    "user_action",
-		Provider: llmName,
-		OK:       true,
-		ChatID:   &cid,
-		Details: map[string]any{
-			"action":     data,
-			"from_state": fromState,
-			"session_id": sid,
-			"grade":      userGrade,
-		},
-	})
+	// Для new_task логируем ПОСЛЕ создания сессии (внутри case)
+	if data != "new_task" {
+		sid, _ := r.getSession(cid)
+
+		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+			ChatID:        cid,
+			TaskSessionID: sid,
+			Direction:     "button",
+			EventType:     "callback_" + data,
+			Provider:      llmName,
+			OK:            true,
+			TgMessageID:   tgMsgID,
+		})
+
+		// Метрика действия пользователя
+		_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+			Stage:    "user_action",
+			Provider: llmName,
+			OK:       true,
+			ChatID:   &cid,
+			Details: map[string]any{
+				"action":     data,
+				"from_state": fromState,
+				"session_id": sid,
+				"grade":      userGrade,
+			},
+		})
+	}
 
 	// Для большинства callback'ов требуется Message
 	// Если его нет — игнорируем (кроме grade callbacks, которые не требуют MessageID)
@@ -110,6 +114,31 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 	case "new_task":
 		_ = hideKeyboard(cid, msgID, r)
 		r.resetContextWithPersist(cid)
+
+		// Логируем с новой сессией (после resetContextWithPersist)
+		newSid, _ := r.getSession(cid)
+		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+			ChatID:        cid,
+			TaskSessionID: newSid,
+			Direction:     "button",
+			EventType:     "callback_new_task",
+			Provider:      llmName,
+			OK:            true,
+			TgMessageID:   tgMsgID,
+		})
+		_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+			Stage:    "user_action",
+			Provider: llmName,
+			OK:       true,
+			ChatID:   &cid,
+			Details: map[string]any{
+				"action":     "new_task",
+				"from_state": fromState,
+				"session_id": newSid,
+				"grade":      userGrade,
+			},
+		})
+
 		r.send(cid, NewTaskText, nil)
 	case "report":
 		_ = hideKeyboard(cid, msgID, r)
