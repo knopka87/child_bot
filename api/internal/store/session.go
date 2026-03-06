@@ -19,12 +19,13 @@ type TaskSession struct {
 
 // HintContextData — структура для сериализации контекста подсказок
 type HintContextData struct {
-	ParseJSON   json.RawMessage `json:"parse_json"`   // результат Parse
-	DetectJSON  json.RawMessage `json:"detect_json"`  // результат Detect
-	EngineName  string          `json:"engine_name"`  // имя LLM
-	NextLevel   int             `json:"next_level"`   // следующий уровень подсказки
-	MaxHints    int             `json:"max_hints"`    // максимум подсказок
-	ImageBase64 string          `json:"image_base64"` // изображение в base64 (опционально)
+	ParseJSON       json.RawMessage `json:"parse_json"`                  // результат Parse
+	DetectJSON      json.RawMessage `json:"detect_json"`                 // результат Detect
+	EngineName      string          `json:"engine_name"`                 // имя LLM
+	NextLevel       int             `json:"next_level"`                  // следующий уровень подсказки
+	MaxHints        int             `json:"max_hints"`                   // максимум подсказок
+	ImageBase64     string          `json:"image_base64"`                // изображение в base64 (опционально)
+	CachedHintsJSON json.RawMessage `json:"cached_hints_json,omitempty"` // кэш ответа LLM со всеми подсказками
 }
 
 func (s *Store) UpsertSession(ctx context.Context, ts TaskSession) error {

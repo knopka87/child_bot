@@ -22,6 +22,7 @@ type hintSession struct {
 	EngineName   string
 	NextLevel    int
 	MaxHints     int
+	CachedHints  *types.HintResponse // кэш ответа LLM со всеми подсказками
 }
 
 func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSession) {
@@ -30,15 +31,11 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 	level := hs.NextLevel
 	parseData := hs.Parse
 	detectData := hs.Detect
+	cachedHints := hs.CachedHints
 	hs.mu.Unlock()
 
 	sid, _ := r.getSession(chatID)
-
-	// Определяем режим подсказки
-	mode := "learn"
-	if level > 1 {
-		mode = "rescue"
-	}
+	llmName := r.LlmManager.Get(chatID)
 
 	// Определяем политику подсказок из первого item, если есть
 	var appliedPolicy types.HintPolicy
@@ -51,21 +48,6 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 			H3Reason:       types.H3ReasonNone,
 		}
 	}
-
-	in := types.HintRequest{
-		Task:          parseData.Task,
-		Mode:          mode,
-		Items:         parseData.Items,
-		AppliedPolicy: appliedPolicy,
-		Template:      getTemplate(parseData.Task, parseData.Items, detectData.Classification.SubjectCandidate),
-	}
-
-	llmName := r.LlmManager.Get(chatID)
-	stopProgress := r.startHintProgress(chatID)
-	start := time.Now()
-	hrNew, err := r.GetLLMClient().Hint(context.Background(), llmName, in)
-	latency := time.Since(start).Milliseconds()
-	stopProgress()
 
 	// Получаем template_id и task_type для метрик
 	templateID := getTemplateID(parseData.Task, parseData.Items, detectData.Classification.SubjectCandidate)
@@ -80,75 +62,140 @@ func (r *Router) sendHint(_ context.Context, chatID int64, msgID int, hs *hintSe
 		grade = *user.Grade
 	}
 
-	_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
-		ChatID:        chatID,
-		TaskSessionID: sid,
-		Direction:     "api",
-		EventType:     string(Hints),
-		Provider:      llmName,
-		OK:            err == nil,
-		LatencyMS:     &latency,
-		TgMessageID:   &msgID,
-		InputPayload:  in,
-		OutputPayload: hrNew,
-		Error:         err,
-	})
-	if err != nil {
+	var hrNew types.HintResponse
+
+	// Используем кэш если есть, иначе делаем API-запрос
+	if cachedHints != nil {
+		hrNew = *cachedHints
+
+		// Логируем использование кэша (без latency, т.к. запроса не было)
+		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+			ChatID:        chatID,
+			TaskSessionID: sid,
+			Direction:     "cache",
+			EventType:     string(Hints),
+			Provider:      llmName,
+			OK:            true,
+			TgMessageID:   &msgID,
+		})
+
+		// Метрика из кэша
+		_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+			Stage:    "hint",
+			Provider: llmName,
+			OK:       true,
+			ChatID:   &chatID,
+			Details: map[string]any{
+				"hint_level":  level,
+				"max_hints":   appliedPolicy.MaxHints,
+				"template_id": templateID,
+				"task_type":   taskType,
+				"grade":       grade,
+				"from_cache":  true,
+			},
+		})
+	} else {
+		// Определяем режим подсказки
+		mode := "learn"
+		if level > 1 {
+			mode = "rescue"
+		}
+
+		in := types.HintRequest{
+			Task:          parseData.Task,
+			Mode:          mode,
+			Items:         parseData.Items,
+			AppliedPolicy: appliedPolicy,
+			Template:      getTemplate(parseData.Task, parseData.Items, detectData.Classification.SubjectCandidate),
+		}
+
+		stopProgress := r.startHintProgress(chatID)
+		start := time.Now()
+		var err error
+		hrNew, err = r.GetLLMClient().Hint(context.Background(), llmName, in)
+		latency := time.Since(start).Milliseconds()
+		stopProgress()
+
+		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+			ChatID:        chatID,
+			TaskSessionID: sid,
+			Direction:     "api",
+			EventType:     string(Hints),
+			Provider:      llmName,
+			OK:            err == nil,
+			LatencyMS:     &latency,
+			TgMessageID:   &msgID,
+			InputPayload:  in,
+			OutputPayload: hrNew,
+			Error:         err,
+		})
+		if err != nil {
+			_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
+				Stage:      "hint",
+				Provider:   llmName,
+				OK:         false,
+				Error:      err.Error(),
+				DurationMS: latency,
+				ChatID:     &chatID,
+				Details: map[string]any{
+					"hint_level":  level,
+					"template_id": templateID,
+					"task_type":   taskType,
+					"grade":       grade,
+				},
+			})
+			r.sendError(chatID, fmt.Errorf("не удалось получить подсказку L%d: %s", level, err.Error()))
+			return
+		}
+
+		// Метрика успешной подсказки
 		_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
 			Stage:      "hint",
 			Provider:   llmName,
-			OK:         false,
-			Error:      err.Error(),
+			OK:         true,
 			DurationMS: latency,
 			ChatID:     &chatID,
 			Details: map[string]any{
 				"hint_level":  level,
+				"max_hints":   appliedPolicy.MaxHints,
 				"template_id": templateID,
 				"task_type":   taskType,
 				"grade":       grade,
+				"mode":        mode,
+				"from_cache":  false,
 			},
 		})
-		r.sendError(chatID, fmt.Errorf("не удалось получить подсказку L%d: %s", level, err.Error()))
-		return
+
+		// Сохраняем в кэш hintSession для последующих подсказок
+		hs.mu.Lock()
+		hs.CachedHints = &hrNew
+		hs.mu.Unlock()
+
+		// Сохраняем в БД
+		js, _ := json.Marshal(hrNew)
+		data := store.HintCache{
+			SessionID: sid,
+			CreatedAt: time.Now(),
+			Engine:    llmName,
+			HintJson:  js,
+			Level:     "all", // сохраняем все уровни
+		}
+		if dbErr := r.Store.UpsertHint(context.Background(), data); dbErr != nil {
+			_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
+				ChatID:        chatID,
+				TaskSessionID: sid,
+				Direction:     "db",
+				EventType:     string(Hints),
+				Provider:      llmName,
+				OK:            false,
+				Error:         dbErr,
+			})
+		}
+
+		// Обновляем контекст в БД с новым кэшем
+		r.saveHintContext(chatID, hs)
 	}
 
-	// Метрика успешной подсказки
-	_ = r.Store.InsertEvent(context.Background(), store.MetricEvent{
-		Stage:      "hint",
-		Provider:   llmName,
-		OK:         true,
-		DurationMS: latency,
-		ChatID:     &chatID,
-		Details: map[string]any{
-			"hint_level":  level,
-			"max_hints":   appliedPolicy.MaxHints,
-			"template_id": templateID,
-			"task_type":   taskType,
-			"grade":       grade,
-			"mode":        mode,
-		},
-	})
-	js, _ := json.Marshal(hrNew)
-	data := store.HintCache{
-		SessionID: sid,
-		CreatedAt: time.Now(),
-		Engine:    llmName,
-		HintJson:  js,
-		Level:     string(lvlToConst(level)),
-	}
-	err = r.Store.UpsertHint(context.Background(), data)
-	if err != nil {
-		_ = r.Store.InsertHistory(context.Background(), store.TimelineEvent{
-			ChatID:        chatID,
-			TaskSessionID: sid,
-			Direction:     "db",
-			EventType:     string(Hints),
-			Provider:      llmName,
-			OK:            false,
-			Error:         err,
-			CreatedAt:     time.Time{},
-		})
-	}
 	r.send(chatID, formatHint(hrNew, level), makeHintButtons(level, appliedPolicy.MaxHints, true))
 }
 
