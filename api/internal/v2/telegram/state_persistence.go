@@ -263,6 +263,7 @@ func (r *Router) saveHintContext(chatID int64, hs *hintSession) {
 	engineName := hs.EngineName
 	nextLevel := hs.NextLevel
 	maxHints := hs.MaxHints
+	cachedHints := hs.CachedHints
 	// Для больших изображений очищаем ссылку чтобы освободить память
 	var imageCopy []byte
 	if len(hs.Image) > 0 && len(hs.Image) < 100*1024 {
@@ -291,13 +292,19 @@ func (r *Router) saveHintContext(chatID int64, hs *hintSession) {
 			imageBase64 = base64.StdEncoding.EncodeToString(imageCopy)
 		}
 
+		var cachedHintsJSON []byte
+		if cachedHints != nil {
+			cachedHintsJSON, _ = json.Marshal(cachedHints)
+		}
+
 		data := store.HintContextData{
-			ParseJSON:   parseJSON,
-			DetectJSON:  detectJSON,
-			EngineName:  engineName,
-			NextLevel:   nextLevel,
-			MaxHints:    maxHints,
-			ImageBase64: imageBase64,
+			ParseJSON:       parseJSON,
+			DetectJSON:      detectJSON,
+			EngineName:      engineName,
+			NextLevel:       nextLevel,
+			MaxHints:        maxHints,
+			ImageBase64:     imageBase64,
+			CachedHintsJSON: cachedHintsJSON,
 		}
 
 		hintContextJSON, err := json.Marshal(data)
@@ -365,6 +372,16 @@ func (r *Router) restoreHintSession(hintContextJSON []byte) (*hintSession, error
 		}
 	}
 
+	// Восстанавливаем кэш подсказок
+	if len(data.CachedHintsJSON) > 0 {
+		var cachedHints types.HintResponse
+		if err := json.Unmarshal(data.CachedHintsJSON, &cachedHints); err == nil {
+			hs.CachedHints = &cachedHints
+		} else {
+			log.Printf("[state_persistence] failed to unmarshal cached hints: %v", err)
+		}
+	}
+
 	return hs, nil
 }
 
@@ -404,9 +421,10 @@ func (r *Router) resetContextWithPersist(cid int64) {
 // HintContextForPersist — облегчённая версия hintSession для сохранения
 // (без mutex и с минимумом данных)
 type HintContextForPersist struct {
-	Parse      types.ParseResponse  `json:"parse"`
-	Detect     types.DetectResponse `json:"detect"`
-	EngineName string               `json:"engine_name"`
-	NextLevel  int                  `json:"next_level"`
-	MaxHints   int                  `json:"max_hints"`
+	Parse       types.ParseResponse  `json:"parse"`
+	Detect      types.DetectResponse `json:"detect"`
+	EngineName  string               `json:"engine_name"`
+	NextLevel   int                  `json:"next_level"`
+	MaxHints    int                  `json:"max_hints"`
+	CachedHints *types.HintResponse  `json:"cached_hints,omitempty"`
 }
