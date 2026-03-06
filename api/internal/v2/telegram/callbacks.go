@@ -162,10 +162,18 @@ func (r *Router) handleCallback(cb tgbotapi.CallbackQuery, llmName string) {
 func (r *Router) onParseYes(chatID int64, msgID int) {
 	v, ok := parseWait.Load(chatID)
 	if !ok {
-		r.sendError(chatID, fmt.Errorf("not found Parse"))
-		return
+		// Пробуем восстановить из БД (TTL кэша мог истечь или был редеплой)
+		if r.restoreStateFromDB(chatID) {
+			v, ok = parseWait.Load(chatID)
+		}
+		if !ok {
+			r.send(chatID, ParseExpiredText, makeErrorButtons())
+			return
+		}
 	}
 	parseWait.Delete(chatID)
+	// Очищаем контекст в БД
+	r.clearParseContext(chatID)
 	p, ok := v.(*parsePending)
 	if !ok {
 		r.sendError(chatID, fmt.Errorf("invalid parse context type"))

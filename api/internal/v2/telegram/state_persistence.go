@@ -198,6 +198,17 @@ func (r *Router) restoreStateFromDB(chatID int64) bool {
 		}
 	}
 
+	// Восстанавливаем контекст ожидания подтверждения парсинга
+	parseContextRestored := false
+	if len(session.ParseContext) > 0 {
+		if pp, err := r.restoreParsePending(session.ParseContext); err == nil && pp != nil {
+			parseWait.Store(chatID, pp)
+			log.Printf("[state_persistence] restored parse context for chat %d", chatID)
+			parseContextRestored = true
+			restored = true
+		}
+	}
+
 	// Проверяем консистентность состояния и контекста
 	// Некоторые состояния требуют наличия контекста для продолжения работы
 	if restored {
@@ -213,13 +224,21 @@ func (r *Router) restoreStateFromDB(chatID int64) bool {
 			newState = AwaitingTask
 			newMode = "await_new_task"
 
-		case Detect, Parse:
-			// Эти состояния требуют parseWait контекст, который не персистится
-			// После редеплоя пользователю нужно заново загрузить фото
-			log.Printf("[state_persistence] state '%s' requires parse context which is not persisted, resetting to AwaitingTask for chat %d",
+		case Detect:
+			// Detect требует in-flight данные, которые не персистятся
+			log.Printf("[state_persistence] state '%s' is transient, resetting to AwaitingTask for chat %d",
 				restoredState, chatID)
 			newState = AwaitingTask
 			newMode = "await_new_task"
+
+		case Parse:
+			// Parse может быть восстановлен если есть parseContext
+			if !parseContextRestored {
+				log.Printf("[state_persistence] state 'Parse' requires parse context which is missing, resetting to AwaitingTask for chat %d",
+					chatID)
+				newState = AwaitingTask
+				newMode = "await_new_task"
+			}
 
 		case Hints:
 			// Состояние Hints требует hintContext
@@ -409,6 +428,119 @@ func (r *Router) restoreHintSession(hintContextJSON []byte) (*hintSession, error
 	return hs, nil
 }
 
+// saveParseContext сохраняет контекст ожидания подтверждения парсинга в БД
+func (r *Router) saveParseContext(chatID int64, pp *parsePending) {
+	if pp == nil || pp.Sc == nil {
+		return
+	}
+
+	shutdown := GetShutdownManager()
+	if shutdown.IsShutdown() {
+		return
+	}
+
+	// Копируем данные перед запуском горутины
+	parseJSON, _ := json.Marshal(pp.PR)
+	detectJSON, _ := json.Marshal(pp.Sc.Detect)
+	llmName := pp.LLM
+	mime := pp.Sc.Mime
+	mediaGroupID := pp.Sc.MediaGroupID
+
+	// Для изображений ограничиваем размер (100KB)
+	var imageBase64 string
+	if len(pp.Sc.Image) > 0 && len(pp.Sc.Image) < 100*1024 {
+		imageBase64 = base64.StdEncoding.EncodeToString(pp.Sc.Image)
+	}
+
+	done := shutdown.TrackGoroutine()
+
+	go func() {
+		defer done()
+		if shutdown.IsShutdown() {
+			return
+		}
+
+		data := store.ParseContextData{
+			ImageBase64:  imageBase64,
+			Mime:         mime,
+			MediaGroupID: mediaGroupID,
+			DetectJSON:   detectJSON,
+			ParseJSON:    parseJSON,
+			LLM:          llmName,
+		}
+
+		parseContextJSON, err := json.Marshal(data)
+		if err != nil {
+			log.Printf("[state_persistence] failed to marshal parse context: %v", err)
+			return
+		}
+
+		if err := r.Store.UpdateSessionParseContext(context.Background(), chatID, parseContextJSON); err != nil {
+			log.Printf("[state_persistence] failed to save parse context for chat %d: %v", chatID, err)
+		}
+	}()
+}
+
+// clearParseContext очищает контекст парсинга в БД
+func (r *Router) clearParseContext(chatID int64) {
+	shutdown := GetShutdownManager()
+	if shutdown.IsShutdown() {
+		return
+	}
+	done := shutdown.TrackGoroutine()
+
+	go func() {
+		defer done()
+		if shutdown.IsShutdown() {
+			return
+		}
+		if err := r.Store.ClearSessionParseContext(context.Background(), chatID); err != nil {
+			log.Printf("[state_persistence] failed to clear parse context for chat %d: %v", chatID, err)
+		}
+	}()
+}
+
+// restoreParsePending восстанавливает parsePending из JSON
+func (r *Router) restoreParsePending(parseContextJSON []byte) (*parsePending, error) {
+	var data store.ParseContextData
+	if err := json.Unmarshal(parseContextJSON, &data); err != nil {
+		return nil, err
+	}
+
+	sc := &selectionContext{
+		Mime:         data.Mime,
+		MediaGroupID: data.MediaGroupID,
+	}
+
+	// Восстанавливаем изображение
+	if data.ImageBase64 != "" {
+		if imageBytes, err := base64.StdEncoding.DecodeString(data.ImageBase64); err == nil {
+			sc.Image = imageBytes
+		}
+	}
+
+	// Восстанавливаем Detect
+	if len(data.DetectJSON) > 0 {
+		if err := json.Unmarshal(data.DetectJSON, &sc.Detect); err != nil {
+			log.Printf("[state_persistence] failed to unmarshal detect in parse context: %v", err)
+		}
+	}
+
+	pp := &parsePending{
+		Sc:  sc,
+		LLM: data.LLM,
+	}
+
+	// Восстанавливаем Parse
+	if len(data.ParseJSON) > 0 {
+		if err := json.Unmarshal(data.ParseJSON, &pp.PR); err != nil {
+			log.Printf("[state_persistence] failed to unmarshal parse in parse context: %v", err)
+		}
+	}
+
+	return pp, nil
+}
+
 // resetContextWithPersist сбрасывает контекст, очищает в БД и создаёт новую сессию
 func (r *Router) resetContextWithPersist(cid int64) {
 	// Очищаем кэши
@@ -439,6 +571,7 @@ func (r *Router) resetContextWithPersist(cid int64) {
 		mode := "await_new_task"
 		_ = r.Store.UpdateSessionState(context.Background(), cid, &stateStr, &mode)
 		_ = r.Store.ClearSessionHintContext(context.Background(), cid)
+		_ = r.Store.ClearSessionParseContext(context.Background(), cid)
 	}()
 }
 

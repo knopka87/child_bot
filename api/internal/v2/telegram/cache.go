@@ -30,8 +30,8 @@ const (
 	// SessionTTL Сессионные данные (задача, подсказки) — 2 часа
 	SessionTTL = 2 * time.Hour
 
-	// PendingTTL Временные данные (pending контексты) — 10 минут
-	PendingTTL = 10 * time.Minute
+	// PendingTTL Временные данные (pending контексты) — 30 минут
+	PendingTTL = 30 * time.Minute
 
 	// UserDataTTL Данные пользователя (класс, настройки) — 24 часа
 	UserDataTTL = 24 * time.Hour
