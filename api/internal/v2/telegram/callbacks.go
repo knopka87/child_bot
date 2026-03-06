@@ -223,6 +223,11 @@ func (r *Router) onHintNext(chatID int64, msgID int) {
 		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, emptyKB)
 		_, _ = r.Bot.Send(edit)
 		r.send(chatID, HintFinishText, makeFinishHintButtons())
+
+		// После всех подсказок переходим в AwaitSolution
+		// Это позволяет восстановить состояние после редеплоя без hintContext
+		r.setStateWithPersist(chatID, AwaitSolution)
+		r.setModeWithPersist(chatID, "await_solution")
 		return
 	}
 
