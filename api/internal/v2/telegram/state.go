@@ -123,7 +123,7 @@ var States = map[State][]State{
 	CollectingPages: {Detect, Report, AwaitingTask},
 	Detect:          {Parse, Report},
 	Parse:           {Hints, AwaitSolution, Report},
-	Hints:           {AwaitSolution, AwaitingTask, Analogue, Hints, Report},
+	Hints:           {AwaitSolution, AwaitingTask, Analogue, Hints, Report, Check},
 	AwaitSolution:   {Check, Report, AwaitingTask},
 	Check:           {Correct, Incorrect, Report, AwaitingTask, CollectingPages, Analogue},
 	Correct:         {AwaitingTask, CollectingPages, Report},
@@ -314,7 +314,7 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 
 	// 4) Фото
 	if upd.Message.Photo != nil && len(upd.Message.Photo) > 0 {
-		if cur == AwaitSolution {
+		if cur == AwaitSolution || cur == Hints {
 			return Check, true // прислано решение фото → сразу check
 		}
 		return CollectingPages, true // прислано фото задания/страницы
@@ -322,7 +322,7 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 
 	// 4.1) Документ-изображение (фото отправлено как файл)
 	if upd.Message.Document != nil && strings.HasPrefix(upd.Message.Document.MimeType, "image/") {
-		if cur == AwaitSolution {
+		if cur == AwaitSolution || cur == Hints {
 			return Check, true
 		}
 		return CollectingPages, true
@@ -330,7 +330,7 @@ func inferNextState(upd tgbotapi.Update, cur State) (State, bool) {
 
 	// 5) Текст
 	if s := strings.TrimSpace(upd.Message.Text); s != "" {
-		if cur == AwaitSolution {
+		if cur == AwaitSolution || cur == Hints {
 			return Check, true // текстовое решение → сразу check
 		}
 		if cur == Report {
