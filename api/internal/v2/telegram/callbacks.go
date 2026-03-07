@@ -209,8 +209,14 @@ func (r *Router) onDontLikeHint(chatID int64, msgID int) {
 func (r *Router) onHintNext(chatID int64, msgID int) {
 	v, ok := hintState.Load(chatID)
 	if !ok {
-		r.send(chatID, HintNotFoundText, makeErrorButtons())
-		return
+		// Пробуем восстановить из БД (после редеплоя)
+		if r.restoreStateFromDB(chatID) {
+			v, ok = hintState.Load(chatID)
+		}
+		if !ok {
+			r.send(chatID, HintNotFoundText, makeErrorButtons())
+			return
+		}
 	}
 	hs, ok := v.(*hintSession)
 	if !ok {
