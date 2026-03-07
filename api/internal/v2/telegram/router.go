@@ -122,25 +122,12 @@ func (r *Router) HandleUpdate(upd tgbotapi.Update, llmName string) {
 		}
 		// Переход выполнен успешно
 	} else if !inferred {
-		// Не удалось определить следующее состояние — сообщим пользователю
-		msg := fmt.Sprintf("Нельзя выполнить действие сейчас: %s → %s.%s",
-			friendlyState(cur), friendlyState(ns), allowedStateHints(cur))
-		b := make([][]tgbotapi.InlineKeyboardButton, 0, 1)
-		b = append(b, tgbotapi.NewInlineKeyboardRow(tgbotapi.NewInlineKeyboardButtonData("📝 Сообщить об ошибке", "report")))
-		r.send(cid, msg, b)
-
-		if upd.Message != nil && upd.Message.Text != "" {
-			if sid, ok := r.getSession(cid); ok {
-				_ = r.Store.InsertHistory(ctx, store.TimelineEvent{
-					ChatID:        cid,
-					TaskSessionID: sid,
-					Direction:     "in",
-					EventType:     string(cur),
-					Text:          upd.Message.Text,
-					TgMessageID:   &upd.Message.MessageID,
-				})
-			}
+		// Текст в состоянии ожидания задачи — просим прислать фото
+		if cur == AwaitingTask && upd.Message != nil && upd.Message.Text != "" && !upd.Message.IsCommand() {
+			r.send(cid, AwaitNewTaskText, nil)
+			return
 		}
+		// Прочие необработанные случаи — игнорируем без технических сообщений
 		return
 	}
 
