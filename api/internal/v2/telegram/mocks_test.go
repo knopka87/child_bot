@@ -152,6 +152,18 @@ func (m *MockStore) UpsertSession(ctx context.Context, session store.TaskSession
 	return nil
 }
 
+func (m *MockStore) UpsertSessionID(ctx context.Context, chatID int64, sessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if session, ok := m.Sessions[chatID]; ok {
+		session.SessionID = sessionID
+		m.Sessions[chatID] = session
+	} else {
+		m.Sessions[chatID] = store.TaskSession{ChatID: chatID, SessionID: sessionID}
+	}
+	return nil
+}
+
 func (m *MockStore) UpdateSessionState(ctx context.Context, chatID int64, state, mode *string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
