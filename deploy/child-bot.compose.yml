@@ -44,5 +44,12 @@ services:
       DEFAULT_LLM: ${DEFAULT_LLM:-gemini}
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    stop_grace_period: 30s
     # Tip: update only app without touching DB: `docker compose -f child-bot.compose.yml up -d --no-deps --build app`
     networks: [appnet_v2]
