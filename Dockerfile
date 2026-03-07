@@ -30,7 +30,7 @@ RUN chmod +x /out/entrypoint.sh
 FROM alpine:3.20
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata bash
+RUN apk add --no-cache ca-certificates tzdata bash wget
 
 # бинарь и миграции
 COPY --from=build /out/server /app/server
