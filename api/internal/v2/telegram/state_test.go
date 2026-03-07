@@ -38,7 +38,7 @@ func TestCanTransition(t *testing.T) {
 		{"AwaitingTask -> Correct (invalid)", AwaitingTask, Correct, false},
 		{"Detect -> Hints (invalid)", Detect, Hints, false},
 		{"Parse -> Check (invalid)", Parse, Check, false},
-		{"Hints -> Check (invalid)", Hints, Check, false},
+		{"Hints -> Check (valid)", Hints, Check, true},
 		{"AwaitSolution -> Hints (invalid)", AwaitSolution, Hints, false},
 		{"Correct -> Check (invalid)", Correct, Check, false},
 
@@ -295,7 +295,7 @@ func TestInferNextState_Photo(t *testing.T) {
 	}{
 		{"Photo from AwaitingTask -> CollectingPages", AwaitingTask, CollectingPages},
 		{"Photo from AwaitSolution -> Check", AwaitSolution, Check},
-		{"Photo from Hints -> CollectingPages", Hints, CollectingPages},
+		{"Photo from Hints -> Check", Hints, Check},
 	}
 
 	for _, tt := range tests {

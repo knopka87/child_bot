@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-
-	"child-bot/api/internal/store"
 )
 
 // sessionByChat хранит сессии с TTL (24 часа)
@@ -14,10 +12,8 @@ var sessionByChat = NewTTLCache("sessionByChat", UserDataTTL)
 // helpers
 func (r *Router) setSession(cid int64, sid string) {
 	sessionByChat.Store(cid, sid)
-	_ = r.Store.UpsertSession(context.Background(), store.TaskSession{
-		ChatID:    cid,
-		SessionID: sid,
-	})
+	// Используем UpsertSessionID чтобы не затирать current_state и hint_context
+	_ = r.Store.UpsertSessionID(context.Background(), cid, sid)
 }
 func (r *Router) getSession(cid int64) (string, bool) {
 	if v, ok := sessionByChat.Load(cid); ok {

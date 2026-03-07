@@ -59,6 +59,18 @@ func (s *Store) UpsertSession(ctx context.Context, ts TaskSession) error {
 	return err
 }
 
+// UpsertSessionID обновляет только session_id, сохраняя состояние и контексты
+func (s *Store) UpsertSessionID(ctx context.Context, chatID int64, sessionID string) error {
+	_, err := s.DB.ExecContext(ctx, `
+	INSERT INTO task_sessions (chat_id, session_id, updated_at)
+	VALUES ($1, $2, NOW())
+	ON CONFLICT (chat_id) DO UPDATE
+	SET session_id = EXCLUDED.session_id,
+	    updated_at = NOW()
+	`, chatID, sessionID)
+	return err
+}
+
 // UpdateSessionState обновляет только состояние и режим (без полного upsert)
 func (s *Store) UpdateSessionState(ctx context.Context, chatID int64, state, mode *string) error {
 	_, err := s.DB.ExecContext(ctx, `
