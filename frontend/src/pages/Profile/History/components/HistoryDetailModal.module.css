@@ -1,0 +1,239 @@
+/* src/pages/Profile/History/components/HistoryDetailModal.module.css */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 24px 24px 0 0;
+  padding: 24px;
+  width: 100%;
+  max-width: 390px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.dragHandle {
+  width: 40px;
+  height: 4px;
+  background: #E9ECEF;
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2D3436;
+  margin-bottom: 4px;
+}
+
+.date {
+  font-size: 12px;
+  color: #6C757D;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.hintsInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #F0F4FF;
+  border-radius: 12px;
+  font-size: 14px;
+  color: #495057;
+  margin-bottom: 16px;
+}
+
+.imagesSection {
+  margin-bottom: 16px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2D3436;
+  margin-bottom: 12px;
+}
+
+.imageGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.imageCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.image {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 12px;
+  background: #F8F9FA;
+}
+
+.imageLabel {
+  font-size: 12px;
+  color: #6C757D;
+  text-align: center;
+}
+
+.summarySection {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #F8F9FA;
+  border-radius: 12px;
+}
+
+.summaryText {
+  font-size: 14px;
+  color: #495057;
+  line-height: 1.5;
+}
+
+.errorsSection {
+  margin-bottom: 24px;
+}
+
+.errorsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.errorCard {
+  padding: 12px;
+  background: #FFF9E8;
+  border-left: 3px solid #FDCB6E;
+  border-radius: 8px;
+}
+
+.errorHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.errorNumber {
+  font-size: 12px;
+  font-weight: 600;
+  color: #FDCB6E;
+}
+
+.errorStep,
+.errorLine {
+  font-size: 11px;
+  color: #6C757D;
+  padding: 2px 8px;
+  background: white;
+  border-radius: 4px;
+}
+
+.errorText {
+  font-size: 13px;
+  color: #495057;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.primaryButton {
+  width: 100%;
+  padding: 14px;
+  background: #6C5CE7;
+  color: white;
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.primaryButton:hover {
+  background: #5B4BC7;
+}
+
+.primaryButton:active {
+  transform: scale(0.98);
+}
+
+.secondaryButton {
+  width: 100%;
+  padding: 14px;
+  background: white;
+  color: #6C5CE7;
+  border: 1px solid #6C5CE7;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.secondaryButton:hover {
+  background: #F0F4FF;
+}
+
+.secondaryButton:active {
+  transform: scale(0.98);
+}
+
+.textButton {
+  width: 100%;
+  padding: 14px;
+  background: none;
+  color: #6C757D;
+  border: none;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.textButton:hover {
+  opacity: 0.8;
+}
+
+.textButton:active {
+  opacity: 0.6;
+}

@@ -1,0 +1,234 @@
+// src/pages/Onboarding/OnboardingPage.tsx
+import { useState, useEffect } from 'react';
+import { Panel, PanelHeader, Group, Div, Progress } from '@vkontakte/vkui';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useOnboardingStore } from '@/stores/onboardingStore';
+import { PrimaryButton, SecondaryButton } from '@/components/ui/Button';
+import { ROUTES } from '@/config/routes';
+import { onboardingAPI } from '@/api/onboarding';
+import { PlatformBridge } from '@/services/platform/PlatformBridge';
+import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
+
+// Screens
+import { WelcomeScreen } from './screens/WelcomeScreen';
+import { GradeSelection } from './screens/GradeSelection';
+import { AvatarSelection } from './screens/AvatarSelection';
+import { DisplayNameInput } from './screens/DisplayNameInput';
+import { ConsentScreen } from './screens/ConsentScreen';
+import { EmailInput } from './screens/EmailInput';
+import { OnboardingCompletedScreen } from './screens/OnboardingCompletedScreen';
+
+export function OnboardingPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+
+  const {
+    currentStep,
+    grade,
+    avatarId,
+    displayName,
+    adultConsent,
+    privacyAccepted,
+    termsAccepted,
+    email,
+    setStep,
+    setGrade,
+    setAvatar,
+    setDisplayName,
+    setAdultConsent,
+    setPrivacyAccepted,
+    setTermsAccepted,
+    setEmail,
+    canProceed,
+    progressPercent,
+  } = useOnboardingStore();
+
+  // Извлекаем реферальный код из URL при загрузке
+  useEffect(() => {
+    const refCode = searchParams.get('ref');
+    if (refCode) {
+      console.log('[Onboarding] Referral code detected:', refCode);
+      setReferralCode(refCode);
+      // Сохраняем в storage на случай перезагрузки
+      vkStorage.setItem(storageKeys.REFERRAL_CODE, refCode);
+    } else {
+      // Проверяем, может код был сохранен ранее
+      vkStorage.getItem(storageKeys.REFERRAL_CODE).then((savedCode) => {
+        if (savedCode) {
+          console.log('[Onboarding] Referral code loaded from storage:', savedCode);
+          setReferralCode(savedCode);
+        }
+      });
+    }
+  }, [searchParams]);
+
+  const handleNext = () => {
+    const steps = [
+      'welcome',
+      'grade',
+      'avatar',
+      'display_name',
+      'consent',
+      'email',
+      'completed',
+    ];
+    const currentIndex = steps.indexOf(currentStep);
+    if (currentIndex < steps.length - 1) {
+      setStep(steps[currentIndex + 1] as any);
+    }
+  };
+
+  const handleBack = () => {
+    const steps = [
+      'welcome',
+      'grade',
+      'avatar',
+      'display_name',
+      'consent',
+      'email',
+      'completed',
+    ];
+    const currentIndex = steps.indexOf(currentStep);
+    if (currentIndex > 0) {
+      setStep(steps[currentIndex - 1] as any);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      console.log('[Onboarding] Starting completion...');
+
+      // Получаем user ID от платформы
+      const platformBridge = new PlatformBridge();
+      await platformBridge.init();
+      const user = await platformBridge.getUser();
+      const parentUserId = user.id;
+
+      console.log('[Onboarding] Parent user ID:', parentUserId);
+
+      // Создаём профиль ребёнка
+      console.log('[Onboarding] Creating child profile...', { referralCode });
+      const { childProfileId } = await onboardingAPI.createChildProfile({
+        parentUserId,
+        grade: grade!,
+        avatarId: avatarId!,
+        displayName: displayName!,
+        referralCode: referralCode || undefined,
+      });
+
+      console.log('[Onboarding] Child profile created:', childProfileId);
+
+      // Удаляем реферальный код из storage после успешного создания профиля
+      if (referralCode) {
+        await vkStorage.removeItem(storageKeys.REFERRAL_CODE);
+      }
+
+      // КРИТИЧНО: сохраняем данные в storage СРАЗУ после получения childProfileId
+      // чтобы при любых последующих ошибках пользователь не потерял профиль
+      console.log('[Onboarding] Saving to storage...');
+      await vkStorage.setItem(storageKeys.USER_ID, parentUserId);
+      await vkStorage.setItem(storageKeys.PROFILE_ID, childProfileId);
+      await vkStorage.setItem(storageKeys.ONBOARDING_COMPLETED, 'true');
+      console.log('[Onboarding] Saved to storage:', { parentUserId, childProfileId });
+
+      // Сохраняем согласие
+      console.log('[Onboarding] Saving consent...');
+      await onboardingAPI.saveConsent({
+        parentUserId,
+        privacyPolicyVersion: '1.0',
+        termsVersion: '1.0',
+        adultConsent: adultConsent!,
+      });
+
+      console.log('[Onboarding] Onboarding completed successfully!');
+
+      // Редирект на главную
+      navigate(ROUTES.HOME, { replace: true });
+    } catch (error) {
+      console.error('[Onboarding] Failed to complete onboarding:', error);
+      alert('Не удалось завершить регистрацию. Попробуйте ещё раз.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderScreen = () => {
+    switch (currentStep) {
+      case 'welcome':
+        return <WelcomeScreen onNext={handleNext} />;
+
+      case 'grade':
+        return <GradeSelection selectedGrade={grade} onSelect={setGrade} />;
+
+      case 'avatar':
+        console.log('[OnboardingPage] Rendering AvatarSelection with avatarId:', avatarId);
+        return <AvatarSelection selectedAvatarId={avatarId} onSelect={setAvatar} />;
+
+      case 'display_name':
+        return <DisplayNameInput displayName={displayName} onChange={setDisplayName} />;
+
+      case 'consent':
+        return (
+          <ConsentScreen
+            adultConsent={adultConsent}
+            privacyAccepted={privacyAccepted}
+            termsAccepted={termsAccepted}
+            onAdultConsentChange={setAdultConsent}
+            onPrivacyChange={setPrivacyAccepted}
+            onTermsChange={setTermsAccepted}
+          />
+        );
+
+      case 'email':
+        return <EmailInput email={email} onChange={setEmail} />;
+
+      case 'completed':
+        return <OnboardingCompletedScreen displayName={displayName} onComplete={handleComplete} />;
+
+      default:
+        return null;
+    }
+  };
+
+  const showBackButton = currentStep !== 'welcome' && currentStep !== 'completed';
+  const showNextButton = currentStep !== 'welcome' && currentStep !== 'completed';
+
+  return (
+    <Panel id="onboarding">
+      <PanelHeader>Настройка профиля</PanelHeader>
+
+      <Group>
+        {/* Progress bar */}
+        <Div>
+          <Progress value={progressPercent()} />
+          {/* Debug: показываем текущий шаг */}
+          <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>
+            Шаг: {currentStep} ({progressPercent()}%)
+          </div>
+        </Div>
+
+        {/* Current screen */}
+        {renderScreen()}
+
+        {/* Navigation buttons */}
+        {showNextButton && (
+          <Div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+            {showBackButton && (
+              <SecondaryButton onClick={handleBack} style={{ flex: 1 }}>
+                Назад
+              </SecondaryButton>
+            )}
+            <PrimaryButton onClick={handleNext} disabled={!canProceed()} style={{ flex: 2 }}>
+              Далее
+            </PrimaryButton>
+          </Div>
+        )}
+      </Group>
+    </Panel>
+  );
+}

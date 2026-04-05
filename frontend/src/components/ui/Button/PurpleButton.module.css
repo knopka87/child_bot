@@ -1,0 +1,26 @@
+.purpleButton {
+  background: #5B4FDB !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 12px !important;
+  padding: 12px 24px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  width: 100%;
+}
+
+.purpleButton:hover {
+  background: #4A3EC5 !important;
+}
+
+.purpleButton:active {
+  background: #3D32A8 !important;
+  transform: scale(0.98);
+}
+
+.purpleButton:disabled {
+  background: #999 !important;
+  cursor: not-allowed;
+}

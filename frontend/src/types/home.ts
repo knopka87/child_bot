@@ -1,0 +1,31 @@
+// src/types/home.ts
+import type { Attempt, Villain, MascotState } from './domain';
+
+export interface HomeData {
+  profile: {
+    id: string;
+    displayName: string;
+    level: number;
+    levelProgress: number; // 0-100
+    coinsBalance: number;
+    tasksSolvedCorrectCount: number;
+  };
+  mascot: {
+    id: string;
+    state: MascotState;
+    imageUrl: string;
+    message: string;
+  };
+  villain: Villain | null;
+  unfinishedAttempt: Attempt | null;
+  recentAttempts: RecentAttempt[];
+}
+
+export interface RecentAttempt {
+  id: string;
+  mode: 'help' | 'check';
+  status: 'success' | 'error' | 'in_progress';
+  createdAt: string;
+  thumbnail?: string;
+  resultSummary?: string;
+}

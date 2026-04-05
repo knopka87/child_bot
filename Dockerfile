@@ -12,9 +12,9 @@ RUN go mod download
 # Код
 COPY api ./api
 
-# Сборка бинаря
+# Сборка REST API server (новый entrypoint)
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -trimpath -ldflags="-s -w" -o /out/server ./api/cmd/bot
+    go build -trimpath -ldflags="-s -w" -o /out/server ./api/cmd/server
 
 # golang-migrate (postgres)
 RUN GOBIN=/out go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.0
@@ -37,9 +37,6 @@ COPY --from=build /out/server /app/server
 COPY --from=build /out/migrate /usr/local/bin/migrate
 COPY --from=build /out/migrations /app/migrations
 COPY --from=build /out/entrypoint.sh /app/entrypoint.sh
-
-# шаблоны для роутинга задач
-COPY --from=build /src/api/internal/v2/templates /app/internal/v2/templates
 
 ENV PORT=8080 \
     MIGRATIONS_DIR=/app/migrations

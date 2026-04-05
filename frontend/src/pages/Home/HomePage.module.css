@@ -1,0 +1,43 @@
+.page {
+  min-height: 100vh;
+  padding-bottom: 80px; /* Space for BottomNav */
+  background: var(--vkui--color_background);
+}
+
+.content {
+  padding-top: 16px;
+  padding-bottom: 24px;
+}
+
+.loadingContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.errorContainer {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  text-align: center;
+}
+
+.errorContainer p {
+  margin-bottom: 16px;
+  font-size: 16px;
+  color: var(--vkui--color_text_primary);
+}
+
+.errorContainer button {
+  padding: 12px 24px;
+  background: var(--vkui--color_accent_blue);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}

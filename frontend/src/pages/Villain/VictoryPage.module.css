@@ -1,0 +1,92 @@
+.header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.title {
+  font-size: 36px;
+  font-weight: 700;
+  color: #2C2D2E;
+  margin: 0 0 8px 0;
+}
+
+.subtitle {
+  font-size: 20px;
+  color: #666;
+  margin: 0;
+}
+
+.villainDefeated {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+
+.villainImage {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  filter: grayscale(100%);
+  opacity: 0.6;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.statLabel {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.statValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2C2D2E;
+}
+
+.rewards {
+  margin-bottom: 32px;
+}
+
+.rewardsTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #2C2D2E;
+  margin: 0 0 16px 0;
+  text-align: center;
+}
+
+.loadingContainer,
+.errorContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 20px;
+}
+
+.errorContainer button {
+  margin-top: 16px;
+  padding: 12px 24px;
+  background: #007aff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}

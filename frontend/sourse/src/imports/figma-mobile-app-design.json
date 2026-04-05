@@ -1,0 +1,427 @@
+You are a senior Product Designer and Mobile UX Architect.
+
+Your task is to generate a complete mobile mini-app UI design in Figma based on the following product specification.
+
+IMPORTANT REQUIREMENTS:
+• Design as a real MOBILE APP interface (not a website).
+• Use a mobile frame size: 390 × 844 (iPhone standard).
+• Create all screens, UI states, and navigation flows.
+• Add clear screen naming and flow connections.
+• Design must be simple and child-friendly (for children 7–10 years old).
+• Interface language: Russian.
+• Primary platform: Telegram Mini App / VK Mini App / Web Mobile.
+• UX principle: one main action per screen.
+
+Use a bright, friendly educational UI style suitable for children.
+
+Mascot character is present on:
+• Home screen
+• Loading screen
+• Result screen
+• Achievements screen
+
+Mascot must stay in SAFE AREA:
+• do not overlap main buttons
+• max width 25–30% screen
+• positioned bottom right
+
+Animations are short (1–2 seconds).
+
+---
+
+PRODUCT OVERVIEW
+
+The product is an AI homework assistant for children grades 1–4.
+
+The app allows a child to:
+
+1) Upload a photo of homework
+2) Get help understanding the task
+3) Check their answer
+4) Receive hints
+5) Earn achievements
+
+Main idea:
+FAST FLOW
+
+Choose mode → upload image → get result.
+
+---
+
+GLOBAL NAVIGATION
+
+Bottom Tab Bar (4 tabs):
+
+1. Штаб
+2. Достижения
+3. Друзья
+4. Профиль
+
+History must be accessible ONLY inside Profile.
+
+---
+
+CREATE FULL MOBILE SCREEN SET
+
+Create the following screens.
+
+---
+
+ONBOARDING / FIRST START
+
+Screen: Создание профиля ребёнка
+
+Elements:
+• Avatar selection
+• Child name input
+• Optional grade selector
+• Consent checkbox
+• Continue button (disabled until consent checked)
+
+Text:
+☐ Я согласен с Политикой конфиденциальности и Пользовательским соглашением
+
+Links open inside app.
+
+State:
+• disabled button
+• active button
+
+---
+
+PARENT EMAIL CONFIRMATION
+
+Screen: Подтверждение e-mail
+
+Elements:
+• Code input
+• Confirm button
+• Resend code button
+
+States:
+• success
+• wrong code
+• resend cooldown
+
+---
+
+HOME TAB (Штаб)
+
+Main dashboard.
+
+Large buttons:
+
+1. Помоги разобраться
+2. Проверка ДЗ
+
+Optional block:
+small daily tip
+
+Mascot appears here.
+
+No lists or history.
+
+---
+
+MODE 1 FLOW
+
+Помоги разобраться
+
+Step 1
+
+Upload screen
+
+Buttons:
+
+• Выбрать изображение
+• Выбрать из сохранённых
+
+Supported formats:
+JPG
+PNG
+
+Error states:
+• unsupported format
+• corrupted file
+
+---
+
+PROCESSING SCREEN
+
+Loading state with mascot.
+
+Text progression:
+
+0-12 sec
+Идёт обработка…
+
+12-25 sec
+Нужно чуть больше времени…
+
+25+ sec
+Чтобы не ошибиться, мне нужно ещё подумать…
+
+Back button available but processing continues on server.
+
+---
+
+RESULT SCREEN (Help mode)
+
+Accordion hints:
+
+Л1
+Л2
+Л3
+
+L1 open by default.
+
+Buttons:
+
+Primary
+Похожее задание
+
+Secondary
+Загрузить другое изображение
+
+Mascot present.
+
+Villain health indicator (3 segments).
+
+If health reaches 0:
+show victory popup and sticker reward.
+
+---
+
+MODE 2 FLOW
+
+Проверка ДЗ
+
+Step 1
+
+Upload first image.
+
+Server decides if second image required.
+
+---
+
+IF SECOND IMAGE REQUIRED
+
+Screen:
+Нужно ещё одно изображение
+
+Upload second image.
+
+---
+
+RESULT SCREEN (Check mode)
+
+Verdicts:
+
+Верно
+Почти верно
+Нужно исправить
+Не получилось проверить
+
+If mistake:
+show short explanation (text only).
+
+Buttons:
+
+Primary
+Исправил(а), проверить ещё раз
+
+Secondary
+Загрузить другое изображение
+
+No visual overlays on image.
+
+---
+
+ACHIEVEMENTS TAB
+
+Show 3–6 large achievement cards.
+
+Button:
+Посмотреть всё
+
+Full achievements screen shows full list.
+
+Mascot present.
+
+Achievement popup state.
+
+Example achievements:
+
+• 5 дней подряд занимался
+• 10 проверок ДЗ
+• 5 исправленных ошибок
+
+---
+
+FRIENDS TAB
+
+Minimal screen.
+
+Feature:
+Invite friend
+
+Show referral link.
+
+Buttons:
+
+• Скопировать
+• Отправить
+
+---
+
+PROFILE TAB
+
+Sections list:
+
+История  
+Отчёт родителю  
+Настройки  
+Помощь
+
+---
+
+HISTORY SCREEN
+
+List without image thumbnails.
+
+Each item:
+
+• date
+• mode
+• status
+• open button
+
+Statuses:
+
+в обработке  
+готово  
+не получилось
+
+---
+
+PARENT REPORT SCREEN
+
+Section:
+Настройка отчёта
+
+Fields:
+
+• email
+• weekly report toggle
+• report day selector
+• report time selector
+
+Buttons:
+
+Отправить тестовый отчёт
+
+Archive of previous reports.
+
+Option:
+Download PDF.
+
+---
+
+SETTINGS SCREEN
+
+Editable items:
+
+• Child name
+• Avatar
+• Interface language
+• Sound toggle
+
+Parent contact:
+
+• email add/edit/delete
+
+Email changes require verification code.
+
+---
+
+PAYMENT SCREEN
+
+Title:
+Доступ к сервису
+
+Content:
+
+3-5 benefit bullets.
+
+Subscription monthly.
+
+Buttons:
+
+Оплатить  
+Позже
+
+Show when:
+
+• trial expired
+• before viewing results if access limited
+
+After payment:
+return user to previous flow.
+
+---
+
+ERROR STATES
+
+Design UI for:
+
+• bad image
+• unsupported file
+• processing error
+• timeout
+
+Each must include:
+
+clear message  
+retry button
+
+---
+
+MASCOT RULES
+
+Visible on:
+
+• Home
+• Loading
+• Result
+• Achievements
+
+Hidden or very small on:
+
+• forms
+• profile
+• settings
+• payment
+
+Max size mobile:
+
+96-120 px
+
+Safe margin:
+
+16-24 px
+
+---
+
+DELIVERABLE
+
+Generate in Figma:
+
+• full screen set
+• mobile frames
+• named screens
+• connected user flows
+• loading states
+• success states
+• error states
+• popups
+• navigation connections

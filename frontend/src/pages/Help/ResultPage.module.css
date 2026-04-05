@@ -1,0 +1,46 @@
+.hints {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hintCard {
+  padding: 16px;
+}
+
+.hintHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.hintBadge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vkui--color_accent_blue);
+  text-transform: uppercase;
+}
+
+.hintLevel {
+  font-size: 12px;
+  color: var(--vkui--color_text_secondary);
+}
+
+.rewardsCard {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--vkui--color_background_secondary);
+}
+
+.rewards {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.reward {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vkui--color_text_primary);
+}

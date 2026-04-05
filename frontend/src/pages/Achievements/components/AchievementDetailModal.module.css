@@ -1,0 +1,50 @@
+.content {
+  padding: 32px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.iconContainer {
+  margin-bottom: 24px;
+}
+
+.iconBackground {
+  width: 100px;
+  height: 100px;
+  border-radius: 20px; /* Скругленный квадрат, не круг */
+  background: #FFE0E0; /* Розовый фон */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconEmoji {
+  font-size: 56px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: var(--vkui--color_text_primary, #2C2D2E);
+}
+
+.description {
+  font-size: 15px;
+  color: var(--vkui--color_text_secondary, #818C99);
+  margin: 0 0 16px 0;
+  line-height: 1.4;
+}
+
+.statusBadge {
+  font-size: 14px;
+  color: #4ECDC4; /* Бирюзовый текст */
+  font-weight: 500;
+  margin-bottom: 8px;
+  background: rgba(78, 205, 196, 0.12); /* Светло-бирюзовый фон */
+  padding: 6px 16px;
+  border-radius: 12px;
+  display: inline-block;
+}
