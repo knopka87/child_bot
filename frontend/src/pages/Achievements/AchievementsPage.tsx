@@ -6,6 +6,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { Spinner } from '@/components/ui/Spinner';
 import { AchievementDetailModal } from './components/AchievementDetailModal';
 import { useAchievements } from './hooks/useAchievements';
+import { useNewAchievements } from '@/hooks/useNewAchievements';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import type { Achievement } from '@/types/achievements';
@@ -14,6 +15,7 @@ export function AchievementsPage() {
   const navigate = useNavigate();
   const analytics = useAnalytics();
   const { achievements, stats, isLoading, error } = useAchievements();
+  const { hasNew, markAsViewed } = useNewAchievements();
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
   const [childProfileId, setChildProfileId] = useState<string | null>(null);
 
@@ -31,8 +33,13 @@ export function AchievementsPage() {
       analytics.trackEvent('achievements_opened', {
         child_profile_id: childProfileId,
       });
+
+      // Отмечаем что пользователь просмотрел страницу достижений
+      if (hasNew) {
+        markAsViewed();
+      }
     }
-  }, [analytics, childProfileId]);
+  }, [analytics, childProfileId, hasNew, markAsViewed]);
 
   const handleAchievementClick = (achievement: Achievement) => {
     if (childProfileId) {
@@ -50,23 +57,13 @@ export function AchievementsPage() {
     setSelectedAchievement(null);
   };
 
-  // Группируем достижения по полкам
-  const achievementsByShelf = achievements.reduce(
-    (acc, achievement) => {
-      const shelf = achievement.shelf_order;
-      if (!acc[shelf]) {
-        acc[shelf] = [];
-      }
-      acc[shelf].push(achievement);
-      return acc;
-    },
-    {} as Record<number, Achievement[]>
-  );
-
-  // Сортируем полки
-  const shelves = Object.keys(achievementsByShelf)
-    .map(Number)
-    .sort((a, b) => a - b);
+  // Бэкенд уже возвращает правильный порядок: активные первыми (новые в начале), затем неактивные по приоритету
+  // Группируем достижения по "полкам" (по 4 в ряд)
+  const achievementsPerShelf = 4;
+  const shelves: Achievement[][] = [];
+  for (let i = 0; i < achievements.length; i += achievementsPerShelf) {
+    shelves.push(achievements.slice(i, i + achievementsPerShelf));
+  }
 
   // Функция для определения цвета фона иконки
   const getIconBackground = (achievement: Achievement, index: number) => {
@@ -128,13 +125,9 @@ export function AchievementsPage() {
 
       {/* Shelves */}
       <div className="flex-1 px-4 mt-4">
-        {shelves.map((shelfNum, shelfIndex) => {
-          const shelfAchievements = achievementsByShelf[shelfNum].sort(
-            (a, b) => a.position_in_shelf - b.position_in_shelf
-          );
-
+        {shelves.map((shelfAchievements, shelfIndex) => {
           return (
-            <div key={shelfNum} className="mb-8">
+            <div key={shelfIndex} className="mb-8">
               {/* Achievement Cards */}
               <div className="grid grid-cols-4 gap-3 mb-4">
                 {shelfAchievements.map((achievement, index) => (
@@ -143,14 +136,24 @@ export function AchievementsPage() {
                     onClick={() => handleAchievementClick(achievement)}
                     className="flex flex-col items-center active:scale-95 transition-transform"
                   >
-                    {/* Icon Circle */}
-                    <div
-                      className={`w-[70px] h-[70px] rounded-full flex items-center justify-center text-3xl mb-2 shadow-sm ${getIconBackground(
-                        achievement,
-                        index
-                      )} ${!achievement.is_unlocked ? 'opacity-40' : ''}`}
-                    >
-                      {achievement.icon}
+                    {/* Icon Circle with Badge */}
+                    <div className="relative">
+                      <div
+                        className={`w-[70px] h-[70px] rounded-full flex items-center justify-center text-3xl mb-2 shadow-sm ${getIconBackground(
+                          achievement,
+                          index
+                        )} ${!achievement.is_unlocked ? 'opacity-40' : ''}`}
+                      >
+                        {achievement.icon}
+                      </div>
+                      {/* Badge for Serial Stickers (Дружба, Стрик, Проверки ДЗ, Злодеи, Исправленные ошибки) */}
+                      {achievement.reward.type === 'sticker' &&
+                        ['Дружба', 'Стрик', 'Проверки ДЗ', 'Победитель злодеев', 'Исправленные ошибки'].includes(achievement.reward.name) &&
+                        achievement.progress.total && (
+                          <div className="absolute -top-1 -right-1 w-6 h-6 bg-[#FF6B6B] text-white text-xs font-bold rounded-full flex items-center justify-center shadow-md">
+                            {achievement.progress.total}
+                          </div>
+                        )}
                     </div>
                     {/* Title */}
                     <p
@@ -163,11 +166,6 @@ export function AchievementsPage() {
                   </button>
                 ))}
               </div>
-
-              {/* Shelf Separator (except last) */}
-              {shelfIndex < shelves.length - 1 && (
-                <div className="h-[2px] bg-gradient-to-r from-[#C9A969] via-[#E8D5A3] to-[#C9A969] rounded-full shadow-md" />
-              )}
             </div>
           );
         })}
@@ -182,7 +180,7 @@ export function AchievementsPage() {
         />
       )}
 
-      <BottomNav />
+      <BottomNav hasNewAchievements={hasNew} />
     </div>
   );
 }

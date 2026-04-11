@@ -21,12 +21,17 @@ interface BackendReferralResponse {
     is_active: boolean;
     reward_earned: number;
   }>;
-  reward_milestones: Array<{
-    friends_count: number;
-    reward: number;
-    is_claimed: boolean;
+  current_achievement?: {
+    achievement_id: string;
+    title: string;
     description: string;
-  }>;
+    icon: string;
+    target_count: number;
+    current_count: number;
+    previous_level: number;
+    is_unlocked: boolean;
+    next_level?: number;
+  };
 }
 
 export const referralAPI = {
@@ -38,29 +43,48 @@ export const referralAPI = {
     const response = await apiClient.get<BackendReferralResponse>('/friends/referrals');
     console.log('[referralAPI] Response received:', response);
 
-    // Находим первый незавершённый milestone
-    const nextMilestone = response.reward_milestones.find(m => !m.is_claimed);
-    const targetCount = nextMilestone?.friends_count || 5;
-    const progressPercent = Math.min((response.active_invited / targetCount) * 100, 100);
+    // Используем данные о достижении "Дружба"
+    let targetCount: number; // Относительное количество (сколько друзей нужно пригласить от предыдущего уровня)
+    let invitedCount: number; // Относительное количество (сколько приглашено от предыдущего уровня)
+    let goalDescription: string;
+    let rewardName: string;
+
+    if (response.current_achievement) {
+      // Вычисляем относительные значения
+      const previousLevel = response.current_achievement.previous_level;
+      targetCount = response.current_achievement.target_count - previousLevel;
+      invitedCount = Math.max(0, response.current_achievement.current_count - previousLevel);
+
+      goalDescription = response.current_achievement.description;
+      rewardName = `Стикер «${response.current_achievement.title}»`;
+    } else {
+      // Нет данных о достижении - используем значения по умолчанию
+      targetCount = 5;
+      invitedCount = 0;
+      goalDescription = 'За 5 приглашённых друзей';
+      rewardName = 'Стикер «Дружба»';
+    }
+
+    const progressPercent = targetCount > 0 ? Math.min((invitedCount / targetCount) * 100, 100) : 0;
 
     // Адаптируем данные к формату фронтенда
     return {
       referralCode: response.referral_code,
       referralLink: response.referral_link,
-      invitedCount: response.active_invited,
-      targetCount,
+      invitedCount, // Относительное количество (от предыдущего уровня)
+      targetCount, // Относительная цель (от предыдущего уровня)
+      totalInvited: response.total_invited, // Абсолютное общее количество
       progressPercent,
       currentGoal: {
-        id: String(targetCount),
+        id: response.current_achievement?.achievement_id || String(targetCount),
         targetCount,
         reward: {
           type: 'sticker',
-          id: 'friendship_sticker',
-          name: 'Редкий стикер «Дружба»',
-          description: nextMilestone?.description || '',
-          amount: nextMilestone?.reward,
+          id: response.current_achievement?.achievement_id || 'friendship_sticker',
+          name: rewardName,
+          description: goalDescription,
         },
-        isCompleted: response.active_invited >= targetCount,
+        isCompleted: response.current_achievement?.is_unlocked || false,
       },
       invitedFriends: response.invited_friends.map(f => ({
         id: f.id,

@@ -105,7 +105,23 @@ export function HistoryPage() {
   };
 
   const getStatusConfig = (attempt: HistoryAttempt) => {
-    // Если использованы подсказки - приоритет этому статусу
+    // Для режима help со статусом completed
+    if (attempt.mode === 'help' && attempt.status === 'completed') {
+      if (attempt.hintsUsed && attempt.hintsUsed > 0) {
+        return {
+          label: `Использовано подсказок: ${attempt.hintsUsed}`,
+          icon: <Lightbulb size={16} />,
+          className: styles.hints,
+        };
+      }
+      return {
+        label: 'Завершено',
+        icon: <CheckCircle size={16} />,
+        className: styles.hints,
+      };
+    }
+
+    // Если использованы подсказки в режиме check - приоритет этому статусу
     if (attempt.hintsUsed && attempt.hintsUsed > 0) {
       return {
         label: 'Использованы подсказки',
@@ -114,7 +130,10 @@ export function HistoryPage() {
       };
     }
 
-    switch (attempt.status) {
+    // Для остальных случаев
+    const status = attempt.status as 'success' | 'error' | 'in_progress' | 'completed';
+
+    switch (status) {
       case 'success':
         return {
           label: 'Решено верно',
@@ -132,6 +151,12 @@ export function HistoryPage() {
           label: 'В обработке',
           icon: <Loader size={16} />,
           className: styles.processing,
+        };
+      case 'completed':
+        return {
+          label: 'Завершено',
+          icon: <CheckCircle size={16} />,
+          className: styles.success,
         };
       default:
         return {

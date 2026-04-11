@@ -24,24 +24,24 @@ func NewAttemptStore(db *sql.DB) *AttemptStore {
 
 // Attempt модель попытки в БД
 type Attempt struct {
-	ID                uuid.UUID
-	ChildProfileID    uuid.UUID
-	AttemptType       string // help или check
-	Status            string // created, processing, completed, failed
-	TaskImageURL      sql.NullString
-	AnswerImageURL    sql.NullString
-	DetectResult      []byte // JSONB - может быть NULL (будет пустой слайс)
-	ParseResult       []byte // JSONB - может быть NULL
-	HintsResult       []byte // JSONB - может быть NULL
-	CheckResult       []byte // JSONB - может быть NULL
-	CurrentHintIndex  int
-	HintsUsed         int
-	TimeSpentSeconds  sql.NullInt64
-	IsCorrect         sql.NullBool
-	HasErrors         sql.NullBool
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	CompletedAt       sql.NullTime
+	ID               uuid.UUID
+	ChildProfileID   uuid.UUID
+	AttemptType      string // help или check
+	Status           string // created, processing, completed, failed
+	TaskImageURL     sql.NullString
+	AnswerImageURL   sql.NullString
+	DetectResult     []byte // JSONB - может быть NULL (будет пустой слайс)
+	ParseResult      []byte // JSONB - может быть NULL
+	HintsResult      []byte // JSONB - может быть NULL
+	CheckResult      []byte // JSONB - может быть NULL
+	CurrentHintIndex int
+	HintsUsed        int
+	TimeSpentSeconds sql.NullInt64
+	IsCorrect        sql.NullBool
+	HasErrors        sql.NullBool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CompletedAt      sql.NullTime
 }
 
 // CreateAttempt создаёт новую попытку
@@ -182,7 +182,7 @@ func (s *AttemptStore) SaveParseResult(ctx context.Context, attemptID uuid.UUID,
 	return nil
 }
 
-// SaveHintsResult сохраняет результат Hint
+// SaveHintsResult сохраняет результат Hint (НЕ завершает попытку)
 func (s *AttemptStore) SaveHintsResult(ctx context.Context, attemptID uuid.UUID, result *types.HintResponse) error {
 	data, err := json.Marshal(result)
 	if err != nil {
@@ -191,7 +191,7 @@ func (s *AttemptStore) SaveHintsResult(ctx context.Context, attemptID uuid.UUID,
 
 	query := `
 		UPDATE attempts
-		SET hints_result = $1, status = 'completed', completed_at = NOW(), updated_at = NOW()
+		SET hints_result = $1, updated_at = NOW()
 		WHERE id = $2
 	`
 
@@ -223,6 +223,24 @@ func (s *AttemptStore) SaveCheckResult(ctx context.Context, attemptID uuid.UUID,
 	_, err = s.db.ExecContext(ctx, query, data, isCorrect, hasErrors, attemptID)
 	if err != nil {
 		return fmt.Errorf("failed to save check result: %w", err)
+	}
+
+	return nil
+}
+
+// IncrementHintUsed увеличивает счётчик использованных подсказок и обновляет индекс текущей подсказки
+func (s *AttemptStore) IncrementHintUsed(ctx context.Context, attemptID uuid.UUID, newHintIndex int) error {
+	query := `
+		UPDATE attempts
+		SET current_hint_index = $1,
+		    hints_used = hints_used + 1,
+		    updated_at = NOW()
+		WHERE id = $2
+	`
+
+	_, err := s.db.ExecContext(ctx, query, newHintIndex, attemptID)
+	if err != nil {
+		return fmt.Errorf("failed to increment hint_used: %w", err)
 	}
 
 	return nil
@@ -373,6 +391,22 @@ func (s *AttemptStore) GetRecentAttempts(ctx context.Context, childProfileID uui
 	}
 
 	return attempts, nil
+}
+
+// CompleteAttempt завершает попытку явно (для режима help)
+func (s *AttemptStore) CompleteAttempt(ctx context.Context, attemptID uuid.UUID) error {
+	query := `
+		UPDATE attempts
+		SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+		WHERE id = $1 AND status != 'completed'
+	`
+
+	_, err := s.db.ExecContext(ctx, query, attemptID)
+	if err != nil {
+		return fmt.Errorf("failed to complete attempt: %w", err)
+	}
+
+	return nil
 }
 
 // DeleteAttempt удаляет попытку

@@ -1,5 +1,8 @@
 // src/components/layout/Header/Header.tsx
 import { Trophy, Coins } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ROUTES } from '@/config/routes';
+import { useHaptics } from '@/lib/platform/haptics';
 
 export interface HeaderProps {
   level: number;
@@ -8,6 +11,7 @@ export interface HeaderProps {
   tasksCount: number;
   showCoins?: boolean;
   showTasks?: boolean;
+  hasNewAchievements?: boolean;
 }
 
 export function Header({
@@ -17,7 +21,10 @@ export function Header({
   tasksCount,
   showCoins = true,
   showTasks = true,
+  hasNewAchievements = false,
 }: HeaderProps) {
+  const navigate = useNavigate();
+  const { onButtonClick } = useHaptics();
   return (
     <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-2">
       {/* Level Card */}
@@ -39,10 +46,19 @@ export function Header({
       {/* Stats Cards */}
       <div className="flex gap-3">
         {showTasks && (
-          <div className="bg-white rounded-2xl px-4 py-2.5 flex items-center gap-2 shadow-sm">
+          <button
+            onClick={() => {
+              onButtonClick();
+              navigate(ROUTES.ACHIEVEMENTS);
+            }}
+            className="relative bg-white rounded-2xl px-4 py-2.5 flex items-center gap-2 shadow-sm active:scale-[0.98] transition-transform"
+          >
             <Trophy size={20} className="text-[#FDCB6E]" />
             <span className="text-[#2D3436] font-semibold">{tasksCount}</span>
-          </div>
+            {hasNewAchievements && (
+              <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+            )}
+          </button>
         )}
         {showCoins && (
           <div className="bg-white rounded-2xl px-4 py-2.5 flex items-center gap-2 shadow-sm">

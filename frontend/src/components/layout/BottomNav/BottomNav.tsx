@@ -11,7 +11,11 @@ const tabs = [
   { path: ROUTES.PROFILE, label: 'Профиль', icon: User },
 ];
 
-export function BottomNav() {
+interface BottomNavProps {
+  hasNewAchievements?: boolean;
+}
+
+export function BottomNav({ hasNewAchievements }: BottomNavProps = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const { onButtonClick } = useHaptics();
@@ -28,15 +32,23 @@ export function BottomNav() {
           location.pathname === tab.path ||
           (tab.path !== ROUTES.HOME && location.pathname.startsWith(tab.path));
         const Icon = tab.icon;
+        const showBadge = tab.path === ROUTES.ACHIEVEMENTS && hasNewAchievements;
+
         return (
           <button
             key={tab.path}
             onClick={() => handleNavigate(tab.path)}
-            className={`flex-1 flex flex-col items-center py-2 pt-3 gap-0.5 transition-colors ${
+            className={`relative flex-1 flex flex-col items-center py-2 pt-3 gap-0.5 transition-colors ${
               isActive ? 'text-[#6C5CE7]' : 'text-[#636e72]'
             }`}
           >
-            <Icon size={22} strokeWidth={2} />
+            <div className="relative">
+              <Icon size={22} strokeWidth={2} />
+              {/* Red Badge for new achievements */}
+              {showBadge && (
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+              )}
+            </div>
             <span className="text-[11px] font-medium">{tab.label}</span>
           </button>
         );

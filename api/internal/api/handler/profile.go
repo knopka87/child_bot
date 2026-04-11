@@ -234,17 +234,51 @@ func (h *ProfileHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query parameters для фильтрации
-	_ = r.URL.Query().Get("mode")      // TODO: использовать в service layer
-	_ = r.URL.Query().Get("status")    // TODO: использовать в service layer
-	_ = r.URL.Query().Get("date_from") // TODO: использовать в service layer
-	_ = r.URL.Query().Get("date_to")   // TODO: использовать в service layer
+	// Query parameters для фильтрации (пока не используются)
+	filters := map[string]string{
+		"mode":      r.URL.Query().Get("mode"),
+		"status":    r.URL.Query().Get("status"),
+		"date_from": r.URL.Query().Get("date_from"),
+		"date_to":   r.URL.Query().Get("date_to"),
+	}
 
-	// TODO: Phase 4 - получение истории через service layer
-	// history, err := h.service.GetHistory(r.Context(), childProfileID, filters)
+	// Получение истории через service layer
+	serviceHistory, err := h.service.GetHistory(r.Context(), childProfileID, filters)
+	if err != nil {
+		log.Printf("GetHistory error: %v", err)
+		response.InternalError(w, "Failed to get history")
+		return
+	}
 
-	// Placeholder
-	history := []HistoryAttempt{}
+	// Преобразуем в response format
+	history := make([]HistoryAttempt, 0, len(serviceHistory))
+	for _, sh := range serviceHistory {
+		ha := HistoryAttempt{
+			ID:           sh.ID,
+			Mode:         sh.Mode,
+			Status:       sh.Status,
+			ScenarioType: sh.ScenarioType,
+			CreatedAt:    sh.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			HintsUsed:    sh.HintsUsed,
+			Images:       make([]HistoryImage, 0, len(sh.Images)),
+		}
+
+		if sh.CompletedAt != nil {
+			completedAt := sh.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
+			ha.CompletedAt = completedAt
+		}
+
+		for _, img := range sh.Images {
+			ha.Images = append(ha.Images, HistoryImage{
+				ID:           img.ID,
+				Role:         img.Role,
+				URL:          img.URL,
+				ThumbnailURL: img.ThumbnailURL,
+			})
+		}
+
+		history = append(history, ha)
+	}
 
 	response.OK(w, history)
 }

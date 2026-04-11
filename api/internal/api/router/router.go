@@ -33,9 +33,14 @@ func New(deps *Dependencies) http.Handler {
 	attemptService := service.NewAttemptService(deps.Store, deps.LLMClient, deps.DefaultLLM)
 	profileService := service.NewProfileService(deps.Store)
 	villainService := service.NewVillainService(deps.Store)
+	achievementService := service.NewAchievementService(deps.Store)
 
-	// Устанавливаем ProfileService в AttemptService (для избежания циклических зависимостей)
+	// Устанавливаем зависимости между сервисами (для избежания циклических зависимостей)
 	attemptService.SetProfileService(profileService)
+	attemptService.SetVillainService(villainService)
+	attemptService.SetAchievementService(achievementService)
+	profileService.SetAchievementService(achievementService)
+	villainService.SetAchievementService(achievementService)
 
 	homeService := service.NewHomeService(deps.Store, attemptService, profileService, villainService)
 
@@ -108,6 +113,8 @@ func registerAchievementRoutes(mux *http.ServeMux, h *handler.AchievementHandler
 	mux.HandleFunc("GET /achievements", h.List)
 	mux.HandleFunc("GET /achievements/unlocked", h.GetUnlocked)
 	mux.HandleFunc("GET /achievements/stats", h.GetStats)
+	mux.HandleFunc("GET /achievements/has-new", h.HasNew)
+	mux.HandleFunc("POST /achievements/mark-viewed", h.MarkViewed)
 	mux.HandleFunc("GET /achievements/{id}", h.GetByID)
 	mux.HandleFunc("POST /achievements/{id}/claim", h.Claim)
 }

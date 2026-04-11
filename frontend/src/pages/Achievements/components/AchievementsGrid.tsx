@@ -13,20 +13,21 @@ export function AchievementsGrid({
   achievements,
   onAchievementClick,
 }: AchievementsGridProps) {
-  // Group by shelf
-  const shelves = [1, 2, 3];
-  const achievementsByShelf = shelves.map((shelfOrder) => ({
-    shelfOrder,
-    items: achievements.filter((a) => a.shelf_order === shelfOrder),
-  }));
+  // Сортируем по приоритету и разбиваем на группы по 4
+  const sortedAchievements = [...achievements].sort((a, b) => a.priority - b.priority);
+
+  const achievementsPerShelf = 4;
+  const shelves: Achievement[][] = [];
+  for (let i = 0; i < sortedAchievements.length; i += achievementsPerShelf) {
+    shelves.push(sortedAchievements.slice(i, i + achievementsPerShelf));
+  }
 
   return (
     <div className={styles.container}>
-      {achievementsByShelf.map(({ shelfOrder, items }) => (
-        <div key={shelfOrder} className={styles.shelf}>
-          <div className={styles.shelfLabel}>Полка {shelfOrder}</div>
+      {shelves.map((shelfItems, shelfIndex) => (
+        <div key={shelfIndex} className={styles.shelf}>
           <div className={styles.grid}>
-            {items.map((achievement) => (
+            {shelfItems.map((achievement) => (
               <AchievementCard
                 key={achievement.id}
                 achievement={achievement}

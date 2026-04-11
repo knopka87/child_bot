@@ -37,6 +37,10 @@ type HomeData struct {
 	Villain           *VillainInfo    `json:"villain"`
 	UnfinishedAttempt *AttemptInfo    `json:"unfinishedAttempt"`
 	RecentAttempts    []RecentAttempt `json:"recentAttempts"`
+	Achievements      struct {
+		UnlockedCount int `json:"unlockedCount"`
+		TotalCount    int `json:"totalCount"`
+	} `json:"achievements"`
 }
 
 type VillainInfo struct {
@@ -108,7 +112,20 @@ func (h *HomeHandler) GetHomeData(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Преобразуем unfinished attempt
+	if serviceData.UnfinishedAttempt != nil {
+		data.UnfinishedAttempt = &AttemptInfo{
+			ID:        serviceData.UnfinishedAttempt.ID,
+			Type:      serviceData.UnfinishedAttempt.Type,
+			Status:    serviceData.UnfinishedAttempt.Status,
+			CreatedAt: serviceData.UnfinishedAttempt.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+
 	data.RecentAttempts = []RecentAttempt{}
+
+	data.Achievements.UnlockedCount = serviceData.Achievements.UnlockedCount
+	data.Achievements.TotalCount = serviceData.Achievements.TotalCount
 
 	response.OK(w, data)
 }

@@ -3,21 +3,30 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
 	"child-bot/api/internal/domain"
 	"child-bot/api/internal/store"
+
+	"github.com/google/uuid"
 )
 
 // ProfileService бизнес-логика для профиля
 type ProfileService struct {
-	store *store.Store
+	store              *store.Store
+	achievementService *AchievementService
 }
 
 // NewProfileService создает новый ProfileService
 func NewProfileService(store *store.Store) *ProfileService {
 	return &ProfileService{store: store}
+}
+
+// SetAchievementService устанавливает AchievementService (для избежания циклических зависимостей)
+func (s *ProfileService) SetAchievementService(achievementService *AchievementService) {
+	s.achievementService = achievementService
 }
 
 // ProfileData полные данные профиля
@@ -35,13 +44,13 @@ type ProfileData struct {
 
 // SubscriptionData данные подписки
 type SubscriptionData struct {
-	Status              string // trial, active, expired, cancelled
-	PlanID              string
-	PlanName            string
-	TrialDaysRemaining  int
-	ExpiresAt           *time.Time
-	RenewsAt            *time.Time
-	CancelledAt         *time.Time
+	Status             string // trial, active, expired, cancelled
+	PlanID             string
+	PlanName           string
+	TrialDaysRemaining int
+	ExpiresAt          *time.Time
+	RenewsAt           *time.Time
+	CancelledAt        *time.Time
 }
 
 // CreateChildProfile создает профиль ребенка или обновляет существующий (UPSERT)
@@ -190,9 +199,91 @@ func (s *ProfileService) UpdateProfile(ctx context.Context, childProfileID strin
 
 // GetHistory получает историю попыток
 func (s *ProfileService) GetHistory(ctx context.Context, childProfileID string, filters map[string]string) ([]HistoryAttempt, error) {
-	// TODO: Phase 5 - загрузка из БД с фильтрами
+	// Парсим UUID
+	profileUUID, err := uuid.Parse(childProfileID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid child_profile_id: %w", err)
+	}
 
-	return []HistoryAttempt{}, nil
+	// Получаем попытки из БД (последние 100)
+	attempts, err := s.store.Attempts.GetRecentAttempts(ctx, profileUUID, 100)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get attempts: %w", err)
+	}
+
+	// Преобразуем в формат HistoryAttempt
+	history := make([]HistoryAttempt, 0, len(attempts))
+	for _, attempt := range attempts {
+		// Определяем статус для фронтенда
+		var status string
+		switch attempt.Status {
+		case "completed":
+			// Для режима check - проверяем результат
+			if attempt.AttemptType == "check" {
+				if attempt.IsCorrect.Valid && attempt.IsCorrect.Bool {
+					status = "success"
+				} else if attempt.HasErrors.Valid && attempt.HasErrors.Bool {
+					status = "error"
+				} else {
+					status = "completed"
+				}
+			} else {
+				// Для режима help - просто completed
+				status = "completed"
+			}
+		case "processing", "created":
+			status = "in_progress"
+		case "failed":
+			status = "error"
+		default:
+			status = "in_progress"
+		}
+
+		// Собираем изображения
+		images := []HistoryImage{}
+		if attempt.TaskImageURL.Valid {
+			images = append(images, HistoryImage{
+				ID:           uuid.New().String(),
+				Role:         "task",
+				URL:          attempt.TaskImageURL.String,
+				ThumbnailURL: attempt.TaskImageURL.String,
+			})
+		}
+		if attempt.AnswerImageURL.Valid {
+			images = append(images, HistoryImage{
+				ID:           uuid.New().String(),
+				Role:         "answer",
+				URL:          attempt.AnswerImageURL.String,
+				ThumbnailURL: attempt.AnswerImageURL.String,
+			})
+		}
+
+		// Определяем scenario_type
+		scenarioType := ""
+		if attempt.TaskImageURL.Valid && attempt.AnswerImageURL.Valid {
+			scenarioType = "two_photo"
+		} else if attempt.TaskImageURL.Valid {
+			scenarioType = "single_photo"
+		}
+
+		historyAttempt := HistoryAttempt{
+			ID:           attempt.ID.String(),
+			Mode:         attempt.AttemptType,
+			Status:       status,
+			ScenarioType: scenarioType,
+			CreatedAt:    attempt.CreatedAt,
+			HintsUsed:    attempt.HintsUsed,
+			Images:       images,
+		}
+
+		if attempt.CompletedAt.Valid {
+			historyAttempt.CompletedAt = &attempt.CompletedAt.Time
+		}
+
+		history = append(history, historyAttempt)
+	}
+
+	return history, nil
 }
 
 // GetStats получает статистику профиля
@@ -308,14 +399,15 @@ func (s *ProfileService) ProcessReferral(ctx context.Context, childProfileID, re
 
 // ActivateReferral активирует реферала после первого действия
 func (s *ProfileService) ActivateReferral(ctx context.Context, childProfileID string) error {
-	// Проверяем, не активирован ли уже
+	// Проверяем, не активирован ли уже, и получаем referrer_id
 	checkQuery := `
-		SELECT is_active
+		SELECT is_active, referrer_id
 		FROM referrals
 		WHERE referred_id = $1
 	`
 	var isActive bool
-	err := s.store.DB.QueryRowContext(ctx, checkQuery, childProfileID).Scan(&isActive)
+	var referrerID string
+	err := s.store.DB.QueryRowContext(ctx, checkQuery, childProfileID).Scan(&isActive, &referrerID)
 	if err == sql.ErrNoRows {
 		// Пользователь не является рефералом - ничего не делаем
 		log.Printf("[ActivateReferral] User %s is not a referral", childProfileID)
@@ -347,6 +439,16 @@ func (s *ProfileService) ActivateReferral(ctx context.Context, childProfileID st
 
 	rowsAffected, _ := result.RowsAffected()
 	log.Printf("[ActivateReferral] Successfully activated referral for %s, rows affected: %d", childProfileID, rowsAffected)
+
+	// Проверяем достижения за приглашённых друзей у реферера
+	if s.achievementService != nil && referrerID != "" {
+		err = s.achievementService.CheckFriendsInvitedAchievements(ctx, referrerID)
+		if err != nil {
+			log.Printf("[ActivateReferral] Failed to check friends invited achievements for referrer %s: %v", referrerID, err)
+			// Не блокируем, продолжаем
+		}
+	}
+
 	return nil
 }
 
@@ -375,5 +477,125 @@ func (s *ProfileService) AddCoins(ctx context.Context, childProfileID string, am
 	}
 
 	log.Printf("[AddCoins] Added %d coins to child %s", amount, childProfileID)
+	return nil
+}
+
+// IncrementHintsUsed увеличивает счётчик использованных подсказок в профиле
+func (s *ProfileService) IncrementHintsUsed(ctx context.Context, childProfileID string) error {
+	query := `
+		UPDATE child_profiles
+		SET hints_used_total = hints_used_total + 1,
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+
+	result, err := s.store.DB.ExecContext(ctx, query, childProfileID)
+	if err != nil {
+		log.Printf("[IncrementHintsUsed] Error incrementing hints_used_total for %s: %v", childProfileID, err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return domain.ErrNotFound
+	}
+
+	log.Printf("[IncrementHintsUsed] Successfully incremented hints_used_total for child %s", childProfileID)
+	return nil
+}
+
+// UpdateStreakAndActivity обновляет серию дней (streak) и last_activity_at
+// Вызывается ОДИН РАЗ В ДЕНЬ при первом действии пользователя
+func (s *ProfileService) UpdateStreakAndActivity(ctx context.Context, childProfileID string) error {
+	// Получаем профиль
+	query := `
+		SELECT last_activity_at, streak_days
+		FROM child_profiles
+		WHERE id = $1
+	`
+
+	var lastActivityAt *time.Time
+	var currentStreak int
+
+	err := s.store.DB.QueryRowContext(ctx, query, childProfileID).Scan(&lastActivityAt, &currentStreak)
+	if err != nil {
+		log.Printf("[UpdateStreakAndActivity] Error getting profile %s: %v", childProfileID, err)
+		return err
+	}
+
+	now := time.Now().UTC()
+	newStreak := currentStreak
+
+	// Если last_activity_at пустой (первый заход), устанавливаем streak = 1
+	if lastActivityAt == nil {
+		newStreak = 1
+		log.Printf("[UpdateStreakAndActivity] First login for %s, setting streak = 1", childProfileID)
+	} else {
+		// Вычисляем разницу в днях (только дата, без времени)
+		lastDate := lastActivityAt.Truncate(24 * time.Hour)
+		currentDate := now.Truncate(24 * time.Hour)
+		daysDiff := int(currentDate.Sub(lastDate).Hours() / 24)
+
+		log.Printf("[UpdateStreakAndActivity] Profile %s: last_activity=%s, now=%s, days_diff=%d",
+			childProfileID, lastActivityAt.Format("2006-01-02 15:04"), now.Format("2006-01-02 15:04"), daysDiff)
+
+		if daysDiff == 0 {
+			// Тот же день - ничего не делаем со streak, только обновляем time
+			log.Printf("[UpdateStreakAndActivity] Same day, keeping streak=%d", currentStreak)
+			// Обновляем только last_activity_at
+			updateQuery := `
+				UPDATE child_profiles
+				SET last_activity_at = $1,
+				    updated_at = NOW()
+				WHERE id = $2
+			`
+			_, err = s.store.DB.ExecContext(ctx, updateQuery, now, childProfileID)
+			if err != nil {
+				return err
+			}
+			return nil
+		} else if daysDiff == 1 {
+			// Следующий день - увеличиваем streak
+			newStreak = currentStreak + 1
+			log.Printf("[UpdateStreakAndActivity] Next day, incrementing streak: %d -> %d", currentStreak, newStreak)
+		} else {
+			// Пропущено больше 1 дня - сбрасываем streak
+			newStreak = 1
+			log.Printf("[UpdateStreakAndActivity] Missed days (%d), resetting streak: %d -> 1", daysDiff, currentStreak)
+		}
+	}
+
+	// Обновляем streak_days и last_activity_at
+	updateQuery := `
+		UPDATE child_profiles
+		SET streak_days = $1,
+		    last_activity_at = $2,
+		    updated_at = NOW()
+		WHERE id = $3
+	`
+
+	result, err := s.store.DB.ExecContext(ctx, updateQuery, newStreak, now, childProfileID)
+	if err != nil {
+		log.Printf("[UpdateStreakAndActivity] Error updating profile %s: %v", childProfileID, err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return domain.ErrNotFound
+	}
+
+	log.Printf("[UpdateStreakAndActivity] Successfully updated profile %s: streak=%d, last_activity=%s",
+		childProfileID, newStreak, now.Format("2006-01-02 15:04:05"))
+
+	// Проверяем достижения за streak (только если изменился)
+	if s.achievementService != nil && newStreak != currentStreak {
+		err = s.achievementService.CheckStreakAchievements(ctx, childProfileID)
+		if err != nil {
+			log.Printf("[UpdateStreakAndActivity] Failed to check streak achievements: %v", err)
+			// Не блокируем, продолжаем
+		}
+	}
+
 	return nil
 }

@@ -1,8 +1,8 @@
 // src/pages/Onboarding/OnboardingPageNew.tsx
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, Check } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Check, ArrowRight, Shield } from 'lucide-react';
 import { ROUTES } from '@/config/routes';
 import { onboardingAPI } from '@/api/onboarding';
 import { PlatformBridge } from '@/services/platform/PlatformBridge';
@@ -10,7 +10,7 @@ import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { LegalDocumentModal } from '@/components/LegalDocumentModal';
 
-type OnboardingStep = 'grade' | 'avatar' | 'email' | 'email_verification' | 'consent' | 'completed';
+type OnboardingStep = 'consent' | 'profile';
 
 const avatars = [
   { id: 'cat', emoji: '🐱', name: 'Кот' },
@@ -21,8 +21,6 @@ const avatars = [
   { id: 'lion', emoji: '🦁', name: 'Лев' },
   { id: 'tiger', emoji: '🐯', name: 'Тигр' },
   { id: 'unicorn', emoji: '🦄', name: 'Единорог' },
-  { id: 'robot', emoji: '🤖', name: 'Робот' },
-  { id: 'alien', emoji: '👽', name: 'Инопланетянин' },
 ];
 
 const grades = [1, 2, 3, 4];
@@ -32,94 +30,36 @@ export function OnboardingPageNew() {
   const [searchParams] = useSearchParams();
   const analytics = useAnalytics();
 
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>('grade');
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>('consent');
   const [grade, setGrade] = useState<number | null>(null);
   const [avatarId, setAvatarId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string>('');
   const [adultConsent, setAdultConsent] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
-  const [displayName, setDisplayName] = useState<string>('');
-  const [email, setEmail] = useState<string>('');
-  const [verificationCode, setVerificationCode] = useState<string>('');
-  const [devCode, setDevCode] = useState<string>(''); // Код для разработки (показываем в dev режиме)
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false); // Флаг завершения инициализации
-  const [legalModalType, setLegalModalType] = useState<'privacy' | 'terms' | null>(null); // Тип открытого legal-документа
-  const hasInitialized = useRef(false); // Ref для гарантии что инициализация произойдёт только один раз
+  const [legalModalType, setLegalModalType] = useState<'privacy' | 'terms' | null>(null);
+  const hasInitialized = useRef(false);
 
-  // Загружаем данные от VK и восстанавливаем прогресс онбординга при монтировании
+  // Инициализация при монтировании
   useEffect(() => {
-    // Гарантируем что инициализация происходит только один раз
-    if (hasInitialized.current) {
-      console.log('[Onboarding] Skipping init - already initialized');
-      return;
-    }
+    if (hasInitialized.current) return;
     hasInitialized.current = true;
 
     const initOnboarding = async () => {
       try {
-        // 1. Загружаем данные от VK
+        // Загружаем данные от VK
         const platformBridge = new PlatformBridge();
         await platformBridge.init();
         const user = await platformBridge.getUser();
 
         // Автоматически заполняем имя из VK
         const vkDisplayName = user.firstName || 'Ученик';
+        setDisplayName(vkDisplayName);
 
         console.log('[Onboarding] VK user data loaded:', { firstName: user.firstName });
 
-        // 2. Восстанавливаем сохранённый прогресс онбординга
-        const savedStep = await vkStorage.getItem(storageKeys.ONBOARDING_STEP);
-        const savedGrade = await vkStorage.getItem(storageKeys.ONBOARDING_GRADE);
-        const savedAvatar = await vkStorage.getItem(storageKeys.ONBOARDING_AVATAR);
-        const savedEmail = await vkStorage.getItem(storageKeys.ONBOARDING_EMAIL);
-        const savedEmailVerified = await vkStorage.getItem(storageKeys.ONBOARDING_EMAIL_VERIFIED);
-        const savedDisplayName = await vkStorage.getItem(storageKeys.ONBOARDING_DISPLAY_NAME);
-        const savedConsents = await vkStorage.getItem(storageKeys.ONBOARDING_CONSENTS);
-
-        if (savedStep) {
-          console.log('[Onboarding] Restoring progress from storage:', {
-            step: savedStep,
-            grade: savedGrade,
-            avatar: savedAvatar,
-            email: savedEmail,
-            emailVerified: savedEmailVerified,
-          });
-
-          // Восстанавливаем состояние БАТЧЕМ (используем setTimeout для группировки обновлений)
-          setTimeout(() => {
-            setCurrentStep(savedStep as OnboardingStep);
-            if (savedGrade) setGrade(parseInt(savedGrade, 10));
-            if (savedAvatar) setAvatarId(savedAvatar);
-            if (savedEmail) setEmail(savedEmail);
-            if (savedEmailVerified === 'true') setIsEmailVerified(true);
-            setDisplayName(savedDisplayName || vkDisplayName);
-
-            // Восстанавливаем согласия
-            if (savedConsents) {
-              try {
-                const consents = JSON.parse(savedConsents);
-                setAdultConsent(consents.adultConsent || false);
-                setPrivacyAccepted(consents.privacyAccepted || false);
-                setTermsAccepted(consents.termsAccepted || false);
-              } catch (e) {
-                console.error('[Onboarding] Failed to parse saved consents:', e);
-              }
-            }
-
-            // Отмечаем что инициализация завершена ПОСЛЕ восстановления
-            setIsInitialized(true);
-          }, 0);
-        } else {
-          console.log('[Onboarding] No saved progress found, starting fresh');
-          setDisplayName(vkDisplayName);
-          // Инициализация завершена сразу
-          setIsInitialized(true);
-        }
-
-        // 3. Извлекаем реферальный код из URL
+        // Извлекаем реферальный код из URL
         const refCode = searchParams.get('ref');
         if (refCode) {
           console.log('[Onboarding] Referral code detected:', refCode);
@@ -133,170 +73,15 @@ export function OnboardingPageNew() {
           }
         }
 
-        // Analytics
         analytics.trackEvent('onboarding_opened', {});
       } catch (error) {
         console.error('[Onboarding] Failed to initialize:', error);
-        setDisplayName('Ученик'); // fallback
-        setIsInitialized(true);
+        setDisplayName('Ученик');
       }
     };
 
     initOnboarding();
   }, [searchParams, analytics]);
-
-  // Автоматическое сохранение прогресса при изменении любого поля
-  useEffect(() => {
-    // НЕ сохраняем пока не завершилась инициализация
-    if (!isInitialized) {
-      console.log('[Onboarding] Skipping auto-save - not initialized yet');
-      return;
-    }
-
-    const saveProgress = async () => {
-      try {
-        // Сохраняем текущий шаг
-        await vkStorage.setItem(storageKeys.ONBOARDING_STEP, currentStep);
-
-        // Сохраняем данные профиля
-        if (grade !== null) {
-          await vkStorage.setItem(storageKeys.ONBOARDING_GRADE, grade.toString());
-        }
-        if (avatarId) {
-          await vkStorage.setItem(storageKeys.ONBOARDING_AVATAR, avatarId);
-        }
-        if (email) {
-          await vkStorage.setItem(storageKeys.ONBOARDING_EMAIL, email);
-        }
-        if (displayName) {
-          await vkStorage.setItem(storageKeys.ONBOARDING_DISPLAY_NAME, displayName);
-        }
-
-        // Сохраняем статус верификации email
-        await vkStorage.setItem(
-          storageKeys.ONBOARDING_EMAIL_VERIFIED,
-          isEmailVerified.toString()
-        );
-
-        // Сохраняем согласия
-        const consents = {
-          adultConsent,
-          privacyAccepted,
-          termsAccepted,
-        };
-        await vkStorage.setItem(storageKeys.ONBOARDING_CONSENTS, JSON.stringify(consents));
-
-        console.log('[Onboarding] Progress saved:', {
-          step: currentStep,
-          grade,
-          avatarId,
-          email,
-          emailVerified: isEmailVerified,
-        });
-      } catch (error) {
-        console.error('[Onboarding] Failed to save progress:', error);
-      }
-    };
-
-    // Сохраняем только если не на шаге completed
-    if (currentStep !== 'completed') {
-      saveProgress();
-    }
-  }, [currentStep, grade, avatarId, email, displayName, isEmailVerified, adultConsent, privacyAccepted, termsAccepted, isInitialized]);
-
-  const handleBack = () => {
-    const steps: OnboardingStep[] = ['grade', 'avatar', 'email', 'email_verification', 'consent'];
-    const currentIndex = steps.indexOf(currentStep);
-    if (currentIndex > 0) {
-      setCurrentStep(steps[currentIndex - 1]);
-    }
-  };
-
-  const handleNext = async () => {
-    console.log('[Onboarding] handleNext called, currentStep:', currentStep);
-
-    const steps: OnboardingStep[] = ['grade', 'avatar', 'email', 'email_verification', 'consent', 'completed'];
-    const currentIndex = steps.indexOf(currentStep);
-
-    console.log('[Onboarding] currentIndex:', currentIndex, 'steps.length:', steps.length);
-
-    // Analytics для текущего шага
-    if (currentStep === 'grade' && grade) {
-      analytics.trackEvent('grade_selected', { grade });
-    } else if (currentStep === 'avatar' && avatarId) {
-      analytics.trackEvent('avatar_selected', { avatar_id: avatarId });
-    } else if (currentStep === 'email' && email) {
-      analytics.trackEvent('email_entered', { email_domain: email.split('@')[1] });
-      // Отправляем код верификации
-      await sendVerificationCode();
-    } else if (currentStep === 'email_verification' && isEmailVerified) {
-      analytics.trackEvent('email_verification_success', {});
-    } else if (currentStep === 'consent') {
-      console.log('[Onboarding] On consent step, tracking analytics...');
-      analytics.trackEvent('adult_consent_checked', {});
-      if (privacyAccepted) {
-        analytics.trackEvent('privacy_policy_accepted', {});
-      }
-      if (termsAccepted) {
-        analytics.trackEvent('terms_accepted', {});
-      }
-    }
-
-    if (currentIndex < steps.length - 1) {
-      const nextStep = steps[currentIndex + 1];
-      console.log('[Onboarding] Moving to next step:', nextStep);
-      setCurrentStep(nextStep);
-    } else {
-      console.log('[Onboarding] Already on last step, not moving');
-    }
-  };
-
-  const sendVerificationCode = async () => {
-    try {
-      const platformBridge = new PlatformBridge();
-      await platformBridge.init();
-      const user = await platformBridge.getUser();
-
-      const result = await onboardingAPI.sendEmailVerification({
-        email,
-        parentUserId: user.id,
-      });
-
-      // В dev режиме сохраняем код для отображения
-      if (result.devCode) {
-        setDevCode(result.devCode);
-        console.log('[Onboarding] Dev code received:', result.devCode);
-      }
-
-      analytics.trackEvent('email_verification_sent', {});
-    } catch (error) {
-      console.error('[Onboarding] Failed to send verification:', error);
-      alert('Не удалось отправить код подтверждения. Попробуйте ещё раз.');
-    }
-  };
-
-  const verifyCode = async () => {
-    try {
-      const result = await onboardingAPI.verifyEmailCode({
-        email,
-        code: verificationCode,
-      });
-
-      if (result.verified) {
-        setIsEmailVerified(true);
-        analytics.trackEvent('email_verification_success', {});
-        // Автоматически переходим к следующему шагу
-        setTimeout(() => {
-          setCurrentStep('consent');
-        }, 1000);
-      } else {
-        alert('Неверный код. Проверьте правильность ввода.');
-      }
-    } catch (error) {
-      console.error('[Onboarding] Failed to verify code:', error);
-      alert('Не удалось проверить код. Попробуйте ещё раз.');
-    }
-  };
 
   const handleComplete = async () => {
     if (isSubmitting) return;
@@ -336,16 +121,6 @@ export function OnboardingPageNew() {
         adultConsent: adultConsent!,
       });
 
-      // Очищаем временные данные онбординга после успешного завершения
-      await vkStorage.removeItem(storageKeys.ONBOARDING_STEP);
-      await vkStorage.removeItem(storageKeys.ONBOARDING_GRADE);
-      await vkStorage.removeItem(storageKeys.ONBOARDING_AVATAR);
-      await vkStorage.removeItem(storageKeys.ONBOARDING_EMAIL);
-      await vkStorage.removeItem(storageKeys.ONBOARDING_EMAIL_VERIFIED);
-      await vkStorage.removeItem(storageKeys.ONBOARDING_DISPLAY_NAME);
-      await vkStorage.removeItem(storageKeys.ONBOARDING_CONSENTS);
-      console.log('[Onboarding] Temporary onboarding data cleared');
-
       analytics.trackEvent('onboarding_completed', {
         child_profile_id: childProfileId,
         grade: grade!,
@@ -363,442 +138,200 @@ export function OnboardingPageNew() {
     }
   };
 
-  const canProceed = () => {
-    let result = false;
-    switch (currentStep) {
-      case 'grade':
-        result = grade !== null;
-        break;
-      case 'avatar':
-        result = avatarId !== null;
-        break;
-      case 'email':
-        result = email.includes('@') && email.includes('.');
-        break;
-      case 'email_verification':
-        result = isEmailVerified;
-        break;
-      case 'consent':
-        result = adultConsent && privacyAccepted && termsAccepted;
-        console.log('[Onboarding] canProceed for consent:', {
-          adultConsent,
-          privacyAccepted,
-          termsAccepted,
-          result,
-        });
-        break;
-      case 'completed':
-        result = true;
-        break;
-      default:
-        result = false;
-    }
-    return result;
-  };
-
-  const getProgressInfo = () => {
-    const steps: OnboardingStep[] = ['grade', 'avatar', 'email', 'email_verification', 'consent', 'completed'];
-    const currentIndex = steps.indexOf(currentStep);
-    const currentStepNumber = currentIndex + 1;
-    const totalSteps = steps.length;
-    const percent = (currentStepNumber / totalSteps) * 100;
-
-    return {
-      currentStep: currentStepNumber,
-      totalSteps,
-      percent,
-    };
-  };
+  const canProceedConsent = adultConsent && privacyAccepted;
+  const canFinish = displayName.trim().length > 0 && avatarId !== null && grade !== null;
 
   const handleLegalLinkClick = (type: 'privacy' | 'terms') => {
     setLegalModalType(type);
   };
 
-  return (
-    <>
-      <LegalDocumentModal
-        type={legalModalType}
-        isOpen={legalModalType !== null}
-        onClose={() => setLegalModalType(null)}
-      />
+  // Consent Screen
+  if (currentStep === 'consent') {
+    return (
+      <>
+        <LegalDocumentModal
+          type={legalModalType}
+          isOpen={legalModalType !== null}
+          onClose={() => setLegalModalType(null)}
+        />
 
-      <div className="min-h-screen bg-gradient-to-br from-[#E8E4FF] to-[#F0ECFF] flex flex-col">
-        {/* Header с прогрессом */}
-      <div className="bg-white shadow-sm">
-        <div className="flex items-center justify-between px-4 py-3">
-          {currentStep !== 'grade' && currentStep !== 'completed' && (
-            <button
-              onClick={handleBack}
-              className="p-2 -ml-2 text-[#6C5CE7] active:scale-95 transition-transform"
-            >
-              <ChevronLeft size={24} />
-            </button>
-          )}
-          <div className="flex-1 mx-4">
-            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${getProgressInfo().percent}%` }}
-                transition={{ duration: 0.3 }}
-                className="h-full bg-gradient-to-r from-[#6C5CE7] to-[#5B4FDB]"
-              />
-            </div>
-          </div>
-          <div className="text-sm text-gray-500 font-medium min-w-[70px] text-right">
-            Шаг {getProgressInfo().currentStep} из {getProgressInfo().totalSteps}
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <AnimatePresence mode="wait">
-          {/* Grade Selection */}
-          {currentStep === 'grade' && (
+        <div className="flex flex-col min-h-screen px-6 py-8 bg-gradient-to-b from-[#F0F4FF] to-[#E8E4FF]">
+          <div className="flex-1 flex flex-col items-center justify-center text-center">
             <motion.div
-              key="grade"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring' }}
+              className="w-20 h-20 bg-[#6C5CE7]/10 rounded-full flex items-center justify-center mb-6"
             >
-              <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-                В каком классе учится ребёнок?
-              </h2>
-              <p className="text-gray-500 mb-6">
-                Это поможет нам подобрать подходящие задания
-              </p>
-
-              <div className="grid grid-cols-3 gap-3">
-                {grades.map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => setGrade(g)}
-                    className={`py-4 rounded-2xl font-semibold text-lg transition-all ${
-                      grade === g
-                        ? 'bg-[#6C5CE7] text-white shadow-lg scale-105'
-                        : 'bg-white text-gray-700 hover:bg-gray-50 active:scale-95'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
+              <Shield size={36} className="text-[#6C5CE7]" />
             </motion.div>
-          )}
 
-          {/* Email Input */}
-          {currentStep === 'email' && (
-            <motion.div
-              key="email"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-                Email родителя
-              </h2>
-              <p className="text-gray-500 mb-6">
-                Для отправки отчётов об успеваемости
-              </p>
+            <h1 className="text-[32px] font-bold text-[#6C5CE7] mb-2">Добро пожаловать!</h1>
+            <p className="text-[#636e72] text-[14px] mb-8">
+              Перед началом работы, пожалуйста, подтвердите согласие
+            </p>
 
-              <div className="space-y-4">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="parent@example.com"
-                  className="w-full px-4 py-4 bg-white rounded-2xl border-2 border-gray-200 focus:border-[#6C5CE7] focus:outline-none text-lg"
-                  autoComplete="email"
-                />
-
-                <div className="bg-blue-50 rounded-2xl p-4 mt-4">
-                  <p className="text-sm text-gray-600">
-                    💡 На этот email мы будем отправлять отчёты о прогрессе ребёнка и достижениях
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Email Verification */}
-          {currentStep === 'email_verification' && (
-            <motion.div
-              key="email_verification"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              {!isEmailVerified ? (
-                <>
-                  <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-                    Проверка email
-                  </h2>
-                  <p className="text-gray-500 mb-6">
-                    Мы отправили код подтверждения на <strong>{email}</strong>
-                  </p>
-
-                  <div className="space-y-4">
-                    <input
-                      type="text"
-                      value={verificationCode}
-                      onChange={(e) => setVerificationCode(e.target.value.slice(0, 6))}
-                      placeholder="000000"
-                      maxLength={6}
-                      className="w-full px-4 py-4 bg-white rounded-2xl border-2 border-gray-200 focus:border-[#6C5CE7] focus:outline-none text-2xl text-center tracking-[0.5em] font-mono"
-                      autoComplete="one-time-code"
-                    />
-
-                    {verificationCode.length === 6 && (
-                      <button
-                        onClick={verifyCode}
-                        className="w-full py-4 bg-[#6C5CE7] text-white rounded-2xl font-semibold active:scale-[0.98] transition-transform"
-                      >
-                        Проверить код
-                      </button>
-                    )}
-
-                    <button
-                      onClick={sendVerificationCode}
-                      className="w-full py-3 text-[#6C5CE7] font-medium active:scale-95 transition-transform"
-                    >
-                      Отправить код повторно
-                    </button>
-
-                    <div className="bg-yellow-50 rounded-2xl p-4 mt-4">
-                      <p className="text-sm text-gray-600">
-                        ⏱️ Код действителен 15 минут. Проверьте папку «Спам», если письмо не пришло.
-                      </p>
-                    </div>
-
-                    {/* Dev mode: показываем код для тестирования */}
-                    {devCode && (
-                      <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-4 mt-4">
-                        <p className="text-sm text-green-800 font-semibold mb-2">
-                          🔧 Режим разработки
-                        </p>
-                        <p className="text-sm text-green-700 mb-2">
-                          Письма пока не отправляются. Используйте код:
-                        </p>
-                        <div className="bg-white rounded-xl p-3 text-center">
-                          <p className="text-3xl font-mono font-bold text-green-600 tracking-[0.5em]">
-                            {devCode}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-20 h-20 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
-                    <Check size={40} className="text-green-600" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-                    Email подтверждён!
-                  </h2>
-                  <p className="text-gray-500">
-                    Переходим к следующему шагу...
-                  </p>
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* Avatar Selection */}
-          {currentStep === 'avatar' && (
-            <motion.div
-              key="avatar"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-                Выбери аватар для {displayName}
-              </h2>
-              <p className="text-gray-500 mb-6">
-                Ты сможешь изменить его в любое время
-              </p>
-
-              <div className="grid grid-cols-3 gap-3">
-                {avatars.map((avatar) => (
-                  <button
-                    key={avatar.id}
-                    onClick={() => setAvatarId(avatar.id)}
-                    className={`p-4 rounded-2xl transition-all ${
-                      avatarId === avatar.id
-                        ? 'bg-[#6C5CE7] shadow-lg scale-105'
-                        : 'bg-white hover:bg-gray-50 active:scale-95'
-                    }`}
-                  >
-                    <div className="text-5xl mb-2">{avatar.emoji}</div>
-                    <div
-                      className={`text-sm font-medium ${
-                        avatarId === avatar.id ? 'text-white' : 'text-gray-700'
-                      }`}
-                    >
-                      {avatar.name}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {/* Consent Screen */}
-          {currentStep === 'consent' && (
-            <motion.div
-              key="consent"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-            >
-              <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-                Согласия
-              </h2>
-              <p className="text-gray-500 mb-6">
-                Необходимо согласие взрослого для использования приложения
-              </p>
-
-              <div className="space-y-4">
-                {/* Adult Consent */}
-                <label className="flex items-start gap-3 p-4 bg-white rounded-2xl cursor-pointer active:scale-[0.98] transition-transform">
-                  <div className="relative flex-shrink-0 mt-0.5">
-                    <input
-                      type="checkbox"
-                      checked={adultConsent}
-                      onChange={(e) => setAdultConsent(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-6 h-6 border-2 border-gray-300 rounded-md peer-checked:bg-[#6C5CE7] peer-checked:border-[#6C5CE7] flex items-center justify-center transition-all">
-                      {adultConsent && <Check size={16} className="text-white" />}
-                    </div>
-                  </div>
-                  <span className="text-gray-700 flex-1">
-                    Я являюсь родителем или законным представителем ребёнка
-                  </span>
-                </label>
-
-                {/* Privacy Policy */}
-                <label className="flex items-start gap-3 p-4 bg-white rounded-2xl cursor-pointer active:scale-[0.98] transition-transform">
-                  <div className="relative flex-shrink-0 mt-0.5">
-                    <input
-                      type="checkbox"
-                      checked={privacyAccepted}
-                      onChange={(e) => setPrivacyAccepted(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-6 h-6 border-2 border-gray-300 rounded-md peer-checked:bg-[#6C5CE7] peer-checked:border-[#6C5CE7] flex items-center justify-center transition-all">
-                      {privacyAccepted && <Check size={16} className="text-white" />}
-                    </div>
-                  </div>
-                  <span className="text-gray-700 flex-1">
-                    Я принимаю{' '}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation(); // Не даём клику всплыть на label
-                        analytics.trackEvent('privacy_policy_opened', {});
-                        handleLegalLinkClick('privacy');
-                      }}
-                      className="text-[#6C5CE7] underline"
-                    >
-                      политику конфиденциальности
-                    </button>
-                  </span>
-                </label>
-
-                {/* Terms of Service */}
-                <label className="flex items-start gap-3 p-4 bg-white rounded-2xl cursor-pointer active:scale-[0.98] transition-transform">
-                  <div className="relative flex-shrink-0 mt-0.5">
-                    <input
-                      type="checkbox"
-                      checked={termsAccepted}
-                      onChange={(e) => setTermsAccepted(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-6 h-6 border-2 border-gray-300 rounded-md peer-checked:bg-[#6C5CE7] peer-checked:border-[#6C5CE7] flex items-center justify-center transition-all">
-                      {termsAccepted && <Check size={16} className="text-white" />}
-                    </div>
-                  </div>
-                  <span className="text-gray-700 flex-1">
-                    Я принимаю{' '}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation(); // Не даём клику всплыть на label
-                        analytics.trackEvent('terms_opened', {});
-                        handleLegalLinkClick('terms');
-                      }}
-                      className="text-[#6C5CE7] underline"
-                    >
-                      условия использования
-                    </button>
-                  </span>
-                </label>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Completed Screen */}
-          {currentStep === 'completed' && (
-            <motion.div
-              key="completed"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4 }}
-              className="text-center py-12"
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-                className="w-24 h-24 mx-auto mb-6 bg-green-100 rounded-full flex items-center justify-center"
+            <div className="w-full flex flex-col gap-4 text-left">
+              <button
+                onClick={() => setAdultConsent(!adultConsent)}
+                className="flex items-start gap-3 bg-white rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-transform"
               >
-                <Check size={48} className="text-green-600" />
-              </motion.div>
-
-              <h2 className="text-2xl font-bold text-[#2D3436] mb-2">
-                Всё готово, {displayName}!
-              </h2>
-              <p className="text-gray-500 mb-8">
-                Профиль создан. Можно начинать учиться!
-              </p>
+                <div
+                  className={`w-6 h-6 mt-0.5 rounded-md flex items-center justify-center flex-shrink-0 transition-all ${
+                    adultConsent ? 'bg-[#6C5CE7]' : 'bg-white border-2 border-[#DFE6E9]'
+                  }`}
+                >
+                  {adultConsent && <Check size={14} className="text-white" />}
+                </div>
+                <span className="text-[14px] text-[#2D3436]">
+                  Я подтверждаю, что являюсь взрослым (родителем или опекуном) и даю согласие на
+                  использование сервиса ребёнком
+                </span>
+              </button>
 
               <button
-                onClick={handleComplete}
-                disabled={isSubmitting}
-                className="w-full py-4 bg-[#6C5CE7] text-white rounded-2xl font-semibold active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setPrivacyAccepted(!privacyAccepted)}
+                className="flex items-start gap-3 bg-white rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-transform"
               >
-                {isSubmitting ? 'Загрузка...' : 'Начать'}
+                <div
+                  className={`w-6 h-6 mt-0.5 rounded-md flex items-center justify-center flex-shrink-0 transition-all ${
+                    privacyAccepted ? 'bg-[#6C5CE7]' : 'bg-white border-2 border-[#DFE6E9]'
+                  }`}
+                >
+                  {privacyAccepted && <Check size={14} className="text-white" />}
+                </div>
+                <span className="text-[13px] text-[#2D3436] leading-relaxed">
+                  Я согласен с{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      analytics.trackEvent('privacy_policy_opened', {});
+                      handleLegalLinkClick('privacy');
+                    }}
+                    className="text-[#6C5CE7] underline"
+                  >
+                    Политикой конфиденциальности
+                  </button>{' '}
+                  и{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      analytics.trackEvent('terms_opened', {});
+                      handleLegalLinkClick('terms');
+                    }}
+                    className="text-[#6C5CE7] underline"
+                  >
+                    Пользовательским соглашением
+                  </button>
+                </span>
               </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            </div>
+          </div>
 
-      {/* Bottom Button */}
-      {currentStep !== 'completed' && (
-        <div className="p-4 bg-white shadow-lg">
           <button
+            disabled={!canProceedConsent}
             onClick={() => {
-              console.log('[Onboarding] Button clicked!', { currentStep, canProceed: canProceed() });
-              handleNext();
+              analytics.trackEvent('adult_consent_checked', {});
+              analytics.trackEvent('privacy_policy_accepted', {});
+              setCurrentStep('profile');
             }}
-            disabled={!canProceed()}
-            className="w-full py-4 bg-[#6C5CE7] text-white rounded-2xl font-semibold active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
+            className={`w-full py-4 rounded-2xl transition-all text-white flex items-center justify-center gap-2 ${
+              canProceedConsent
+                ? 'bg-[#6C5CE7] shadow-lg shadow-[#6C5CE7]/30 active:scale-[0.98]'
+                : 'bg-[#B2BEC3] cursor-not-allowed'
+            }`}
           >
-            Далее
+            Продолжить
+            <ArrowRight size={18} />
           </button>
         </div>
-      )}
+      </>
+    );
+  }
+
+  // Profile Screen
+  return (
+    <div className="flex flex-col min-h-screen px-6 py-8 bg-gradient-to-b from-[#F0F4FF] to-[#E8E4FF]">
+      <div className="text-center mb-6">
+        <h1 className="text-[32px] font-bold text-[#6C5CE7] mb-1">Создание профиля</h1>
+        <p className="text-[#636e72] text-[14px]">Расскажи о себе!</p>
       </div>
-    </>
+
+      {/* Avatar selection */}
+      <div className="mb-5">
+        <label className="text-[14px] text-[#636e72] mb-2 block">Выбери аватар</label>
+        <div className="grid grid-cols-4 gap-3">
+          {avatars.map((a) => (
+            <button
+              key={a.id}
+              onClick={() => {
+                setAvatarId(a.id);
+                analytics.trackEvent('avatar_selected', { avatar_id: a.id });
+              }}
+              className={`w-full aspect-square rounded-2xl flex items-center justify-center text-[32px] transition-all ${
+                avatarId === a.id
+                  ? 'bg-[#6C5CE7] shadow-lg scale-105 ring-3 ring-[#6C5CE7]/30'
+                  : 'bg-white shadow-sm active:scale-95'
+              }`}
+            >
+              {a.emoji}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Name input */}
+      <div className="mb-5">
+        <label className="text-[14px] text-[#636e72] mb-1.5 block">Как тебя зовут?</label>
+        <input
+          type="text"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="Введи имя"
+          className="w-full bg-white rounded-xl px-4 py-3 border border-[#DFE6E9] focus:ring-2 focus:ring-[#6C5CE7]/30 focus:border-[#6C5CE7] outline-none transition-all text-[#2D3436]"
+        />
+      </div>
+
+      {/* Grade selector */}
+      <div className="mb-5">
+        <label className="text-[14px] text-[#636e72] mb-1.5 block">В каком классе учишься?</label>
+        <div className="flex gap-2 flex-wrap">
+          {grades.map((g) => (
+            <button
+              key={g}
+              onClick={() => {
+                setGrade(g);
+                analytics.trackEvent('grade_selected', { grade: g });
+              }}
+              className={`px-4 py-2 rounded-xl transition-all text-[14px] ${
+                grade === g
+                  ? 'bg-[#6C5CE7] text-white shadow'
+                  : 'bg-white text-[#2D3436] border border-[#DFE6E9] active:scale-95'
+              }`}
+            >
+              {g} класс
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-auto">
+        <button
+          disabled={!canFinish || isSubmitting}
+          onClick={handleComplete}
+          className={`w-full py-4 rounded-2xl transition-all text-white ${
+            canFinish && !isSubmitting
+              ? 'bg-[#6C5CE7] shadow-lg shadow-[#6C5CE7]/30 active:scale-[0.98]'
+              : 'bg-[#B2BEC3] cursor-not-allowed'
+          }`}
+        >
+          {isSubmitting ? 'Загрузка...' : 'Начать!'}
+        </button>
+      </div>
+    </div>
   );
 }

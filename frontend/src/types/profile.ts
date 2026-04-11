@@ -20,7 +20,7 @@ export interface SubscriptionData {
 export interface HistoryAttempt {
   id: string;
   mode: 'help' | 'check';
-  status: 'success' | 'error' | 'in_progress';
+  status: 'success' | 'error' | 'in_progress' | 'completed';
   scenarioType?: 'single_photo' | 'two_photo';
   createdAt: string;
   completedAt?: string;

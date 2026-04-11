@@ -1,4 +1,5 @@
 !vendor
+.claude
 /.env
 /api/test/e2e/testdata/answers/*.jpg
 /api/test/e2e/testdata/tasks/*.jpg

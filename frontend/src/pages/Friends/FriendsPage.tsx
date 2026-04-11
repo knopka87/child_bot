@@ -93,8 +93,9 @@ export function FriendsPage() {
     );
   }
 
-  const invitedCount = data.invitedCount;
-  const targetCount = data.targetCount;
+  const invitedCount = data.invitedCount; // Относительный прогресс (от предыдущего уровня)
+  const targetCount = data.targetCount; // Относительная цель (от предыдущего уровня)
+  const totalInvited = data.totalInvited; // Абсолютное количество всех приглашённых
 
   return (
     <div className={styles.container}>
@@ -110,7 +111,7 @@ export function FriendsPage() {
         <div className={styles.rewardHeader}>
           <Gift size={20} className={styles.giftIcon} />
           <p className={styles.rewardText}>
-            Пригласи {targetCount} друзей — получи редкий стикер!
+            Пригласи ещё {targetCount} {targetCount === 1 ? 'друга' : 'друзей'} — получи редкий стикер!
           </p>
         </div>
 
@@ -174,7 +175,7 @@ export function FriendsPage() {
       <div className={styles.statsCard}>
         <div className={styles.statsRow}>
           <span className={styles.statsLabel}>Приглашено друзей</span>
-          <span className={styles.statsValue}>{invitedCount}</span>
+          <span className={styles.statsValue}>{totalInvited}</span>
         </div>
       </div>
 

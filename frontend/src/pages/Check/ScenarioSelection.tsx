@@ -1,28 +1,46 @@
 // src/pages/Check/ScenarioSelection.tsx
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Panel, PanelHeader, PanelHeaderBack, Group, Div, Title, Text } from '@vkontakte/vkui';
-import { Card } from '@/components/ui/Card';
+import { ArrowLeft, Image, Images } from 'lucide-react';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import { useProfileStore } from '@/stores/profileStore';
-import { ROUTES } from '@/config/routes';
+import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import type { CheckScenario } from '@/types/check';
-import styles from './ScenarioSelection.module.css';
+
+const scenarios = [
+  {
+    id: 'single_photo' as CheckScenario,
+    icon: Image,
+    title: '1 фото',
+    desc: 'Задание и ответ на одном фото',
+    color: 'from-[#6C5CE7] to-[#A29BFE]', // фиолетовый градиент
+  },
+  {
+    id: 'two_photo' as CheckScenario,
+    icon: Images,
+    title: '2 фото',
+    desc: 'Задание отдельно, ответ отдельно',
+    color: 'from-[#00B894] to-[#55EFC4]', // зелёный градиент
+  },
+];
 
 export default function ScenarioSelection() {
   const navigate = useNavigate();
   const analytics = useAnalytics();
-  const profile = useProfileStore((state) => state.profile);
 
   useEffect(() => {
-    analytics.trackEvent('check_scenario_selection_opened', {
-      child_profile_id: profile?.child_profile_id,
-    });
-  }, []);
+    const trackOpen = async () => {
+      const childProfileId = await vkStorage.getItem(storageKeys.PROFILE_ID);
+      analytics.trackEvent('check_scenario_selection_opened', {
+        child_profile_id: childProfileId,
+      });
+    };
+    trackOpen();
+  }, [analytics]);
 
-  const handleScenarioSelect = (scenario: CheckScenario) => {
+  const handleScenarioSelect = async (scenario: CheckScenario) => {
+    const childProfileId = await vkStorage.getItem(storageKeys.PROFILE_ID);
     analytics.trackEvent('check_scenario_selected', {
-      child_profile_id: profile?.child_profile_id,
+      child_profile_id: childProfileId,
       scenario_type: scenario,
     });
 
@@ -32,49 +50,64 @@ export default function ScenarioSelection() {
   };
 
   return (
-    <Panel id="scenario-selection">
-      <PanelHeader before={<PanelHeaderBack onClick={() => navigate(ROUTES.HOME)} />}>
-        Проверка
-      </PanelHeader>
+    <div className="flex flex-col min-h-screen px-5 pt-4 pb-6 bg-gradient-to-b from-[#F0F4FF] to-white">
+      {/* Кнопка назад */}
+      <button
+        onClick={() => navigate('/')}
+        className="flex items-center gap-2 text-[#6C5CE7] mb-6 active:opacity-70 transition-opacity"
+      >
+        <ArrowLeft size={20} />
+        <span className="text-[14px] font-medium">Назад</span>
+      </button>
 
-      <Group>
-        <Div>
-          <Title level="1" weight="1" style={{ marginBottom: '8px' }}>
-            Проверка ДЗ
-          </Title>
-          <Text style={{ color: 'var(--vkui--color_text_secondary)', marginBottom: '16px' }}>
-            Выбери сценарий проверки
-          </Text>
+      {/* Заголовок */}
+      <div className="text-center mb-8">
+        <h2 className="text-[28px] font-bold text-[#2D3436] mb-1">Проверка ДЗ</h2>
+        <p className="text-[#636e72] text-[14px]">
+          Выбери, как выглядит твоё задание
+        </p>
+      </div>
 
-          <Card
-            className={styles.scenarioCard}
-            variant="bordered"
-            onClick={() => handleScenarioSelect('single_photo')}
-          >
-            <div className={styles.scenarioIcon}>📷</div>
-            <Title level="2" weight="2" style={{ marginBottom: '8px' }}>
-              Одно фото
-            </Title>
-            <Text>
-              Задание и ответ на одном фото (например, решённая задача в тетради)
-            </Text>
-          </Card>
+      {/* Карточки сценариев */}
+      <div className="flex flex-col gap-4 flex-1">
+        {scenarios.map((scenario, index) => {
+          const IconComponent = scenario.icon;
+          return (
+            <button
+              key={scenario.id}
+              onClick={() => handleScenarioSelect(scenario.id)}
+              className={`bg-gradient-to-r ${scenario.color} text-white rounded-3xl p-6 flex items-center gap-4 shadow-lg active:scale-[0.98] transition-transform flex-1`}
+              style={{
+                animation: `fadeInUp 0.3s ease-out ${index * 0.1}s both`,
+              }}
+            >
+              {/* Иконка */}
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
+                <IconComponent size={32} />
+              </div>
 
-          <Card
-            className={styles.scenarioCard}
-            variant="bordered"
-            onClick={() => handleScenarioSelect('two_photo')}
-          >
-            <div className={styles.scenarioIcon}>📷 📷</div>
-            <Title level="2" weight="2" style={{ marginBottom: '8px' }}>
-              Два фото
-            </Title>
-            <Text>
-              Отдельно задание из учебника и твой ответ
-            </Text>
-          </Card>
-        </Div>
-      </Group>
-    </Panel>
+              {/* Текст */}
+              <div className="text-left">
+                <h3 className="text-white text-[20px] font-bold">{scenario.title}</h3>
+                <p className="text-white/80 text-[13px] mt-0.5">{scenario.desc}</p>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <style>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+    </div>
   );
 }

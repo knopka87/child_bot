@@ -2,16 +2,17 @@ package service
 
 import (
 	"context"
+	"log"
 
 	"child-bot/api/internal/store"
 )
 
 // HomeService бизнес-логика для главного экрана
 type HomeService struct {
-	store           *store.Store
-	attemptService  *AttemptService
-	profileService  *ProfileService
-	villainService  *VillainService
+	store          *store.Store
+	attemptService *AttemptService
+	profileService *ProfileService
+	villainService *VillainService
 }
 
 // NewHomeService создает новый HomeService
@@ -36,6 +37,13 @@ type HomeData struct {
 	Villain           *VillainSummary
 	UnfinishedAttempt *AttemptData
 	RecentAttempts    []RecentAttempt
+	Achievements      AchievementsSummary
+}
+
+// AchievementsSummary статистика достижений
+type AchievementsSummary struct {
+	UnlockedCount int
+	TotalCount    int
 }
 
 // ProfileSummary краткие данные профиля для home
@@ -79,7 +87,13 @@ type RecentAttempt struct {
 
 // GetHomeData получает все данные для главного экрана
 func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*HomeData, error) {
-	// TODO: Phase 5 - загрузка всех данных параллельно
+	// ОБНОВЛЯЕМ СЕРИЮ ДНЕЙ (streak) и активность при заходе на главную
+	err := s.profileService.UpdateStreakAndActivity(ctx, childProfileID)
+	if err != nil {
+		// Логируем ошибку, но не блокируем загрузку home
+		// (streak - не критичная функциональность)
+		// log уже внутри UpdateStreakAndActivity
+	}
 
 	// Загружаем профиль из БД
 	profile, err := s.profileService.GetProfile(ctx, childProfileID)
@@ -87,16 +101,12 @@ func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*
 		return nil, err
 	}
 
-	// Подсчитываем количество разблокированных достижений
-	var achievementsCount int
-	achievementsQuery := `
-		SELECT COUNT(*)
-		FROM child_achievements
-		WHERE child_profile_id = $1 AND is_unlocked = true
-	`
-	err = s.store.DB.QueryRowContext(ctx, achievementsQuery, childProfileID).Scan(&achievementsCount)
+	// Подсчитываем статистику достижений
+	unlockedCount, totalCount, err := s.store.GetAchievementStats(ctx, childProfileID)
 	if err != nil {
-		achievementsCount = 0 // Игнорируем ошибку, используем 0
+		// Игнорируем ошибку, используем дефолтные значения
+		unlockedCount = 0
+		totalCount = 0
 	}
 
 	// Загружаем баланс монет из БД
@@ -115,7 +125,7 @@ func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*
 			Level:                   1, // TODO: Phase 5 - загружать level из БД
 			LevelProgress:           0, // TODO: Phase 5 - вычислять прогресс уровня
 			CoinsBalance:            coinsBalance,
-			TasksSolvedCorrectCount: achievementsCount,
+			TasksSolvedCorrectCount: unlockedCount, // Используем количество разблокированных достижений как количество решённых задач
 		},
 		Mascot: MascotData{
 			ID:       "owl_1",
@@ -134,12 +144,22 @@ func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*
 			IsDefeated: false,
 		},
 		RecentAttempts: []RecentAttempt{},
+		Achievements: AchievementsSummary{
+			UnlockedCount: unlockedCount,
+			TotalCount:    totalCount,
+		},
 	}
 
 	// Получить незавершенную попытку
-	unfinished, _ := s.attemptService.GetUnfinishedAttempt(ctx, childProfileID)
+	unfinished, err := s.attemptService.GetUnfinishedAttempt(ctx, childProfileID)
+	if err != nil {
+		log.Printf("[HomeService] Failed to get unfinished attempt: %v", err)
+	}
 	if unfinished != nil {
+		log.Printf("[HomeService] Found unfinished attempt: %s (type=%s)", unfinished.ID, unfinished.Type)
 		data.UnfinishedAttempt = unfinished
+	} else {
+		log.Printf("[HomeService] No unfinished attempt found for profile: %s", childProfileID)
 	}
 
 	// Получить активного злодея

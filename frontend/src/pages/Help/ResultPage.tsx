@@ -55,9 +55,19 @@ export default function ResultPage() {
         hints_count: resultData.hints.length,
       });
 
-      // Автоматически открываем первую подсказку
+      // Автоматически открываем первую подсказку и вызываем API для инкремента
       if (resultData.hints.length > 0) {
         setOpenHints([resultData.hints[0].id]);
+
+        // Вызываем API для первой подсказки (level 0 -> level 1)
+        helpAPI
+          .getNextHint(attemptId, 0)
+          .then(() => {
+            console.log('[ResultPage] First hint API call successful');
+          })
+          .catch((error) => {
+            console.error('[ResultPage] Failed to call API for first hint:', error);
+          });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -106,7 +116,7 @@ export default function ResultPage() {
     );
   };
 
-  const unlockNext = () => {
+  const unlockNext = async () => {
     console.log('[ResultPage] unlockNext called');
     console.log('[ResultPage] Current unlockedLevel:', unlockedLevel);
     console.log('[ResultPage] Total hints:', resultData?.hints.length);
@@ -114,23 +124,38 @@ export default function ResultPage() {
     if (unlockedLevel < 3 && resultData && resultData.hints.length > unlockedLevel) {
       const next = unlockedLevel + 1;
       console.log('[ResultPage] Unlocking level:', next);
-      setUnlockedLevel(next);
 
-      analytics.trackEvent('help_hint_requested', {
-        child_profile_id: profile?.child_profile_id,
-        attempt_id: attemptId,
-        hint_level: next,
-      });
+      try {
+        // Вызываем API для инкремента счётчика подсказок
+        await helpAPI.getNextHint(attemptId, unlockedLevel);
+        console.log('[ResultPage] API getNextHint called successfully');
 
-      const nextHint = resultData.hints.find(h => h.level === next);
-      console.log('[ResultPage] Next hint found:', nextHint);
+        setUnlockedLevel(next);
 
-      if (nextHint) {
-        setOpenHints((prev) => {
-          const newOpenHints = [...prev, nextHint.id];
-          console.log('[ResultPage] New openHints:', newOpenHints);
-          return newOpenHints;
+        analytics.trackEvent('help_hint_requested', {
+          child_profile_id: profile?.child_profile_id,
+          attempt_id: attemptId,
+          hint_level: next,
         });
+
+        const nextHint = resultData.hints.find(h => h.level === next);
+        console.log('[ResultPage] Next hint found:', nextHint);
+
+        if (nextHint) {
+          setOpenHints((prev) => {
+            const newOpenHints = [...prev, nextHint.id];
+            console.log('[ResultPage] New openHints:', newOpenHints);
+            return newOpenHints;
+          });
+        }
+      } catch (error) {
+        console.error('[ResultPage] Failed to get next hint:', error);
+        // Не блокируем UI если API упал
+        setUnlockedLevel(next);
+        const nextHint = resultData.hints.find(h => h.level === next);
+        if (nextHint) {
+          setOpenHints((prev) => [...prev, nextHint.id]);
+        }
       }
     } else {
       console.log('[ResultPage] Cannot unlock - condition failed');
@@ -144,13 +169,8 @@ export default function ResultPage() {
       hints_used: unlockedLevel,
     });
 
-    // Переходим на страницу злодея с уроном
-    navigate(ROUTES.VILLAIN, {
-      state: {
-        damageDealt: resultData.damageDealt || 1,
-        coinsEarned: resultData.coinsEarned || 0,
-      },
-    });
+    // Переходим на главную (задание выполнено)
+    navigate(ROUTES.HOME);
   };
 
   const handleNewTask = () => {
@@ -254,7 +274,7 @@ export default function ResultPage() {
           onClick={handleSubmitAnswer}
           className="w-full py-4 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-600/20 active:scale-[0.98] transition-transform font-semibold"
         >
-          Отправить ответ
+          Завершить
         </button>
         <button
           onClick={handleNewTask}

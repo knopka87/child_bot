@@ -23,23 +23,14 @@ type ReferralStats struct {
 
 // InvitedFriendDB приглашенный друг из БД
 type InvitedFriendDB struct {
-	ID           string
-	DisplayName  string
-	AvatarID     string
-	InvitedAt    time.Time
-	ActivatedAt  sql.NullTime
-	IsActive     bool
-	RewardCoins  int
+	ID            string
+	DisplayName   string
+	AvatarID      string
+	InvitedAt     time.Time
+	ActivatedAt   sql.NullTime
+	IsActive      bool
+	RewardCoins   int
 	RewardClaimed bool
-}
-
-// RewardMilestoneDB milestone из БД
-type RewardMilestoneDB struct {
-	ID           string
-	FriendsCount int
-	RewardCoins  int
-	Description  string
-	IsClaimed    bool
 }
 
 // GetReferralCode получает реферальный код пользователя
@@ -139,48 +130,4 @@ func (s *Store) GetInvitedFriends(ctx context.Context, childProfileID string) ([
 	}
 
 	return friends, nil
-}
-
-// GetRewardMilestones получает milestone'ы с их статусом
-func (s *Store) GetRewardMilestones(ctx context.Context, childProfileID string) ([]RewardMilestoneDB, error) {
-	query := `
-		SELECT
-			rm.id,
-			rm.friends_count,
-			rm.reward_coins,
-			rm.description,
-			COALESCE(crm.is_claimed, false) as is_claimed
-		FROM referral_milestones rm
-		LEFT JOIN child_referral_milestones crm
-			ON rm.id = crm.milestone_id AND crm.child_profile_id = $1
-		ORDER BY rm.friends_count ASC
-	`
-
-	rows, err := s.DB.QueryContext(ctx, query, childProfileID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var milestones []RewardMilestoneDB
-	for rows.Next() {
-		var m RewardMilestoneDB
-		err := rows.Scan(
-			&m.ID,
-			&m.FriendsCount,
-			&m.RewardCoins,
-			&m.Description,
-			&m.IsClaimed,
-		)
-		if err != nil {
-			return nil, err
-		}
-		milestones = append(milestones, m)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return milestones, nil
 }

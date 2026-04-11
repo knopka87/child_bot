@@ -30,4 +30,18 @@ export const achievementsAPI = {
   async claimAchievementReward(achievementId: string): Promise<void> {
     return apiClient.post<void>(`/achievements/${achievementId}/claim`);
   },
+
+  /**
+   * Проверить есть ли новые достижения
+   */
+  async hasNewAchievements(): Promise<{ has_new: boolean }> {
+    return apiClient.get<{ has_new: boolean }>('/achievements/has-new');
+  },
+
+  /**
+   * Отметить что достижения просмотрены
+   */
+  async markAchievementsViewed(): Promise<void> {
+    return apiClient.post<void>('/achievements/mark-viewed');
+  },
 };

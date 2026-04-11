@@ -48,6 +48,7 @@ type NextHintResponse struct {
 	HintIndex   int    `json:"hint_index"`
 	TotalHints  int    `json:"total_hints"`
 	HasMoreHint bool   `json:"has_more_hints"`
+	Completed   bool   `json:"completed"` // true если все подсказки просмотрены и попытка завершена
 }
 
 // ErrorResponse стандартный формат ошибки

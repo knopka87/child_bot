@@ -31,6 +31,26 @@ export function HistoryDetailModal({
   };
 
   const getStatusConfig = () => {
+    // Для режима help используем статус из attempt, а не result
+    if (attempt.mode === 'help') {
+      if (attempt.status === 'completed') {
+        return {
+          label: 'Завершено',
+          icon: <CheckCircle size={14} />,
+          color: '#00B894',
+          bg: '#E8FFF8',
+        };
+      } else if (attempt.status === 'in_progress') {
+        return {
+          label: 'В процессе',
+          icon: <Clock size={14} />,
+          color: '#FDCB6E',
+          bg: '#FFF9E8',
+        };
+      }
+    }
+
+    // Для режима check используем result
     if (!attempt.result) {
       return {
         label: 'В процессе',
@@ -72,22 +92,25 @@ export function HistoryDetailModal({
     }
   };
 
-  const handleRetry = () => {
+  const handleContinue = () => {
     if (childProfileId) {
-      analytics.trackEvent('history_retry_clicked', {
+      analytics.trackEvent('unfinished_attempt_continue_clicked', {
         child_profile_id: childProfileId,
         attempt_id: attempt.id,
         mode: attempt.mode,
+        status: attempt.status,
       });
     }
 
     onClose();
 
-    if (attempt.mode === 'help') {
-      navigate(ROUTES.HELP_UPLOAD);
-    } else {
-      navigate(ROUTES.CHECK_SCENARIO);
-    }
+    // Navigate to appropriate flow (используем тот же подход, что и на главной)
+    const route =
+      attempt.mode === 'help' ? ROUTES.HELP_PROCESSING : ROUTES.CHECK_PROCESSING;
+
+    navigate(route, {
+      state: { attemptId: attempt.id },
+    });
   };
 
   const handleFixErrors = () => {
@@ -104,6 +127,7 @@ export function HistoryDetailModal({
 
   const statusConfig = getStatusConfig();
   const hasErrors = attempt.result?.status === 'has_errors' && (attempt.result.errorCount || 0) > 0;
+  const isInProgress = attempt.status === 'in_progress';
 
   return (
     <AnimatePresence>
@@ -211,6 +235,14 @@ export function HistoryDetailModal({
 
             {/* Actions */}
             <div className={styles.actions}>
+              {/* Кнопка "Продолжить" только для незавершенных попыток */}
+              {isInProgress && (
+                <button onClick={handleContinue} className={styles.primaryButton}>
+                  <RefreshCw size={16} />
+                  Продолжить
+                </button>
+              )}
+
               {hasErrors && (
                 <button onClick={handleFixErrors} className={styles.primaryButton}>
                   <Pencil size={16} />
@@ -218,12 +250,7 @@ export function HistoryDetailModal({
                 </button>
               )}
 
-              <button onClick={handleRetry} className={styles.secondaryButton}>
-                <RefreshCw size={16} />
-                Повторить
-              </button>
-
-              <button onClick={onClose} className={styles.textButton}>
+              <button onClick={onClose} className={styles.primaryButton}>
                 Закрыть
               </button>
             </div>

@@ -7,6 +7,7 @@ import { ActionButtons } from './components/ActionButtons';
 import { MascotBattle } from './components/MascotBattle';
 import { UnfinishedAttemptModal } from './components/UnfinishedAttemptModal';
 import { useHomeData } from './hooks/useHomeData';
+import { useNewAchievements } from '@/hooks/useNewAchievements';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { homeAPI } from '@/api/home';
 import { ROUTES } from '@/config/routes';
@@ -16,6 +17,7 @@ export default function HomePage() {
   const navigate = useNavigate();
   const analytics = useAnalytics();
   const { data, isLoading, error, refetch } = useHomeData();
+  const { hasNew: hasNewAchievements } = useNewAchievements();
   const [showUnfinishedModal, setShowUnfinishedModal] = useState(false);
 
   useEffect(() => {
@@ -46,8 +48,13 @@ export default function HomePage() {
     });
   }, [data, analytics]);
 
-  useEffect(() => {
-    // Show unfinished attempt modal if exists
+  const handleHelpClick = () => {
+    // Analytics: home_help_clicked
+    analytics.trackEvent('home_help_clicked', {
+      child_profile_id: data?.profile.id,
+    });
+
+    // Проверяем наличие незавершённой попытки
     if (data?.unfinishedAttempt) {
       setShowUnfinishedModal(true);
 
@@ -57,14 +64,8 @@ export default function HomePage() {
         attempt_id: data.unfinishedAttempt.id,
         mode: data.unfinishedAttempt.mode,
       });
+      return;
     }
-  }, [data?.unfinishedAttempt, analytics]);
-
-  const handleHelpClick = () => {
-    // Analytics: home_help_clicked
-    analytics.trackEvent('home_help_clicked', {
-      child_profile_id: data?.profile.id,
-    });
 
     navigate(ROUTES.HELP_UPLOAD);
   };
@@ -74,6 +75,19 @@ export default function HomePage() {
     analytics.trackEvent('home_check_clicked', {
       child_profile_id: data?.profile.id,
     });
+
+    // Проверяем наличие незавершённой попытки
+    if (data?.unfinishedAttempt) {
+      setShowUnfinishedModal(true);
+
+      // Analytics: unfinished_attempt_modal_shown
+      analytics.trackEvent('unfinished_attempt_modal_shown', {
+        child_profile_id: data.profile.id,
+        attempt_id: data.unfinishedAttempt.id,
+        mode: data.unfinishedAttempt.mode,
+      });
+      return;
+    }
 
     navigate(ROUTES.CHECK_SCENARIO);
   };
@@ -163,6 +177,7 @@ export default function HomePage() {
         levelProgress={data.profile.levelProgress}
         coins={data.profile.coinsBalance}
         tasksCount={data.profile.tasksSolvedCorrectCount}
+        hasNewAchievements={hasNewAchievements}
       />
 
       <div className="flex-1 flex flex-col justify-between pb-20">
@@ -175,7 +190,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      <BottomNav />
+      <BottomNav hasNewAchievements={hasNewAchievements} />
 
       <UnfinishedAttemptModal
         isOpen={showUnfinishedModal}

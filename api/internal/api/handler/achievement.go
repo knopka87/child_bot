@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"child-bot/api/internal/api/middleware"
@@ -55,24 +56,29 @@ func toAchievement(ca store.CombinedAchievement) Achievement {
 			Name:   ca.RewardName.String,
 			Amount: int(ca.RewardAmount.Int32),
 		},
-		ShelfOrder:      ca.ShelfOrder,
-		PositionInShelf: ca.PositionInShelf,
+		Priority: ca.Priority,
 	}
 }
 
 // Achievement структура достижения
 type Achievement struct {
-	ID              string              `json:"id"`
-	Type            string              `json:"type"` // streak, tasks, fixes, etc.
-	Title           string              `json:"title"`
-	Description     string              `json:"description"`
-	Icon            string              `json:"icon"` // emoji или URL
-	IsUnlocked      bool                `json:"is_unlocked"`
-	UnlockedAt      string              `json:"unlocked_at,omitempty"`
-	Progress        AchievementProgress `json:"progress"`
-	Reward          AchievementReward   `json:"reward"`
-	ShelfOrder      int                 `json:"shelf_order"`       // 1, 2, 3
-	PositionInShelf int                 `json:"position_in_shelf"` // 0-3
+	ID          string                `json:"id"`
+	Type        string                `json:"type"` // streak, tasks, fixes, etc.
+	Title       string                `json:"title"`
+	Description string                `json:"description"`
+	Icon        string                `json:"icon"` // emoji или URL
+	IsUnlocked  bool                  `json:"is_unlocked"`
+	UnlockedAt  string                `json:"unlocked_at,omitempty"`
+	Progress    AchievementProgress   `json:"progress"`
+	Reward      AchievementReward     `json:"reward"`
+	Priority    int                   `json:"priority"`             // Приоритет для сортировки (меньше = выше)
+	NextLevel   *AchievementNextLevel `json:"next_level,omitempty"` // Информация о следующем уровне для серийных наград
+}
+
+// AchievementNextLevel информация о следующем уровне серийной награды
+type AchievementNextLevel struct {
+	Description      string `json:"description"`       // Описание следующего уровня
+	RequirementValue int    `json:"requirement_value"` // Необходимое значение для следующего уровня
 }
 
 type AchievementProgress struct {
@@ -111,10 +117,27 @@ func (h *AchievementHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Получаем информацию о следующих уровнях для серийных достижений
+	nextLevels, err := h.store.GetNextLevelsForSeries(r.Context(), childProfileID)
+	if err != nil {
+		log.Printf("[AchievementHandler] Failed to get next levels: %v", err)
+		// Не критично, продолжаем без next_level
+	}
+
 	// Преобразуем в формат для JSON
 	achievements := make([]Achievement, 0, len(combined))
 	for _, ca := range combined {
-		achievements = append(achievements, toAchievement(ca))
+		ach := toAchievement(ca)
+
+		// Добавляем информацию о следующем уровне если есть
+		if nextLevel, ok := nextLevels[ca.ID]; ok {
+			ach.NextLevel = &AchievementNextLevel{
+				Description:      nextLevel.Description,
+				RequirementValue: nextLevel.RequirementValue,
+			}
+		}
+
+		achievements = append(achievements, ach)
 	}
 
 	response.OK(w, achievements)
@@ -150,8 +173,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "50 монет",
 				Amount: 50,
 			},
-			ShelfOrder:      1,
-			PositionInShelf: 0,
+			Priority: 1,
 		},
 		{
 			ID:          "achievement_2",
@@ -172,8 +194,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "100 монет",
 				Amount: 100,
 			},
-			ShelfOrder:      1,
-			PositionInShelf: 1,
+			Priority: 1,
 		},
 		{
 			ID:          "achievement_3",
@@ -194,8 +215,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "75 монет",
 				Amount: 75,
 			},
-			ShelfOrder:      1,
-			PositionInShelf: 2,
+			Priority: 1,
 		},
 		{
 			ID:          "achievement_4",
@@ -215,8 +235,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "25 монет",
 				Amount: 25,
 			},
-			ShelfOrder:      1,
-			PositionInShelf: 3,
+			Priority: 1,
 		},
 		// Вторая полка - заблокированные
 		{
@@ -237,8 +256,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "150 монет",
 				Amount: 150,
 			},
-			ShelfOrder:      2,
-			PositionInShelf: 0,
+			Priority: 2,
 		},
 		{
 			ID:          "achievement_6",
@@ -253,12 +271,11 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Percent: 0,
 			},
 			Reward: AchievementReward{
-				Type:   "sticker",
-				ID:     "sticker_trophy",
-				Name:   "Стикер Чемпиона",
+				Type: "sticker",
+				ID:   "sticker_trophy",
+				Name: "Стикер Чемпиона",
 			},
-			ShelfOrder:      2,
-			PositionInShelf: 1,
+			Priority: 2,
 		},
 		{
 			ID:          "achievement_7",
@@ -278,8 +295,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "200 монет",
 				Amount: 200,
 			},
-			ShelfOrder:      2,
-			PositionInShelf: 2,
+			Priority: 2,
 		},
 		{
 			ID:          "achievement_8",
@@ -294,12 +310,11 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Percent: 0,
 			},
 			Reward: AchievementReward{
-				Type:   "badge",
-				ID:     "badge_collector",
-				Name:   "Значок Коллекционера",
+				Type: "badge",
+				ID:   "badge_collector",
+				Name: "Значок Коллекционера",
 			},
-			ShelfOrder:      2,
-			PositionInShelf: 3,
+			Priority: 2,
 		},
 		// Третья полка
 		{
@@ -320,8 +335,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "500 монет",
 				Amount: 500,
 			},
-			ShelfOrder:      3,
-			PositionInShelf: 0,
+			Priority: 3,
 		},
 		{
 			ID:          "achievement_10",
@@ -336,12 +350,11 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Percent: 0,
 			},
 			Reward: AchievementReward{
-				Type:   "avatar",
-				ID:     "avatar_superhero",
-				Name:   "Аватар Супергероя",
+				Type: "avatar",
+				ID:   "avatar_superhero",
+				Name: "Аватар Супергероя",
 			},
-			ShelfOrder:      3,
-			PositionInShelf: 1,
+			Priority: 3,
 		},
 		{
 			ID:          "achievement_11",
@@ -361,8 +374,7 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Name:   "1000 монет",
 				Amount: 1000,
 			},
-			ShelfOrder:      3,
-			PositionInShelf: 2,
+			Priority: 3,
 		},
 		{
 			ID:          "achievement_12",
@@ -377,12 +389,11 @@ func (h *AchievementHandler) ListOld(w http.ResponseWriter, r *http.Request) {
 				Percent: 0,
 			},
 			Reward: AchievementReward{
-				Type:   "badge",
-				ID:     "badge_genius",
-				Name:   "Значок Гения",
+				Type: "badge",
+				ID:   "badge_genius",
+				Name: "Значок Гения",
 			},
-			ShelfOrder:      3,
-			PositionInShelf: 3,
+			Priority: 3,
 		},
 	}
 
@@ -495,4 +506,44 @@ func (h *AchievementHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.OK(w, stats)
+}
+
+// HasNew проверяет есть ли новые (непросмотренные) достижения
+// GET /achievements/has-new
+func (h *AchievementHandler) HasNew(w http.ResponseWriter, r *http.Request) {
+	childProfileID := middleware.GetChildProfileID(r.Context())
+	if childProfileID == "" {
+		response.Unauthorized(w, "Missing child_profile_id")
+		return
+	}
+
+	hasNew, err := h.store.HasNewAchievements(r.Context(), childProfileID)
+	if err != nil {
+		response.InternalError(w, "Failed to check new achievements")
+		return
+	}
+
+	response.OK(w, map[string]interface{}{
+		"has_new": hasNew,
+	})
+}
+
+// MarkViewed отмечает что пользователь просмотрел страницу достижений
+// POST /achievements/mark-viewed
+func (h *AchievementHandler) MarkViewed(w http.ResponseWriter, r *http.Request) {
+	childProfileID := middleware.GetChildProfileID(r.Context())
+	if childProfileID == "" {
+		response.Unauthorized(w, "Missing child_profile_id")
+		return
+	}
+
+	err := h.store.MarkAchievementsViewed(r.Context(), childProfileID)
+	if err != nil {
+		response.InternalError(w, "Failed to mark achievements viewed")
+		return
+	}
+
+	response.OK(w, map[string]interface{}{
+		"success": true,
+	})
 }

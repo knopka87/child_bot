@@ -1,32 +1,36 @@
 // src/pages/Villain/VillainPage.tsx
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useVillainData } from './hooks/useVillainData';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import { useProfileStore } from '@/stores/profileStore';
+import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { ROUTES } from '@/config/routes';
 
 export function VillainPage() {
   const navigate = useNavigate();
   const analytics = useAnalytics();
-  const profile = useProfileStore((state) => state.profile);
   const { villain, isLoading, error } = useVillainData();
+  const [childProfileId, setChildProfileId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (villain) {
+    vkStorage.getItem(storageKeys.PROFILE_ID).then(setChildProfileId);
+  }, []);
+
+  useEffect(() => {
+    if (villain && childProfileId) {
       analytics.trackEvent('villain_screen_opened', {
-        child_profile_id: profile?.child_profile_id,
+        child_profile_id: childProfileId,
         villain_id: villain.id,
       });
 
       analytics.trackEvent('villain_taunt_viewed', {
-        child_profile_id: profile?.child_profile_id,
+        child_profile_id: childProfileId,
         villain_id: villain.id,
       });
     }
-  }, [villain?.id]);
+  }, [villain?.id, childProfileId]);
 
   useEffect(() => {
     if (villain?.is_defeated) {

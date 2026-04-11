@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log"
 	"net/http"
 
@@ -25,13 +26,27 @@ func NewReferralHandler(store *store.Store, appURL string) *ReferralHandler {
 
 // ReferralData данные реферальной программы
 type ReferralData struct {
-	ReferralCode     string            `json:"referral_code"`
-	ReferralLink     string            `json:"referral_link"`
-	TotalInvited     int               `json:"total_invited"`
-	ActiveInvited    int               `json:"active_invited"`
-	TotalRewards     int               `json:"total_rewards"` // монеты
-	InvitedFriends   []InvitedFriend   `json:"invited_friends"`
-	RewardMilestones []RewardMilestone `json:"reward_milestones"`
+	ReferralCode   string          `json:"referral_code"`
+	ReferralLink   string          `json:"referral_link"`
+	TotalInvited   int             `json:"total_invited"`
+	ActiveInvited  int             `json:"active_invited"`
+	TotalRewards   int             `json:"total_rewards"` // монеты (устаревшее, всегда 0)
+	InvitedFriends []InvitedFriend `json:"invited_friends"`
+	// Данные о текущей цели достижения "Дружба"
+	CurrentAchievement *CurrentFriendshipAchievement `json:"current_achievement,omitempty"`
+}
+
+// CurrentFriendshipAchievement информация о текущем достижении "Дружба"
+type CurrentFriendshipAchievement struct {
+	AchievementID string `json:"achievement_id"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Icon          string `json:"icon"`
+	TargetCount   int    `json:"target_count"`         // Абсолютная цель (5, 10, 15, 20, ...)
+	CurrentCount  int    `json:"current_count"`        // Сколько уже приглашено (абсолютное)
+	PreviousLevel int    `json:"previous_level"`       // Предыдущий полученный уровень (0, 5, 10, 15, ...)
+	IsUnlocked    bool   `json:"is_unlocked"`          // Получено ли достижение
+	NextLevel     *int   `json:"next_level,omitempty"` // Следующий уровень или null если это последний
 }
 
 // InvitedFriend приглашенный друг
@@ -42,14 +57,6 @@ type InvitedFriend struct {
 	JoinedAt     string `json:"joined_at"`
 	IsActive     bool   `json:"is_active"`
 	RewardEarned int    `json:"reward_earned"`
-}
-
-// RewardMilestone вознаграждение за количество приглашенных
-type RewardMilestone struct {
-	FriendsCount int    `json:"friends_count"`
-	Reward       int    `json:"reward"` // монеты
-	IsClaimed    bool   `json:"is_claimed"`
-	Description  string `json:"description"`
 }
 
 // LeaderboardEntry запись в leaderboard
@@ -88,13 +95,12 @@ func (h *ReferralHandler) GetReferralData(w http.ResponseWriter, r *http.Request
 	// Если кода нет, возвращаем пустые данные
 	if refCode == nil {
 		response.OK(w, ReferralData{
-			ReferralCode:     "",
-			ReferralLink:     "",
-			TotalInvited:     0,
-			ActiveInvited:    0,
-			TotalRewards:     0,
-			InvitedFriends:   []InvitedFriend{},
-			RewardMilestones: []RewardMilestone{},
+			ReferralCode:   "",
+			ReferralLink:   "",
+			TotalInvited:   0,
+			ActiveInvited:  0,
+			TotalRewards:   0,
+			InvitedFriends: []InvitedFriend{},
 		})
 		return
 	}
@@ -128,36 +134,24 @@ func (h *ReferralHandler) GetReferralData(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	// Получаем milestone'ы
-	milestonesDB, err := h.store.GetRewardMilestones(r.Context(), childProfileID)
-	if err != nil {
-		log.Printf("GetRewardMilestones error: %v", err)
-		response.InternalError(w, "Failed to get reward milestones")
-		return
-	}
-
-	// Преобразуем milestone'ы в формат API
-	milestones := make([]RewardMilestone, 0, len(milestonesDB))
-	for _, m := range milestonesDB {
-		milestones = append(milestones, RewardMilestone{
-			FriendsCount: m.FriendsCount,
-			Reward:       m.RewardCoins,
-			IsClaimed:    m.IsClaimed,
-			Description:  m.Description,
-		})
-	}
-
 	// Формируем реферальную ссылку
 	referralLink := h.appURL + "?ref=" + refCode.Code
 
+	// Получаем информацию о текущем достижении "Дружба"
+	currentAchievement, err := h.getCurrentFriendshipAchievement(r.Context(), childProfileID, stats.ActiveInvited)
+	if err != nil {
+		log.Printf("getCurrentFriendshipAchievement error: %v", err)
+		// Не критично, продолжаем без achievement
+	}
+
 	data := ReferralData{
-		ReferralCode:     refCode.Code,
-		ReferralLink:     referralLink,
-		TotalInvited:     stats.TotalInvited,
-		ActiveInvited:    stats.ActiveInvited,
-		TotalRewards:     stats.TotalRewards,
-		InvitedFriends:   friends,
-		RewardMilestones: milestones,
+		ReferralCode:       refCode.Code,
+		ReferralLink:       referralLink,
+		TotalInvited:       stats.TotalInvited,
+		ActiveInvited:      stats.ActiveInvited,
+		TotalRewards:       stats.TotalRewards,
+		InvitedFriends:     friends,
+		CurrentAchievement: currentAchievement,
 	}
 
 	response.OK(w, data)
@@ -223,6 +217,117 @@ func (h *ReferralHandler) GetLeaderboard(w http.ResponseWriter, r *http.Request)
 	}
 
 	response.OK(w, leaderboard)
+}
+
+// getCurrentFriendshipAchievement получает информацию о текущем достижении "Дружба"
+// Для страницы Friends нужна особая логика:
+// - Если текущее достижение уже разблокировано И есть следующий уровень → показываем следующий уровень как цель
+// - Иначе показываем текущее
+func (h *ReferralHandler) getCurrentFriendshipAchievement(ctx context.Context, childProfileID string, currentFriendsCount int) (*CurrentFriendshipAchievement, error) {
+	// Получаем ВСЕ достижения "Дружба" напрямую из базы
+	allFriendshipAchievements, err := h.getAllFriendshipAchievements(ctx, childProfileID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allFriendshipAchievements) == 0 {
+		return nil, nil // Нет достижений "Дружба"
+	}
+
+	// Ищем первое неразблокированное достижение (это и есть текущая цель)
+	var targetAchievement *store.CombinedAchievement
+	var nextLevel *int
+	previousLevel := 0 // Предыдущий полученный уровень
+
+	for i, ach := range allFriendshipAchievements {
+		if !ach.IsUnlocked {
+			// Нашли первую неполученную цель
+			targetAchievement = &allFriendshipAchievements[i]
+
+			// Предыдущий уровень - это requirement_value предыдущего достижения или 0
+			if i > 0 {
+				previousLevel = allFriendshipAchievements[i-1].RequirementValue
+			}
+
+			// Проверяем есть ли ещё уровень после этого
+			if i+1 < len(allFriendshipAchievements) {
+				nextReq := allFriendshipAchievements[i+1].RequirementValue
+				nextLevel = &nextReq
+			}
+			break
+		}
+	}
+
+	// Если все достижения разблокированы, показываем последнее
+	if targetAchievement == nil {
+		lastIdx := len(allFriendshipAchievements) - 1
+		targetAchievement = &allFriendshipAchievements[lastIdx]
+		// Предыдущий уровень - это предпоследнее достижение или само последнее если оно единственное
+		if lastIdx > 0 {
+			previousLevel = allFriendshipAchievements[lastIdx-1].RequirementValue
+		} else {
+			previousLevel = targetAchievement.RequirementValue
+		}
+	}
+
+	result := &CurrentFriendshipAchievement{
+		AchievementID: targetAchievement.ID,
+		Title:         targetAchievement.Title,
+		Description:   targetAchievement.Description,
+		Icon:          targetAchievement.Icon,
+		TargetCount:   targetAchievement.RequirementValue,
+		CurrentCount:  targetAchievement.CurrentProgress,
+		PreviousLevel: previousLevel,
+		IsUnlocked:    targetAchievement.IsUnlocked,
+		NextLevel:     nextLevel,
+	}
+
+	return result, nil
+}
+
+// getAllFriendshipAchievements получает ВСЕ достижения "Дружба" с прогрессом, отсортированные по requirement_value
+func (h *ReferralHandler) getAllFriendshipAchievements(ctx context.Context, childProfileID string) ([]store.CombinedAchievement, error) {
+	query := `
+		SELECT
+			a.id, a.type, a.title, a.description, a.icon,
+			a.requirement_type, a.requirement_value,
+			a.reward_type, a.reward_id, a.reward_name, a.reward_amount,
+			a.priority,
+			COALESCE(ca.current_progress, 0) as current_progress,
+			COALESCE(ca.is_unlocked, FALSE) as is_unlocked,
+			ca.unlocked_at
+		FROM achievements a
+		LEFT JOIN child_achievements ca
+			ON a.id = ca.achievement_id
+			AND ca.child_profile_id = $1
+		WHERE a.reward_type = 'sticker'
+		  AND a.reward_name = 'Дружба'
+		ORDER BY a.requirement_value ASC
+	`
+
+	rows, err := h.store.DB.QueryContext(ctx, query, childProfileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var achievements []store.CombinedAchievement
+	for rows.Next() {
+		var ach store.CombinedAchievement
+		err := rows.Scan(
+			&ach.ID, &ach.Type, &ach.Title, &ach.Description, &ach.Icon,
+			&ach.RequirementType, &ach.RequirementValue,
+			&ach.RewardType, &ach.RewardID, &ach.RewardName, &ach.RewardAmount,
+			&ach.Priority,
+			&ach.CurrentProgress, &ach.IsUnlocked, &ach.UnlockedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		achievements = append(achievements, ach)
+	}
+
+	return achievements, rows.Err()
 }
 
 // ListFriends получает список друзей

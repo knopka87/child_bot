@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -282,6 +283,19 @@ func (h *AttemptHandler) NextHint(w http.ResponseWriter, r *http.Request) {
 
 	hint, err := h.service.GetNextHint(r.Context(), attemptID)
 	if err != nil {
+		// Проверяем, закончились ли подсказки
+		if errors.Is(err, domain.ErrNoHintsAvailable) {
+			log.Printf("[AttemptHandler] No more hints available for attempt %s", attemptID)
+			response.OK(w, NextHintResponse{
+				Hint:        "",
+				HintIndex:   -1,
+				TotalHints:  0,
+				HasMoreHint: false,
+				Completed:   true,
+			})
+			return
+		}
+
 		log.Printf("[AttemptHandler] Failed to get next hint: %v", err)
 		response.InternalError(w, "Failed to get next hint")
 		return
@@ -292,6 +306,7 @@ func (h *AttemptHandler) NextHint(w http.ResponseWriter, r *http.Request) {
 		HintIndex:   hint.CurrentHint,
 		TotalHints:  hint.TotalHints,
 		HasMoreHint: hint.CurrentHint < hint.TotalHints-1,
+		Completed:   false,
 	})
 }
 

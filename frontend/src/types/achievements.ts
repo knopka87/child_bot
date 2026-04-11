@@ -36,8 +36,13 @@ export interface Achievement {
     percent: number;
   };
   reward: AchievementReward;
-  shelf_order: number; // 1, 2, 3
-  position_in_shelf: number; // 0-3
+  priority: number; // Приоритет для сортировки (меньше = выше)
+  next_level?: AchievementNextLevel; // Информация о следующем уровне для серийных наград
+}
+
+export interface AchievementNextLevel {
+  description: string; // Описание следующего уровня
+  requirement_value: number; // Необходимое значение для следующего уровня
 }
 
 export interface AchievementReward {

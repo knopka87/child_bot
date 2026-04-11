@@ -19,6 +19,10 @@ export interface HomeData {
   villain: Villain | null;
   unfinishedAttempt: Attempt | null;
   recentAttempts: RecentAttempt[];
+  achievements: {
+    unlockedCount: number;
+    totalCount: number;
+  };
 }
 
 export interface RecentAttempt {

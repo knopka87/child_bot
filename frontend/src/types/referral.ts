@@ -3,8 +3,9 @@
 export interface ReferralData {
   referralCode: string;
   referralLink: string;
-  invitedCount: number;
-  targetCount: number;
+  invitedCount: number; // Относительное количество (от предыдущего уровня)
+  targetCount: number; // Относительная цель (от предыдущего уровня)
+  totalInvited: number; // Абсолютное общее количество приглашённых друзей
   progressPercent: number;
   currentGoal: ReferralGoal;
   invitedFriends: InvitedFriend[];
