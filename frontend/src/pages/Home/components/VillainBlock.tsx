@@ -9,8 +9,7 @@ interface VillainBlockProps {
 }
 
 export function VillainBlock({ villain, onVillainClick }: VillainBlockProps) {
-  const healthBars = 3;
-  const filledBars = Math.ceil((villain.healthPercent / 100) * healthBars);
+  const healthPercent = Math.max(0, villain.healthPercent);
 
   return (
     <motion.button
@@ -24,15 +23,18 @@ export function VillainBlock({ villain, onVillainClick }: VillainBlockProps) {
       <div className="flex-1">
         <p className="text-[13px] text-[#2D3436]">{villain.name}</p>
         <p className="text-[11px] text-[#636e72] mb-1.5">«Ты меня не победишь!»</p>
-        <div className="flex gap-1.5">
-          {Array.from({ length: healthBars }).map((_, i) => (
-            <div
-              key={i}
-              className={`flex-1 h-2.5 rounded-full transition-all ${
-                i < filledBars ? 'bg-[#FF6B6B]' : 'bg-[#DFE6E9]'
-              }`}
-            />
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <div className="w-full h-2.5 bg-[#DFE6E9] rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-[#FF6B6B] transition-all duration-500 ease-out rounded-full"
+                style={{ width: `${healthPercent}%` }}
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-[#636e72] font-medium whitespace-nowrap">
+            {Math.round(healthPercent)}%
+          </p>
         </div>
       </div>
       <ChevronRight size={18} className="text-[#636e72]" />

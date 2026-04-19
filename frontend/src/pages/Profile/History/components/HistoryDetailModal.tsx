@@ -92,6 +92,20 @@ export function HistoryDetailModal({
     }
   };
 
+  const handleRetry = () => {
+    if (childProfileId) {
+      analytics.trackEvent('history_retry_clicked', {
+        child_profile_id: childProfileId,
+        attempt_id: attempt.id,
+        mode: attempt.mode,
+      });
+    }
+
+    onClose();
+    // Переходим на страницу загрузки с нужным сценарием
+    navigate(`${attempt.mode === 'check' ? ROUTES.CHECK : ROUTES.HELP}/upload?scenario=${attempt.scenarioType || 'single_photo'}`);
+  };
+
   const handleContinue = () => {
     if (childProfileId) {
       analytics.trackEvent('unfinished_attempt_continue_clicked', {
@@ -128,6 +142,7 @@ export function HistoryDetailModal({
   const statusConfig = getStatusConfig();
   const hasErrors = attempt.result?.status === 'has_errors' && (attempt.result.errorCount || 0) > 0;
   const isInProgress = attempt.status === 'in_progress';
+  const isFailed = attempt.status === 'failed';
 
   return (
     <AnimatePresence>
@@ -240,6 +255,14 @@ export function HistoryDetailModal({
                 <button onClick={handleContinue} className={styles.primaryButton}>
                   <RefreshCw size={16} />
                   Продолжить
+                </button>
+              )}
+
+              {/* Кнопка "Попробовать снова" для failed попыток */}
+              {isFailed && (
+                <button onClick={handleRetry} className={styles.primaryButton}>
+                  <RefreshCw size={16} />
+                  Попробовать снова
                 </button>
               )}
 

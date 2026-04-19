@@ -8,17 +8,22 @@ import { OnboardingPageNew as OnboardingPage } from '@/pages/Onboarding/Onboardi
 import { HelpPage } from '@/pages/Help/HelpPage';
 import { PrivacyPolicyPage } from '@/pages/Legal/PrivacyPolicyPage';
 import { TermsPage } from '@/pages/Legal/TermsPage';
-import SourcePicker from '@/pages/Help/SourcePicker';
+import HelpImageUploader from '@/pages/Help/HelpImageUploader';
 import UploadPage from '@/pages/Help/UploadPage';
 import ProcessingPage from '@/pages/Help/ProcessingPage';
 import ResultPage from '@/pages/Help/ResultPage';
 import { CheckPage } from '@/pages/Check/CheckPage';
 import ScenarioSelection from '@/pages/Check/ScenarioSelection';
+import CheckImageSetManager from '@/pages/Check/CheckImageSetManager';
+import CheckQualityTwoPage from '@/pages/Check/CheckQualityTwoPage';
+import CheckQualitySinglePage from '@/pages/Check/CheckQualitySinglePage';
+import CheckProcessingPage from '@/pages/Check/CheckProcessingPage';
 import CheckResultPage from '@/pages/Check/CheckResultPage';
 import { AchievementsPage } from '@/pages/Achievements/AchievementsPage';
 import { FriendsPage } from '@/pages/Friends/FriendsPage';
 import { ProfilePage } from '@/pages/Profile/ProfilePage';
 import { HistoryPage } from '@/pages/Profile/History/HistoryPage';
+import ReportPage from '@/pages/Report/ReportPage';
 import { VillainPage } from '@/pages/Villain/VillainPage';
 import { VictoryPage } from '@/pages/Villain/VictoryPage';
 
@@ -30,7 +35,7 @@ export function AppRoutes() {
 
       {/* Help Flow */}
       <Route path={ROUTES.HELP} element={<HelpPage />} />
-      <Route path={ROUTES.HELP_UPLOAD} element={<SourcePicker />} />
+      <Route path={ROUTES.HELP_UPLOAD} element={<HelpImageUploader />} />
       <Route path="/help/upload-progress" element={<UploadPage />} />
       <Route path={ROUTES.HELP_PROCESSING} element={<ProcessingPage />} />
       <Route path="/help/result/:attemptId" element={<ResultPage />} />
@@ -38,14 +43,17 @@ export function AppRoutes() {
       {/* Check Flow */}
       <Route path={ROUTES.CHECK} element={<CheckPage />} />
       <Route path={ROUTES.CHECK_SCENARIO} element={<ScenarioSelection />} />
-      <Route path="/check/upload" element={<UploadPage />} />
-      <Route path={ROUTES.CHECK_PROCESSING} element={<ProcessingPage />} />
+      <Route path="/check/upload-images" element={<CheckImageSetManager />} />
+      <Route path="/check/quality-two" element={<CheckQualityTwoPage />} />
+      <Route path="/check/quality-single" element={<CheckQualitySinglePage />} />
+      <Route path={ROUTES.CHECK_PROCESSING} element={<CheckProcessingPage />} />
       <Route path="/check/result" element={<CheckResultPage />} />
 
       <Route path={ROUTES.ACHIEVEMENTS} element={<AchievementsPage />} />
       <Route path={ROUTES.FRIENDS} element={<FriendsPage />} />
       <Route path={ROUTES.PROFILE} element={<ProfilePage />} />
       <Route path={ROUTES.PROFILE_HISTORY} element={<HistoryPage />} />
+      <Route path={ROUTES.PROFILE_REPORT} element={<ReportPage />} />
       <Route path={ROUTES.VILLAIN} element={<VillainPage />} />
       <Route path={ROUTES.VILLAIN_VICTORY} element={<VictoryPage />} />
 

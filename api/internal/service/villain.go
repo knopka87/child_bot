@@ -87,22 +87,48 @@ type VictoryReward struct {
 	Amount   int
 }
 
-// ListVillains получает список злодеев
+// ListVillains получает список всех злодеев из БД
 func (s *VillainService) ListVillains(ctx context.Context, childProfileID string) ([]Villain, error) {
-	// TODO: Phase 5 - загрузка из БД
+	// Получаем всех злодеев из справочника
+	villains := []Villain{}
 
-	villains := []Villain{
-		{
-			ID:          "villain_1",
-			Name:        "Граф Ошибок",
-			Description: "Злодей, который распространяет ошибки в задачах",
-			ImageURL:    "/assets/villains/count_error.png",
-			HP:          100,
-			MaxHP:       100,
-			Level:       1,
-			IsActive:    true,
-			IsDefeated:  false,
-		},
+	for i := 1; i <= 20; i++ { // Загружаем до 20 злодеев
+		v, err := s.store.Villains.GetVillainByOrder(ctx, i)
+		if err != nil {
+			log.Printf("[VillainService] Failed to get villain %d: %v", i, err)
+			continue
+		}
+		if v == nil {
+			break // Больше злодеев нет
+		}
+
+		// Получаем статус битвы для этого профиля
+		battle, _, _ := s.store.Villains.GetVillainBattleByVillainID(ctx, childProfileID, v.ID)
+
+		hp := v.MaxHP
+		isActive := false
+		isDefeated := false
+		var unlockedAt *time.Time
+
+		if battle != nil {
+			hp = battle.CurrentHP
+			isActive = battle.Status == "active"
+			isDefeated = battle.Status == "defeated"
+			unlockedAt = &battle.StartedAt
+		}
+
+		villains = append(villains, Villain{
+			ID:          v.ID,
+			Name:        v.Name,
+			Description: v.Description,
+			ImageURL:    v.ImageURL,
+			HP:          hp,
+			MaxHP:       v.MaxHP,
+			Level:       v.Level,
+			IsActive:    isActive,
+			IsDefeated:  isDefeated,
+			UnlockedAt:  unlockedAt,
+		})
 	}
 
 	return villains, nil
@@ -110,14 +136,79 @@ func (s *VillainService) ListVillains(ctx context.Context, childProfileID string
 
 // GetActiveVillain получает активного злодея
 func (s *VillainService) GetActiveVillain(ctx context.Context, childProfileID string) (*Villain, error) {
+	// Получаем последнюю битву (активную или побеждённую сегодня)
 	battle, villainRow, err := s.store.Villains.GetActiveVillainBattle(ctx, childProfileID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Если нет активной битвы
+	// Определяем какой злодей должен быть сегодня
+	today := time.Now().UTC()
+	dayOfWeek := int(today.Weekday()) // Sunday=0, Monday=1, ..., Saturday=6
+	if dayOfWeek == 0 {
+		dayOfWeek = 7 // Sunday = 7
+	}
+
+	// Если нет активной битвы ИЛИ злодей не соответствует дню недели
+	shouldCreateNew := false
 	if battle == nil || villainRow == nil {
-		return nil, nil
+		shouldCreateNew = true
+	} else {
+		// Проверяем соответствует ли злодей сегодняшнему дню
+		correctVillain, err := s.store.Villains.GetVillainByOrder(ctx, dayOfWeek)
+		if err != nil {
+			log.Printf("[VillainService] Failed to get villain for day %d: %v", dayOfWeek, err)
+		} else if correctVillain != nil && correctVillain.ID != villainRow.ID {
+			// Злодей не соответствует дню - помечаем старую битву как заброшенную
+			log.Printf("[VillainService] Villain mismatch: current=%s, should be=%s for day %d. Replacing...",
+				villainRow.ID, correctVillain.ID, dayOfWeek)
+
+			_ = s.store.Villains.MarkBattleAbandoned(ctx, battle.ID)
+			shouldCreateNew = true
+		}
+	}
+
+	if shouldCreateNew {
+		// Проверяем, был ли злодей побеждён сегодня (тогда не создаём нового)
+		defeatedToday, err := s.wasDefeatedToday(ctx, childProfileID)
+		if err != nil {
+			log.Printf("[VillainService] Failed to check if defeated today: %v", err)
+		}
+
+		if defeatedToday {
+			log.Printf("[VillainService] Villain already defeated today for %s", childProfileID)
+			return nil, nil
+		}
+
+		// Создаём нового злодея на сегодня
+		log.Printf("[VillainService] Creating new villain for day %d (%s) for %s",
+			dayOfWeek, today.Weekday().String(), childProfileID)
+		err = s.ensureDailyVillain(ctx, childProfileID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create daily villain: %w", err)
+		}
+		// Повторно получаем битву
+		battle, villainRow, err = s.store.Villains.GetActiveVillainBattle(ctx, childProfileID)
+		if err != nil || battle == nil {
+			return nil, fmt.Errorf("failed to get battle after creation: %w", err)
+		}
+	}
+
+	// Проверяем, что битва начата сегодня (для сброса HP)
+	battleDate := battle.StartedAt.Truncate(24 * time.Hour)
+	todayDate := today.Truncate(24 * time.Hour)
+
+	if battleDate.Before(todayDate) {
+		// Битва начата не сегодня - сбрасываем HP
+		log.Printf("[VillainService] Battle from %s, resetting HP for today", battle.StartedAt.Format("2006-01-02"))
+
+		if battle.Status == "active" {
+			err = s.store.Villains.ResetBattleHP(ctx, battle.ID, villainRow.MaxHP)
+			if err != nil {
+				log.Printf("[VillainService] Failed to reset HP: %v", err)
+			}
+			battle.CurrentHP = villainRow.MaxHP
+		}
 	}
 
 	villain := &Villain{
@@ -141,6 +232,95 @@ func (s *VillainService) GetActiveVillain(ctx context.Context, childProfileID st
 	return villain, nil
 }
 
+// wasDefeatedToday проверяет, был ли злодей побеждён сегодня
+func (s *VillainService) wasDefeatedToday(ctx context.Context, childProfileID string) (bool, error) {
+	defeatedAt, err := s.store.Villains.GetLastDefeatedAt(ctx, childProfileID)
+	if err != nil {
+		return false, err
+	}
+
+	if defeatedAt == nil {
+		return false, nil
+	}
+
+	// Проверяем что победа была сегодня
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	battleDate := defeatedAt.Truncate(24 * time.Hour)
+
+	return battleDate.Equal(today), nil
+}
+
+// ensureDailyVillain создаёт злодея на сегодня если ещё нет
+func (s *VillainService) ensureDailyVillain(ctx context.Context, childProfileID string) error {
+	// Проверяем, нет ли уже активного злодея
+	battle, _, err := s.store.Villains.GetActiveVillainBattle(ctx, childProfileID)
+	if err != nil {
+		return fmt.Errorf("failed to check active battle: %w", err)
+	}
+
+	if battle != nil && battle.Status == "active" {
+		// Уже есть активный злодей
+		return nil
+	}
+
+	// Определяем день недели (1=понедельник, 7=воскресенье)
+	today := time.Now().UTC()
+	dayOfWeek := int(today.Weekday()) // Sunday=0, Monday=1, ..., Saturday=6
+	if dayOfWeek == 0 {
+		dayOfWeek = 7 // Sunday = 7
+	}
+
+	// Получаем злодея для этого дня недели (unlock_order = day_of_week)
+	villain, err := s.store.Villains.GetVillainByOrder(ctx, dayOfWeek)
+	if err != nil {
+		return fmt.Errorf("failed to get villain for day %d: %w", dayOfWeek, err)
+	}
+
+	if villain == nil {
+		// Если нет злодея для этого дня, пробуем найти любого доступного
+		log.Printf("[VillainService] No villain for day %d, trying to find any available", dayOfWeek)
+		for i := 1; i <= 7; i++ {
+			v, err := s.store.Villains.GetVillainByOrder(ctx, i)
+			if err == nil && v != nil {
+				villain = v
+				break
+			}
+		}
+	}
+
+	if villain == nil {
+		return fmt.Errorf("no villains available for any day")
+	}
+
+	// Пропускаем боссов если нужно
+	if villain.IsBoss {
+		lastBossDate, err := s.store.Villains.GetLastBossDefeatedAt(ctx, childProfileID)
+		if err == nil && lastBossDate != nil {
+			daysSinceLastBoss := time.Since(*lastBossDate).Hours() / 24
+			if daysSinceLastBoss < 7 {
+				// Берём любого не-босса
+				for i := 1; i <= 7; i++ {
+					v, err := s.store.Villains.GetVillainByOrder(ctx, i)
+					if err == nil && v != nil && !v.IsBoss {
+						villain = v
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Создаём битву
+	err = s.store.Villains.CreateBattle(ctx, childProfileID, villain.ID, villain.MaxHP)
+	if err != nil {
+		return fmt.Errorf("failed to create battle: %w", err)
+	}
+
+	log.Printf("[VillainService] Created daily villain battle: %s (day %d, weekday %s) for child %s",
+		villain.ID, dayOfWeek, today.Weekday().String(), childProfileID)
+	return nil
+}
+
 // DealDamageToVillain наносит урон активному злодею и проверяет победу
 // Возвращает: (defeated bool, coinsEarned int, error)
 func (s *VillainService) DealDamageToVillain(ctx context.Context, childProfileID string, attemptID uuid.UUID, taskType string) (bool, int, error) {
@@ -151,17 +331,34 @@ func (s *VillainService) DealDamageToVillain(ctx context.Context, childProfileID
 	}
 
 	if battle == nil || villainRow == nil {
-		// Нет активной битвы - создаём первого монстра
-		log.Printf("[VillainService] No active battle for %s, creating first villain", childProfileID)
-		err = s.ensureActiveVillain(ctx, childProfileID)
+		// Нет активной битвы - проверяем, был ли побеждён сегодня
+		defeatedToday, checkErr := s.wasDefeatedToday(ctx, childProfileID)
+		if checkErr != nil {
+			log.Printf("[VillainService] Failed to check defeat status: %v", checkErr)
+		}
+
+		if defeatedToday {
+			// Уже побеждён сегодня - не наносим урон
+			log.Printf("[VillainService] Villain already defeated today for %s, skipping damage", childProfileID)
+			return false, 0, nil
+		}
+
+		// Создаём нового злодея
+		log.Printf("[VillainService] No active battle for %s, creating new villain", childProfileID)
+		err = s.ensureDailyVillain(ctx, childProfileID)
 		if err != nil {
-			return false, 0, fmt.Errorf("failed to create first villain: %w", err)
+			return false, 0, fmt.Errorf("failed to create villain: %w", err)
 		}
 		// Повторно получаем битву
 		battle, villainRow, err = s.store.Villains.GetActiveVillainBattle(ctx, childProfileID)
 		if err != nil || battle == nil {
 			return false, 0, fmt.Errorf("failed to get battle after creation: %w", err)
 		}
+	}
+
+	// Проверяем что битва активна
+	if battle.Status != "active" {
+		return false, 0, fmt.Errorf("battle is not active")
 	}
 
 	// Вычисляем урон
@@ -203,11 +400,8 @@ func (s *VillainService) DealDamageToVillain(ctx context.Context, childProfileID
 		coinsEarned = villainRow.RewardCoins
 		// Монеты начислит вызывающий код
 
-		// Создаём следующего монстра
-		err = s.createNextVillain(ctx, childProfileID, villainRow.UnlockOrder)
-		if err != nil {
-			log.Printf("[VillainService] Failed to create next villain: %v", err)
-		}
+		// Не создаём следующего злодея до завтра
+		log.Printf("[VillainService] Villain defeated for today, next villain will spawn tomorrow for %s", childProfileID)
 
 		// Проверяем достижения за побеждённых монстров
 		if s.achievementService != nil {
@@ -303,11 +497,50 @@ func (s *VillainService) createNextVillain(ctx context.Context, childProfileID s
 	return fmt.Errorf("failed to find suitable villain after %d attempts", maxAttempts)
 }
 
-// GetVillainByID получает злодея по ID
+// GetVillainByID получает злодея по ID из БД
 func (s *VillainService) GetVillainByID(ctx context.Context, childProfileID, villainID string) (*Villain, error) {
-	// TODO: Phase 5 - загрузка из БД
+	// Получаем злодея из справочника
+	villainRow, err := s.store.Villains.GetVillainByID(ctx, villainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get villain: %w", err)
+	}
 
-	return s.GetActiveVillain(ctx, childProfileID)
+	if villainRow == nil {
+		return nil, nil
+	}
+
+	// Получаем статус битвы
+	battle, _, _ := s.store.Villains.GetVillainBattleByVillainID(ctx, childProfileID, villainID)
+
+	hp := villainRow.MaxHP
+	isActive := false
+	isDefeated := false
+	var unlockedAt *time.Time
+	var defeatedAt *time.Time
+
+	if battle != nil {
+		hp = battle.CurrentHP
+		isActive = battle.Status == "active"
+		isDefeated = battle.Status == "defeated"
+		unlockedAt = &battle.StartedAt
+		if battle.DefeatedAt.Valid {
+			defeatedAt = &battle.DefeatedAt.Time
+		}
+	}
+
+	return &Villain{
+		ID:          villainRow.ID,
+		Name:        villainRow.Name,
+		Description: villainRow.Description,
+		ImageURL:    villainRow.ImageURL,
+		HP:          hp,
+		MaxHP:       villainRow.MaxHP,
+		Level:       villainRow.Level,
+		IsActive:    isActive,
+		IsDefeated:  isDefeated,
+		UnlockedAt:  unlockedAt,
+		DefeatedAt:  defeatedAt,
+	}, nil
 }
 
 // GetVillainBattle получает информацию о битве
@@ -359,15 +592,89 @@ func (s *VillainService) GetVillainBattle(ctx context.Context, childProfileID, v
 	return battle, nil
 }
 
-// DealDamage наносит урон злодею
+// DealDamageToVillain наносит урон злодею и проверяет победу
 func (s *VillainService) DealDamage(ctx context.Context, childProfileID, villainID string, attemptID string, damage int) (*DamageResult, error) {
-	// TODO: Phase 5 - обновление HP злодея в БД
+	// Получаем битву
+	battle, villainRow, err := s.store.Villains.GetActiveVillainBattle(ctx, childProfileID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active battle: %w", err)
+	}
 
+	if battle == nil || villainRow == nil {
+		return nil, fmt.Errorf("no active battle found")
+	}
+
+	// Проверяем что битва активна
+	if battle.Status != "active" {
+		return nil, fmt.Errorf("battle is not active")
+	}
+
+	// Обновляем HP
+	newHP := battle.CurrentHP - damage
+	if newHP < 0 {
+		newHP = 0
+	}
+
+	// Записываем событие урона
+	attemptUUID, err := uuid.Parse(attemptID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid attempt ID: %w", err)
+	}
+
+	err = s.store.Villains.RecordDamageEvent(ctx, battle.ID, attemptUUID, damage, "manual")
+	if err != nil {
+		log.Printf("[VillainService] Failed to record damage event: %v", err)
+	}
+
+	// Обновляем прогресс
+	err = s.store.Villains.UpdateBattleProgress(ctx, battle.ID, newHP, damage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update battle progress: %w", err)
+	}
+
+	// Проверяем победу
+	defeated := newHP <= 0
+
+	if defeated {
+		log.Printf("[VillainService] Villain %s defeated! Awarding coins: %d", villainRow.ID, villainRow.RewardCoins)
+
+		// Помечаем битву как побеждённую
+		err = s.store.Villains.MarkBattleDefeated(ctx, battle.ID)
+		if err != nil {
+			log.Printf("[VillainService] Failed to mark battle as defeated: %v", err)
+		}
+
+		// Создаём следующего монстра
+		err = s.createNextVillain(ctx, childProfileID, villainRow.UnlockOrder)
+		if err != nil {
+			log.Printf("[VillainService] Failed to create next villain: %v", err)
+		}
+
+		// Проверяем достижения
+		if s.achievementService != nil {
+			err = s.achievementService.CheckVillainAchievements(ctx, childProfileID)
+			if err != nil {
+				log.Printf("[VillainService] Failed to check villain achievements: %v", err)
+			}
+		}
+	}
+
+	// Формируем результат
 	result := &DamageResult{
 		DamageDealt:  damage,
-		VillainHP:    70,
-		VillainMaxHP: 100,
-		IsDefeated:   false,
+		VillainHP:    newHP,
+		VillainMaxHP: villainRow.MaxHP,
+		IsDefeated:   defeated,
+		Rewards:      []VictoryReward{},
+	}
+
+	if defeated {
+		result.Rewards = append(result.Rewards, VictoryReward{
+			Type:   "coins",
+			ID:     fmt.Sprintf("coins_%d", villainRow.RewardCoins),
+			Name:   fmt.Sprintf("%d монет", villainRow.RewardCoins),
+			Amount: villainRow.RewardCoins,
+		})
 	}
 
 	return result, nil
@@ -375,22 +682,53 @@ func (s *VillainService) DealDamage(ctx context.Context, childProfileID, villain
 
 // GetVillainVictory получает информацию о победе
 func (s *VillainService) GetVillainVictory(ctx context.Context, childProfileID, villainID string) (*VictoryData, error) {
-	// TODO: Phase 5 - загрузка данных победы из БД
+	// Получаем битву
+	battle, villainRow, err := s.store.Villains.GetVillainBattleByVillainID(ctx, childProfileID, villainID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get villain battle: %w", err)
+	}
+
+	if battle == nil || villainRow == nil {
+		return nil, fmt.Errorf("villain battle not found")
+	}
+
+	// Формируем награды
+	rewards := []VictoryReward{
+		{
+			Type:   "coins",
+			ID:     fmt.Sprintf("coins_%d", villainRow.RewardCoins),
+			Name:   fmt.Sprintf("%d монет", villainRow.RewardCoins),
+			Amount: villainRow.RewardCoins,
+		},
+	}
+
+	// Получаем следующего злодея
+	var nextVillain *Villain
+	nextVillainRow, err := s.store.Villains.GetVillainByOrder(ctx, villainRow.UnlockOrder+1)
+	if err != nil {
+		log.Printf("[VillainService] Failed to get next villain: %v", err)
+	}
+
+	if nextVillainRow != nil {
+		nextVillain = &Villain{
+			ID:          nextVillainRow.ID,
+			Name:        nextVillainRow.Name,
+			Description: nextVillainRow.Description,
+			ImageURL:    nextVillainRow.ImageURL,
+			HP:          nextVillainRow.MaxHP,
+			MaxHP:       nextVillainRow.MaxHP,
+			Level:       nextVillainRow.Level,
+		}
+	}
 
 	victory := &VictoryData{
-		VillainID:      villainID,
-		VillainName:    "Граф Ошибок",
-		DefeatedAt:     time.Now(),
-		TotalDamage:    100,
-		TasksCompleted: 20,
-		Rewards: []VictoryReward{
-			{
-				Type:   "coins",
-				ID:     "coins_100",
-				Name:   "100 монет",
-				Amount: 100,
-			},
-		},
+		VillainID:      villainRow.ID,
+		VillainName:    villainRow.Name,
+		DefeatedAt:     battle.DefeatedAt.Time,
+		TotalDamage:    villainRow.MaxHP,
+		TasksCompleted: battle.CorrectTasksCount,
+		Rewards:        rewards,
+		NextVillain:    nextVillain,
 	}
 
 	return victory, nil

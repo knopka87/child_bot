@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"child-bot/api/internal/api/response"
 	"child-bot/api/internal/api/validation"
 	"child-bot/api/internal/service"
+	"child-bot/api/internal/store"
 )
 
 // HomeHandler обрабатывает запросы главного экрана
@@ -24,7 +26,9 @@ type HomeData struct {
 		ID                      string `json:"id"`
 		DisplayName             string `json:"displayName"`
 		Level                   int    `json:"level"`
-		LevelProgress           int    `json:"levelProgress"` // 0-100
+		XPTotal                 int    `json:"xpTotal"`
+		XPForNextLevel          int    `json:"xpForNextLevel"`
+		LevelProgress           int    `json:"levelProgress"` // 0-100 процентов
 		CoinsBalance            int    `json:"coinsBalance"`
 		TasksSolvedCorrectCount int    `json:"tasksSolvedCorrectCount"`
 	} `json:"profile"`
@@ -54,6 +58,7 @@ type VillainInfo struct {
 type AttemptInfo struct {
 	ID        string `json:"id"`
 	Type      string `json:"type"`
+	Mode      string `json:"mode"` // Alias for frontend compatibility
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
 }
@@ -112,11 +117,37 @@ func (h *HomeHandler) GetHomeData(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Получаем XP и уровень из БД
+	xpTotal, level, err := h.service.GetStore().GetXPAndLevel(r.Context(), childProfileID)
+	if err != nil {
+		log.Printf("[HomeHandler] Failed to get XP and level: %v", err)
+		// Используем дефолтные значения
+		xpTotal = 0
+		level = 1
+	}
+
+	// Рассчитываем прогресс до следующего уровня
+	xpForCurrentLevel := store.XPForLevel(level - 1)
+	xpForNextLevel := store.XPForLevel(level)
+	xpInCurrentLevel := xpTotal - xpForCurrentLevel
+	xpNeeded := xpForNextLevel - xpForCurrentLevel
+
+	levelProgress := 0
+	if xpNeeded > 0 {
+		levelProgress = (xpInCurrentLevel * 100) / xpNeeded
+	}
+
+	data.Profile.Level = level
+	data.Profile.XPTotal = xpTotal
+	data.Profile.XPForNextLevel = xpForNextLevel
+	data.Profile.LevelProgress = levelProgress
+
 	// Преобразуем unfinished attempt
 	if serviceData.UnfinishedAttempt != nil {
 		data.UnfinishedAttempt = &AttemptInfo{
 			ID:        serviceData.UnfinishedAttempt.ID,
 			Type:      serviceData.UnfinishedAttempt.Type,
+			Mode:      serviceData.UnfinishedAttempt.Type, // Map to mode for frontend
 			Status:    serviceData.UnfinishedAttempt.Status,
 			CreatedAt: serviceData.UnfinishedAttempt.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		}

@@ -6,6 +6,8 @@ import { useHaptics } from '@/lib/platform/haptics';
 
 export interface HeaderProps {
   level: number;
+  xpTotal: number;
+  xpForNextLevel: number;
   levelProgress: number;
   coins: number;
   tasksCount: number;
@@ -16,6 +18,8 @@ export interface HeaderProps {
 
 export function Header({
   level,
+  xpTotal,
+  xpForNextLevel,
   levelProgress,
   coins,
   tasksCount,
@@ -25,10 +29,22 @@ export function Header({
 }: HeaderProps) {
   const navigate = useNavigate();
   const { onButtonClick } = useHaptics();
+  
+  // Рассчитываем XP в текущем уровне
+  const xpForCurrentLevel = level > 1 ? 50 * (level - 1) * (level - 1) + 50 * (level - 1) : 0;
+  const xpInCurrentLevel = xpTotal - xpForCurrentLevel;
+  const xpNeeded = xpForNextLevel - xpForCurrentLevel;
+  
   return (
     <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-2">
       {/* Level Card */}
-      <div className="bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] rounded-3xl px-5 py-3 flex items-center gap-3 shadow-lg">
+      <button
+        onClick={() => {
+          onButtonClick();
+          // TODO: Navigate to profile or level details
+        }}
+        className="bg-gradient-to-r from-[#6C5CE7] to-[#A29BFE] rounded-3xl px-5 py-3 flex items-center gap-3 shadow-lg active:scale-[0.98] transition-transform"
+      >
         <div className="text-white">
           <div className="text-2xl font-bold leading-none">{level}</div>
           <div className="text-xs opacity-90 mt-0.5">Уровень</div>
@@ -40,8 +56,11 @@ export function Header({
               style={{ width: `${levelProgress}%` }}
             />
           </div>
+          <div className="text-[10px] text-white/80 mt-0.5 text-center">
+            {xpInCurrentLevel}/{xpNeeded} XP
+          </div>
         </div>
-      </div>
+      </button>
 
       {/* Stats Cards */}
       <div className="flex gap-3">

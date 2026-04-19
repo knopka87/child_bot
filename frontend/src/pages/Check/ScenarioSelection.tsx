@@ -44,9 +44,9 @@ export default function ScenarioSelection() {
       scenario_type: scenario,
     });
 
-    navigate('/check/upload', {
-      state: { scenario },
-    });
+    // Маппинг внутренних сценариев на URL-параметры
+    const scenarioParam = scenario === 'single_photo' ? 'single_photo' : 'two_photo';
+    navigate(`/check/upload-images?scenario=${scenarioParam}`);
   };
 
   return (

@@ -6,7 +6,9 @@ export interface HomeData {
     id: string;
     displayName: string;
     level: number;
-    levelProgress: number; // 0-100
+    xpTotal: number;
+    xpForNextLevel: number;
+    levelProgress: number; // 0-100 процентов
     coinsBalance: number;
     tasksSolvedCorrectCount: number;
   };

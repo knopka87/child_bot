@@ -238,10 +238,13 @@ func (s *AttemptStore) IncrementHintUsed(ctx context.Context, attemptID uuid.UUI
 		WHERE id = $2
 	`
 
-	_, err := s.db.ExecContext(ctx, query, newHintIndex, attemptID)
+	result, err := s.db.ExecContext(ctx, query, newHintIndex, attemptID)
 	if err != nil {
 		return fmt.Errorf("failed to increment hint_used: %w", err)
 	}
+
+	rowsAffected, _ := result.RowsAffected()
+	fmt.Printf("[AttemptStore.IncrementHintUsed] attempt_id=%s, new_hint_index=%d, rows_affected=%d\n", attemptID, newHintIndex, rowsAffected)
 
 	return nil
 }

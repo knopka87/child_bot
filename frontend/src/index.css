@@ -76,7 +76,7 @@ body {
 
 /* Desktop layout - ограничение ширины с фоновым цветом */
 .app-desktop-wrapper {
-  background: #D8DCE5;
+  background: #E8E4FF;
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -87,7 +87,7 @@ body {
   width: 100%;
   max-width: 430px;
   min-height: 100vh;
-  background: #ECEEF3;
+  background: #F0F4FF;
   box-shadow: 0 0 40px rgba(0, 0, 0, 0.06);
   position: relative;
 }

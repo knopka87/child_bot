@@ -174,6 +174,13 @@ func (h *AttemptHandler) Process(w http.ResponseWriter, r *http.Request) {
 	if attemptData.Type == "help" {
 		// Запускаем обработку в goroutine (не блокируем запрос)
 		go func() {
+			// Восстановление после паники
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[AttemptHandler] PANIC in ProcessHelp goroutine for attempt %s: %v", attemptID, r)
+				}
+			}()
+
 			ctx := context.Background() // новый context для фоновой задачи
 			err := h.service.ProcessHelp(ctx, attemptID, attemptData.TaskImageData)
 			if err != nil {
@@ -193,6 +200,7 @@ func (h *AttemptHandler) Process(w http.ResponseWriter, r *http.Request) {
 				attemptData.TaskImageData, attemptData.AnswerImageData)
 			if err != nil {
 				log.Printf("[AttemptHandler] ProcessCheck failed for attempt %s: %v", attemptID, err)
+				// Note: ProcessCheck service already updates status to "failed" on errors
 			}
 		}()
 	}
@@ -215,7 +223,7 @@ func (h *AttemptHandler) GetResult(w http.ResponseWriter, r *http.Request) {
 	// Получаем результат через service layer
 	attemptData, err := h.service.GetAttemptResult(r.Context(), attemptID)
 	if err != nil {
-		log.Printf("[AttemptHandler] Failed to get attempt result: %v", err)
+		log.Printf("[AttemptHandler] Failed to get attempt result for %s: %v", attemptID, err)
 		response.InternalError(w, "Failed to get attempt result")
 		return
 	}
@@ -223,7 +231,7 @@ func (h *AttemptHandler) GetResult(w http.ResponseWriter, r *http.Request) {
 	// Формируем ответ
 	resultData := make(map[string]interface{})
 
-	// Для help - добавляем hints
+	// Для help - добавляем hints и task_image
 	if attemptData.Type == "help" && attemptData.HintsResult != nil {
 		hintsArray := make([]map[string]interface{}, 0)
 		hintOrder := 1
@@ -251,14 +259,63 @@ func (h *AttemptHandler) GetResult(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		resultData["hints"] = hintsArray
+
+		// Добавляем изображение задания для передачи на страницу проверки
+		if attemptData.TaskImageData != "" {
+			resultData["task_image"] = attemptData.TaskImageData
+		}
+
 		log.Printf("[AttemptHandler] Formatted %d hints for attempt %s", len(hintsArray), attemptID)
 	}
 
-	// Для check - добавляем ошибки
-	if attemptData.Type == "check" && attemptData.CheckResult != nil {
-		resultData["is_correct"] = attemptData.CheckResult.Decision == types.CheckDecisionCorrect
-		if attemptData.CheckResult.Feedback != "" {
-			resultData["feedback"] = attemptData.CheckResult.Feedback
+	// Для check - добавляем ошибки и статус
+	if attemptData.Type == "check" {
+		resultData["is_correct"] = false
+		resultData["status"] = "processing"
+		resultData["coinsEarned"] = 0
+		resultData["damageDealt"] = 0
+
+		if attemptData.CheckResult != nil {
+			resultData["is_correct"] = attemptData.CheckResult.Decision == types.CheckDecisionCorrect
+
+			// Добавляем статус для фронтенда
+			if attemptData.CheckResult.Decision == types.CheckDecisionCorrect {
+				resultData["status"] = "success"
+				resultData["coinsEarned"] = 5
+				resultData["damageDealt"] = 1
+			} else {
+				resultData["status"] = "error"
+			}
+
+			// Добавляем ошибки если есть (из ErrorSpans)
+			if len(attemptData.CheckResult.ErrorSpans) > 0 {
+				errorsArray := make([]map[string]interface{}, 0, len(attemptData.CheckResult.ErrorSpans))
+				for i, span := range attemptData.CheckResult.ErrorSpans {
+					// Локализация описаний ошибок на русский
+					description := translateErrorToRussian(span.Label)
+
+					errObj := map[string]interface{}{
+						"id":          fmt.Sprintf("error_%d", i+1),
+						"description": description,
+						"severity":    "error",
+					}
+					if span.From > 0 || span.To > 0 {
+						errObj["location_type"] = "line"
+						errObj["line_reference"] = fmt.Sprintf("%d-%d", span.From, span.To)
+					}
+					errorsArray = append(errorsArray, errObj)
+				}
+				resultData["errors"] = errorsArray
+			}
+
+			if attemptData.CheckResult.Feedback != "" {
+				resultData["feedback"] = attemptData.CheckResult.Feedback
+			}
+
+			log.Printf("[AttemptHandler] Formatted check result for attempt %s: is_correct=%v, status=%s, errors=%d",
+				attemptID, resultData["is_correct"], resultData["status"], len(attemptData.CheckResult.ErrorSpans))
+		} else {
+			log.Printf("[AttemptHandler] Check attempt %s has no CheckResult yet, status=%s", attemptID, attemptData.Status)
 		}
 	}
 
@@ -406,4 +463,38 @@ func (h *AttemptHandler) GetRecent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.OK(w, recent)
+}
+
+// translateErrorToRussian переводит английские коды ошибок LLM на русский
+func translateErrorToRussian(code string) string {
+	translations := map[string]string{
+		"wrong_operation_in_part_1": "Неверная операция в части 1",
+		"wrong_operation_in_part_2": "Неверная операция в части 2",
+		"wrong_operation_in_part_3": "Неверная операция в части 3",
+		"wrong_result_in_part_1":    "Неверный результат в части 1",
+		"wrong_result_in_part_2":    "Неверный результат в части 2",
+		"wrong_result_in_part_3":    "Неверный результат в части 3",
+		"wrong_sign_in_part_1":      "Неверный знак в части 1",
+		"wrong_sign_in_part_2":      "Неверный знак в части 2",
+		"wrong_sign_in_part_3":      "Неверный знак в части 3",
+		"calculation_error_part_1":  "Ошибка вычисления в части 1",
+		"calculation_error_part_2":  "Ошибка вычисления в части 2",
+		"calculation_error_part_3":  "Ошибка вычисления в части 3",
+		"wrong_order_in_part_1":     "Неверный порядок в части 1",
+		"wrong_order_in_part_2":     "Неверный порядок в части 2",
+		"wrong_order_in_part_3":     "Неверный порядок в части 3",
+		"missing_step":              "Пропущен шаг решения",
+		"wrong_final_answer":        "Неверный окончательный ответ",
+		"calculation_mistake":       "Ошибка в вычислениях",
+		"logic_error":               "Логическая ошибка",
+		"wrong_formula":             "Неверная формула",
+		"wrong_units":               "Неверные единицы измерения",
+	}
+
+	if translation, ok := translations[code]; ok {
+		return translation
+	}
+
+	// Если перевода нет, возвращаем как есть
+	return code
 }

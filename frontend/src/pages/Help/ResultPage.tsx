@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { useProfileStore } from '@/stores/profileStore';
 import { helpAPI } from '@/api/help';
+import { homeAPI } from '@/api/home';
 import { ROUTES } from '@/config/routes';
 import type { HelpResult } from '@/types/help';
 
@@ -28,6 +29,25 @@ export default function ResultPage() {
   const [openHints, setOpenHints] = useState<string[]>([]);
   const [villainHealth] = useState(3);
   const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Функция для обновления данных профиля после получения XP
+  const refreshProfile = async () => {
+    const profileId = profile?.child_profile_id;
+    if (!profileId) return;
+    
+    try {
+      const homeData = await homeAPI.getHomeData(profileId);
+      useProfileStore.getState().updateProfile({
+        level: homeData.profile.level,
+        level_progress_percent: homeData.profile.levelProgress,
+        coins_balance: homeData.profile.coinsBalance,
+        tasks_solved_correct_count: homeData.profile.tasksSolvedCorrectCount,
+      });
+      console.log('[ResultPage] Profile refreshed after hint XP award, level:', homeData.profile.level);
+    } catch (error) {
+      console.error('[ResultPage] Failed to refresh profile:', error);
+    }
+  };
 
   useEffect(() => {
     if (!attemptId) {
@@ -63,10 +83,14 @@ export default function ResultPage() {
         helpAPI
           .getNextHint(attemptId, 0)
           .then(() => {
-            console.log('[ResultPage] First hint API call successful');
+            console.log('[ResultPage] First hint API call successful, refreshing profile...');
+            // Обновляем профиль чтобы получить XP за подсказку
+            refreshProfile();
           })
           .catch((error) => {
             console.error('[ResultPage] Failed to call API for first hint:', error);
+            // Показываем пользователю что XP не начислился
+            alert(`⚠️ Не удалось начислить XP за подсказку: ${error.message || 'Неизвестная ошибка'}`);
           });
       }
     }
@@ -128,7 +152,10 @@ export default function ResultPage() {
       try {
         // Вызываем API для инкремента счётчика подсказок
         await helpAPI.getNextHint(attemptId, unlockedLevel);
-        console.log('[ResultPage] API getNextHint called successfully');
+        console.log('[ResultPage] API getNextHint called successfully, refreshing profile...');
+
+        // Обновляем профиль чтобы получить XP за подсказку
+        await refreshProfile();
 
         setUnlockedLevel(next);
 
@@ -162,15 +189,30 @@ export default function ResultPage() {
     }
   };
 
-  const handleSubmitAnswer = () => {
-    analytics.trackEvent('help_answer_submitted', {
-      child_profile_id: profile?.child_profile_id,
-      attempt_id: attemptId,
-      hints_used: unlockedLevel,
+  const handleGoToCheckSolution = () => {
+    // Если taskImage нет в resultData, пробуем получить из sessionStorage
+    let taskImageToPass = resultData.taskImage;
+    
+    if (!taskImageToPass) {
+      const helpPhotoStr = sessionStorage.getItem('help_photo_data');
+      if (helpPhotoStr) {
+        try {
+          const helpPhoto = JSON.parse(helpPhotoStr);
+          taskImageToPass = helpPhoto.base64;
+        } catch (e) {
+          console.error('[ResultPage] Failed to parse help photo data:', e);
+        }
+      }
+    }
+    
+    // Переходим на страницу загрузки решения с данными задания
+    navigate('/check/upload-images', {
+      state: {
+        mode: 'from_help',
+        helpAttemptId: attemptId,
+        taskImage: taskImageToPass,
+      },
     });
-
-    // Переходим на главную (задание выполнено)
-    navigate(ROUTES.HOME);
   };
 
   const handleNewTask = () => {
@@ -269,12 +311,12 @@ export default function ResultPage() {
       )}
 
       {/* Action buttons */}
-      <div className="flex flex-col gap-3 mt-auto">
+      <div className="flex flex-col gap-3">
         <button
-          onClick={handleSubmitAnswer}
+          onClick={handleGoToCheckSolution}
           className="w-full py-4 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-600/20 active:scale-[0.98] transition-transform font-semibold"
         >
-          Завершить
+          📝 Проверить решение
         </button>
         <button
           onClick={handleNewTask}

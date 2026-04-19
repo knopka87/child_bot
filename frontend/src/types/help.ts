@@ -41,6 +41,7 @@ export interface HelpResult {
   hints: Hint[];
   coinsEarned: number;
   damageDealt: number; // Урон злодею
+  taskImage?: string; // Изображение задания для передачи на страницу проверки
 }
 
 export interface CropArea {

@@ -30,6 +30,11 @@ func NewHomeService(
 	}
 }
 
+// GetStore возвращает store для прямого доступа
+func (s *HomeService) GetStore() *store.Store {
+	return s.store
+}
+
 // HomeData данные для главного экрана
 type HomeData struct {
 	Profile           ProfileSummary
@@ -117,13 +122,32 @@ func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*
 		coinsBalance = 0 // Игнорируем ошибку, используем 0
 	}
 
+	// Загружаем XP и уровень из БД
+	xpTotal, level, err := s.store.GetXPAndLevel(ctx, childProfileID)
+	if err != nil {
+		log.Printf("[HomeService] Failed to get XP and level: %v", err)
+		xpTotal = 0
+		level = 1
+	}
+
+	// Рассчитываем прогресс уровня
+	xpForCurrentLevel := store.XPForLevel(level - 1)
+	xpForNextLevel := store.XPForLevel(level)
+	xpInCurrentLevel := xpTotal - xpForCurrentLevel
+	xpNeeded := xpForNextLevel - xpForCurrentLevel
+
+	levelProgress := 0
+	if xpNeeded > 0 {
+		levelProgress = (xpInCurrentLevel * 100) / xpNeeded
+	}
+
 	// Агрегируем данные из разных источников
 	data := &HomeData{
 		Profile: ProfileSummary{
 			ID:                      childProfileID,
 			DisplayName:             profile.DisplayName,
-			Level:                   1, // TODO: Phase 5 - загружать level из БД
-			LevelProgress:           0, // TODO: Phase 5 - вычислять прогресс уровня
+			Level:                   level,
+			LevelProgress:           levelProgress,
 			CoinsBalance:            coinsBalance,
 			TasksSolvedCorrectCount: unlockedCount, // Используем количество разблокированных достижений как количество решённых задач
 		},
@@ -133,21 +157,44 @@ func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*
 			ImageURL: "/assets/mascot/owl_idle.png",
 			Message:  "Привет! Готов решать задачи?",
 		},
-		// ВРЕМЕННО: Мок-данные для villain
-		Villain: &VillainSummary{
-			ID:         "villain_1",
-			Name:       "Кракозябра",
-			ImageURL:   "/images/villain.png",
-			HP:         2,
-			MaxHP:      3,
-			IsActive:   true,
-			IsDefeated: false,
-		},
 		RecentAttempts: []RecentAttempt{},
 		Achievements: AchievementsSummary{
 			UnlockedCount: unlockedCount,
 			TotalCount:    totalCount,
 		},
+	}
+
+	// Загружаем активного злодея из БД
+	activeVillain, err := s.villainService.GetActiveVillain(ctx, childProfileID)
+	if err != nil {
+		log.Printf("[HomeService] Failed to get active villain: %v", err)
+		activeVillain = nil
+	}
+
+	if activeVillain != nil {
+		data.Villain = &VillainSummary{
+			ID:         activeVillain.ID,
+			Name:       activeVillain.Name,
+			ImageURL:   activeVillain.ImageURL,
+			HP:         activeVillain.HP,
+			MaxHP:      activeVillain.MaxHP,
+			IsActive:   activeVillain.IsActive,
+			IsDefeated: activeVillain.IsDefeated,
+		}
+		log.Printf("[HomeService] Loaded active villain: %s (HP: %d/%d)",
+			activeVillain.ID, activeVillain.HP, activeVillain.MaxHP)
+	} else {
+		// Нет активного злодея - используем дефолтные значения
+		data.Villain = &VillainSummary{
+			ID:         "villain_1",
+			Name:       "Граф Ошибок",
+			ImageURL:   "/assets/villains/count_error.png",
+			HP:         100,
+			MaxHP:      100,
+			IsActive:   true,
+			IsDefeated: false,
+		}
+		log.Printf("[HomeService] No active villain, using default")
 	}
 
 	// Получить незавершенную попытку
@@ -161,9 +208,6 @@ func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*
 	} else {
 		log.Printf("[HomeService] No unfinished attempt found for profile: %s", childProfileID)
 	}
-
-	// Получить активного злодея
-	// TODO: villain, _ := s.villainService.GetActiveVillain(ctx, childProfileID)
 
 	return data, nil
 }

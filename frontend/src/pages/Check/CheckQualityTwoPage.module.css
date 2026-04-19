@@ -1,0 +1,183 @@
+/* src/pages/Check/CheckQualityTwoPage.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 16px 20px 24px;
+  background: linear-gradient(to bottom, #F0F4FF, #ffffff);
+}
+
+/* Back button */
+.backButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6C5CE7;
+  margin-bottom: 24px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.backButton:active {
+  opacity: 0.7;
+}
+
+.backButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.backText {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #6C5CE7;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #636e72;
+  margin: 0;
+}
+
+/* Previews */
+.previews {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex: 1;
+}
+
+.previewCard {
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e8e8e8;
+}
+
+.previewLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6C5CE7;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.previewImageContainer {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.previewImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.actionButtonSecondary {
+  width: 100%;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 16px;
+  color: #2D3436;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.1s, border-color 0.15s;
+}
+
+.actionButtonSecondary:active {
+  transform: scale(0.98);
+}
+
+.actionButtonIcon {
+  color: #6C5CE7;
+}
+
+.actionButtonPrimary {
+  width: 100%;
+  padding: 16px;
+  background: #6C5CE7;
+  color: #ffffff;
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 4px 16px rgba(108, 92, 231, 0.25);
+  transition: transform 0.1s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.actionButtonPrimary:active {
+  transform: scale(0.98);
+}
+
+.actionButtonPrimaryDisabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.loadingText {
+  font-size: 15px;
+}
+
+.actionButtonOutline {
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid #6C5CE7;
+  border-radius: 16px;
+  color: #6C5CE7;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.1s, background-color 0.15s;
+}
+
+.actionButtonOutline:active {
+  transform: scale(0.98);
+}
+
+.actionButtonOutline:hover {
+  background: rgba(108, 92, 231, 0.05);
+}

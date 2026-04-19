@@ -69,6 +69,31 @@ export function useHomeData() {
     }
   }, [childProfileId]);
 
+  // Перезагружаем данные при каждом возвращении на страницу
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && childProfileId) {
+        console.log('[useHomeData] Page became visible, refetching data...');
+        fetchData();
+      }
+    };
+
+    const handleFocus = () => {
+      if (childProfileId) {
+        console.log('[useHomeData] Window focused, refetching data...');
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [childProfileId]);
+
   return {
     data,
     isLoading,

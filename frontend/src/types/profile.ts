@@ -20,7 +20,7 @@ export interface SubscriptionData {
 export interface HistoryAttempt {
   id: string;
   mode: 'help' | 'check';
-  status: 'success' | 'error' | 'in_progress' | 'completed';
+  status: 'success' | 'error' | 'in_progress' | 'completed' | 'failed';
   scenarioType?: 'single_photo' | 'two_photo';
   createdAt: string;
   completedAt?: string;
@@ -56,6 +56,27 @@ export interface HistoryFilters {
   status?: 'success' | 'error' | 'in_progress' | 'all';
   dateFrom?: string;
   dateTo?: string;
+}
+
+export interface ReportSettings {
+  email: string;
+  emailVerified: boolean;
+  weeklyReportEnabled: boolean;
+  archiveEnabled: boolean;
+}
+
+export interface WeeklyReport {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  generatedAt: string;
+  downloadUrl?: string;
+  stats: {
+    totalAttempts: number;
+    successfulAttempts: number;
+    errorsFixed: number;
+    streakDays: number;
+  };
 }
 
 export interface ReportSettings {

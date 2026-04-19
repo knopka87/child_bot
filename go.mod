@@ -1,12 +1,12 @@
 module child-bot
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.18
 
 require (
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
+	github.com/jung-kurt/gofpdf v1.7.0
 	github.com/lib/pq v1.12.1
 )
 

@@ -234,7 +234,7 @@ func (s *ProfileService) GetHistory(ctx context.Context, childProfileID string, 
 		case "processing", "created":
 			status = "in_progress"
 		case "failed":
-			status = "error"
+			status = "failed" // Сохраняем failed для отображения кнопки "Попробовать снова"
 		default:
 			status = "in_progress"
 		}
@@ -595,6 +595,13 @@ func (s *ProfileService) UpdateStreakAndActivity(ctx context.Context, childProfi
 			log.Printf("[UpdateStreakAndActivity] Failed to check streak achievements: %v", err)
 			// Не блокируем, продолжаем
 		}
+	}
+
+	// Начисляем XP за ежедневный вход
+	err = s.AwardDailyLogin(ctx, childProfileID)
+	if err != nil {
+		log.Printf("[UpdateStreakAndActivity] Failed to award daily login XP: %v", err)
+		// Не блокируем, продолжаем
 	}
 
 	return nil

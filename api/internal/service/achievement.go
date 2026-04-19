@@ -7,6 +7,8 @@ import (
 	"child-bot/api/internal/store"
 )
 
+const XPForAchievement = 50
+
 // AchievementService бизнес-логика для достижений
 type AchievementService struct {
 	store *store.Store
@@ -34,6 +36,11 @@ func (s *AchievementService) CheckStreakAchievements(ctx context.Context, childP
 	if len(unlockedIDs) > 0 {
 		log.Printf("[AchievementService] 🎉 Unlocked %d streak achievements for child %s: %v",
 			len(unlockedIDs), childProfileID, unlockedIDs)
+
+		// Начисляем XP за каждое разблокированное достижение
+		for range unlockedIDs {
+			_, _, _ = s.store.AddXP(ctx, childProfileID, XPForAchievement, store.DefaultXPConfig)
+		}
 
 		// Стрик награждает стикерами, проверяем коллекционера
 		s.checkCollectorAfterUnlock(ctx, childProfileID)

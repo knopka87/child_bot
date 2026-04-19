@@ -1,0 +1,250 @@
+/* src/pages/Check/CheckImageSetManager.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 16px 20px 24px;
+  background: linear-gradient(to bottom, #F0F4FF, #ffffff);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+/* Back button */
+.backButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6C5CE7;
+  margin-bottom: 24px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.backButton:active {
+  opacity: 0.7;
+}
+
+.backText {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Header */
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2D3436;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #636e72;
+  margin: 0 0 24px;
+}
+
+/* Slots */
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.slotCard {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e8e8e8;
+}
+
+.slotHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.slotLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #2D3436;
+}
+
+.slotActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slotActionButton {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.15s;
+}
+
+.slotActionButton:active {
+  transform: scale(0.95);
+}
+
+.slotActionButtonReplace {
+  background: rgba(108, 92, 231, 0.1);
+  color: #6C5CE7;
+}
+
+.slotActionButtonDelete {
+  background: #fef2f2;
+  color: #FF6B6B;
+}
+
+/* Preview */
+.previewContainer {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.previewImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.existingImageOverlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 184, 148, 0.9);
+  color: white;
+  padding: 8px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Upload area */
+.uploadArea {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 12px;
+  border: 2px dashed #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.uploadButtons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.uploadButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  color: #636e72;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.15s;
+}
+
+.uploadButton:active {
+  transform: scale(0.98);
+}
+
+.uploadButton:hover {
+  border-color: #6C5CE7;
+  color: #6C5CE7;
+}
+
+.uploadButtonCamera {
+  background: rgba(253, 203, 110, 0.1);
+  border-color: rgba(253, 203, 110, 0.3);
+  color: #E17055;
+}
+
+.uploadButtonCamera:hover {
+  border-color: #E17055;
+  color: #E17055;
+}
+
+/* Reorder button */
+.reorderButton {
+  width: 100%;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 16px;
+  color: #2D3436;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  transition: transform 0.1s, border-color 0.15s;
+}
+
+.reorderButton:active {
+  transform: scale(0.98);
+}
+
+.reorderIcon {
+  color: #6C5CE7;
+}
+
+/* Continue button */
+.continueButton {
+  width: 100%;
+  padding: 16px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.15s, opacity 0.15s;
+}
+
+.continueButton:active {
+  transform: scale(0.98);
+}
+
+.continueButtonEnabled {
+  background: #6C5CE7;
+  color: #ffffff;
+  box-shadow: 0 4px 16px rgba(108, 92, 231, 0.25);
+}
+
+.continueButtonDisabled {
+  background: #f0f0f0;
+  color: #a0a0a0;
+  cursor: not-allowed;
+}

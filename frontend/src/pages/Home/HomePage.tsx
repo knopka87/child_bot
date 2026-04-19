@@ -6,6 +6,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { ActionButtons } from './components/ActionButtons';
 import { MascotBattle } from './components/MascotBattle';
 import { UnfinishedAttemptModal } from './components/UnfinishedAttemptModal';
+import { LevelUpAnimation } from '@/components/ui/LevelUpAnimation';
 import { useHomeData } from './hooks/useHomeData';
 import { useNewAchievements } from '@/hooks/useNewAchievements';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -19,6 +20,33 @@ export default function HomePage() {
   const { data, isLoading, error, refetch } = useHomeData();
   const { hasNew: hasNewAchievements } = useNewAchievements();
   const [showUnfinishedModal, setShowUnfinishedModal] = useState(false);
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [levelUpData, setLevelUpData] = useState({ level: 0, coins: 0 });
+  const [previousLevel, setPreviousLevel] = useState<number | null>(null);
+
+  // Проверяем повышение уровня
+  useEffect(() => {
+    if (!data) return;
+
+    const currentLevel = data.profile.level;
+    
+    // Если это первая загрузка, запоминаем уровень
+    if (previousLevel === null) {
+      setPreviousLevel(currentLevel);
+      return;
+    }
+
+    // Если уровень повысился, показываем анимацию
+    if (currentLevel > previousLevel) {
+      setLevelUpData({
+        level: currentLevel,
+        coins: 100, // Константа из бэкенда
+      });
+      setShowLevelUp(true);
+    }
+
+    setPreviousLevel(currentLevel);
+  }, [data, previousLevel]);
 
   useEffect(() => {
     // Отправляем события только когда данные загружены
@@ -54,8 +82,8 @@ export default function HomePage() {
       child_profile_id: data?.profile.id,
     });
 
-    // Проверяем наличие незавершённой попытки
-    if (data?.unfinishedAttempt) {
+    // Проверяем наличие незавершённой попытки ТОЛЬКО типа help
+    if (data?.unfinishedAttempt && data.unfinishedAttempt.mode === 'help') {
       setShowUnfinishedModal(true);
 
       // Analytics: unfinished_attempt_modal_shown
@@ -76,8 +104,8 @@ export default function HomePage() {
       child_profile_id: data?.profile.id,
     });
 
-    // Проверяем наличие незавершённой попытки
-    if (data?.unfinishedAttempt) {
+    // Проверяем наличие незавершённой попытки ТОЛЬКО типа check
+    if (data?.unfinishedAttempt && data.unfinishedAttempt.mode === 'check') {
       setShowUnfinishedModal(true);
 
       // Analytics: unfinished_attempt_modal_shown
@@ -117,15 +145,36 @@ export default function HomePage() {
 
     setShowUnfinishedModal(false);
 
-    // Navigate to appropriate flow
-    const route =
-      data.unfinishedAttempt.mode === 'help'
-        ? ROUTES.HELP_PROCESSING
-        : ROUTES.CHECK_PROCESSING;
-
-    navigate(route, {
-      state: { attemptId: data.unfinishedAttempt.id },
-    });
+    // Navigate to appropriate flow based on attempt mode and status
+    const attempt = data.unfinishedAttempt;
+    
+    if (attempt.mode === 'help') {
+      // For help attempts, check if processing is complete
+      if (attempt.status === 'completed') {
+        // Help processing is done, go to result page
+        navigate(`/help/result/${attempt.id}`, {
+          state: { attemptId: attempt.id },
+        });
+      } else {
+        // Still processing, go to processing page
+        navigate(ROUTES.HELP_PROCESSING, {
+          state: { attemptId: attempt.id },
+        });
+      }
+    } else {
+      // Check mode
+      if (attempt.status === 'completed') {
+        // Check processing is done, go to result page
+        navigate('/check/result', {
+          state: { attemptId: attempt.id },
+        });
+      } else {
+        // Still processing, go to processing page
+        navigate(ROUTES.CHECK_PROCESSING, {
+          state: { attemptId: attempt.id },
+        });
+      }
+    }
   };
 
   const handleNewTask = async () => {
@@ -174,6 +223,8 @@ export default function HomePage() {
     <div className="flex flex-col min-h-screen bg-[#E8E4FF]">
       <Header
         level={data.profile.level}
+        xpTotal={data.profile.xpTotal}
+        xpForNextLevel={data.profile.xpForNextLevel}
         levelProgress={data.profile.levelProgress}
         coins={data.profile.coinsBalance}
         tasksCount={data.profile.tasksSolvedCorrectCount}
@@ -197,6 +248,13 @@ export default function HomePage() {
         onClose={() => setShowUnfinishedModal(false)}
         onContinue={handleContinueAttempt}
         onNewTask={handleNewTask}
+      />
+
+      <LevelUpAnimation
+        show={showLevelUp}
+        newLevel={levelUpData.level}
+        coinsReward={levelUpData.coins}
+        onComplete={() => setShowLevelUp(false)}
       />
     </div>
   );

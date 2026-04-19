@@ -8,10 +8,8 @@ interface MascotBattleProps {
 }
 
 export function MascotBattle({ villain, onVillainClick }: MascotBattleProps) {
-  const healthBars = 3;
-  // Рассчитываем сколько полосок заполнено на основе healthPercent
-  // healthPercent = 66% → 2 полоски из 3
-  const filledBars = villain ? Math.round((villain.healthPercent / 100) * healthBars) : 0;
+  // Рассчитываем процент здоровья для прогресс-бара
+  const healthPercent = villain ? Math.max(0, (villain.healthPercent / 100) * 100) : 0;
 
   return (
     <div className="relative w-full h-[320px] flex items-center justify-center">
@@ -79,20 +77,19 @@ export function MascotBattle({ villain, onVillainClick }: MascotBattleProps) {
               />
             </motion.button>
 
-            {/* Health Bars below villain - 3 divisions: 2 dark red + 1 light red */}
-            <div className="flex gap-1.5 justify-center mt-2">
-              {Array.from({ length: healthBars }).map((_, i) => {
-                let bgColor = 'bg-[#FFB8B8]'; // Светло-красная (пустая)
-                if (i < filledBars) {
-                  bgColor = 'bg-[#FF6B6B]'; // Ярко-красная (заполненная)
-                }
-                return (
-                  <div
-                    key={i}
-                    className={`w-10 h-2.5 rounded-full transition-all ${bgColor}`}
+            {/* Health Bar below villain - единая прогресс-бар полоска */}
+            <div className="flex items-center gap-2 mt-2">
+              <div className="w-28">
+                <div className="w-full h-2.5 bg-[#DFE6E9] rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-[#FF6B6B] transition-all duration-500 ease-out rounded-full"
+                    style={{ width: `${healthPercent}%` }}
                   />
-                );
-              })}
+                </div>
+              </div>
+              <p className="text-[11px] text-[#636e72] font-medium whitespace-nowrap">
+                {Math.round(healthPercent)}%
+              </p>
             </div>
           </div>
         )}

@@ -112,7 +112,67 @@ interface CheckScenarioSelectedParams extends BaseEventParams {
   scenario?: string;
 }
 interface CheckResultOpenedParams extends BaseEventParams {
-  is_correct?: boolean;
+  attempt_id?: string;
+  result_status?: string;
+  errors_count?: number;
+}
+interface CheckErrorFeedbackViewedParams extends BaseEventParams {
+  attempt_id?: string;
+  error_count?: number;
+}
+interface ErrorHintBlockOpenedParams extends BaseEventParams {
+  attempt_id?: string;
+  error_block_id?: string;
+  step_number?: number | null;
+  line_reference?: string | null;
+}
+interface CheckCameraClickedParams extends BaseEventParams {
+  scenario?: string;
+}
+interface CheckFileSelectedParams extends BaseEventParams {
+  scenario?: string;
+}
+interface CheckImageUploadedParams extends BaseEventParams {
+  scenario?: string;
+  image_role?: 'task' | 'answer';
+}
+interface CheckImageDeletedParams extends BaseEventParams {
+  scenario?: string;
+  image_role?: 'task' | 'answer';
+}
+interface CheckImagesUploadCompletedParams extends BaseEventParams {
+  scenario?: string;
+}
+interface CheckQualityConfirmedParams extends BaseEventParams {
+  scenario?: string;
+}
+interface CheckImagesUploadedParams extends BaseEventParams {
+  attempt_id?: string;
+}
+interface CheckProcessingStartedParams extends BaseEventParams {
+  attempt_id?: string;
+  scenario?: string;
+}
+interface CheckProcessingCompletedParams extends BaseEventParams {
+  attempt_id?: string;
+  result_status?: string;
+  errors_count?: number;
+}
+interface CheckLongWaitShownParams extends BaseEventParams {
+  attempt_id?: string;
+  duration_seconds?: number;
+}
+interface CheckSaveAndWaitClickedParams extends BaseEventParams {
+  attempt_id?: string;
+}
+interface CheckSavedForLaterParams extends BaseEventParams {
+  attempt_id?: string;
+}
+interface CheckRetryClickedParams extends BaseEventParams {
+  attempt_id?: string;
+}
+interface CheckCancelClickedParams extends BaseEventParams {
+  attempt_id?: string;
 }
 
 // Achievements Events
@@ -270,6 +330,22 @@ export type AnalyticsEvent =
   | { name: 'check_scenario_selection_opened'; params: CheckScenarioSelectionOpenedParams }
   | { name: 'check_scenario_selected'; params: CheckScenarioSelectedParams }
   | { name: 'check_result_opened'; params: CheckResultOpenedParams }
+  | { name: 'check_error_feedback_viewed'; params: CheckErrorFeedbackViewedParams }
+  | { name: 'error_hint_block_opened'; params: ErrorHintBlockOpenedParams }
+  | { name: 'check_camera_clicked'; params: CheckCameraClickedParams }
+  | { name: 'check_file_selected'; params: CheckFileSelectedParams }
+  | { name: 'check_image_uploaded'; params: CheckImageUploadedParams }
+  | { name: 'check_image_deleted'; params: CheckImageDeletedParams }
+  | { name: 'check_images_upload_completed'; params: CheckImagesUploadCompletedParams }
+  | { name: 'check_quality_confirmed'; params: CheckQualityConfirmedParams }
+  | { name: 'check_images_uploaded'; params: CheckImagesUploadedParams }
+  | { name: 'check_processing_started'; params: CheckProcessingStartedParams }
+  | { name: 'check_processing_completed'; params: CheckProcessingCompletedParams }
+  | { name: 'check_long_wait_shown'; params: CheckLongWaitShownParams }
+  | { name: 'check_save_and_wait_clicked'; params: CheckSaveAndWaitClickedParams }
+  | { name: 'check_saved_for_later'; params: CheckSavedForLaterParams }
+  | { name: 'check_retry_clicked'; params: CheckRetryClickedParams }
+  | { name: 'check_cancel_clicked'; params: CheckCancelClickedParams }
   // Achievements
   | { name: 'achievements_opened'; params: AchievementsOpenedParams }
   | { name: 'achievement_clicked'; params: AchievementClickedParams }

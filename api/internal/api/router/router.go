@@ -43,6 +43,7 @@ func New(deps *Dependencies) http.Handler {
 	villainService.SetAchievementService(achievementService)
 
 	homeService := service.NewHomeService(deps.Store, attemptService, profileService, villainService)
+	reportService := service.NewReportService(deps.Store)
 
 	// Инициализируем handlers с сервисами
 	attemptHandler := handler.NewAttemptHandlerWithService(attemptService, profileService)
@@ -57,6 +58,7 @@ func New(deps *Dependencies) http.Handler {
 	analyticsHandler := handler.NewAnalyticsHandler()
 	legalHandler := handler.NewLegalHandler(deps.Store)
 	emailHandler := handler.NewEmailHandler(deps.Store)
+	reportHandler := handler.NewReportHandler(reportService)
 
 	// Регистрация routes
 	registerAttemptRoutes(mux, attemptHandler)
@@ -71,6 +73,7 @@ func New(deps *Dependencies) http.Handler {
 	registerAnalyticsRoutes(mux, analyticsHandler)
 	registerLegalRoutes(mux, legalHandler)
 	registerEmailRoutes(mux, emailHandler)
+	registerReportRoutes(mux, reportHandler)
 
 	// Применяем middleware в правильном порядке:
 	// Recovery -> Logging -> CORS -> Auth
@@ -174,4 +177,10 @@ func registerEmailRoutes(mux *http.ServeMux, h *handler.EmailHandler) {
 	mux.HandleFunc("POST /email/verify/send", h.SendVerification)
 	mux.HandleFunc("POST /email/verify/check", h.VerifyCode)
 	mux.HandleFunc("GET /email/verify/status", h.CheckVerification)
+}
+
+// registerReportRoutes регистрирует routes для отчётов
+func registerReportRoutes(mux *http.ServeMux, h *handler.ReportHandler) {
+	mux.HandleFunc("GET /reports/{childProfileId}/weekly/pdf", h.GetWeeklyPDF)
+	mux.HandleFunc("GET /reports/{childProfileId}/weekly/data", h.GetWeeklyData)
 }

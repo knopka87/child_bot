@@ -174,7 +174,7 @@ func (s *Store) GetTasksCorrectCount(ctx context.Context, childProfileID string)
 		WHERE child_profile_id = $1
 		  AND attempt_type = 'check'
 		  AND status = 'completed'
-		  AND check_result->>'decision' = 'correct'
+		  AND is_correct = true
 	`
 	err := s.DB.QueryRowContext(ctx, query, childProfileID).Scan(&count)
 	if err != nil {
@@ -256,7 +256,8 @@ func (s *Store) GetErrorsFoundCount(ctx context.Context, childProfileID string) 
 		WHERE child_profile_id = $1
 		  AND attempt_type = 'check'
 		  AND status = 'completed'
-		  AND check_result->>'decision' != 'correct'
+		  AND is_correct = false
+		  AND has_errors = true
 	`
 	err := s.DB.QueryRowContext(ctx, query, childProfileID).Scan(&count)
 	if err != nil {

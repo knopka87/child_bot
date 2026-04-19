@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#FFE0E0" rx="10"/>
+  <!-- Crown -->
+  <polygon points="70,60 80,30 90,55 100,25 110,55 120,30 130,60" fill="#FFD700" stroke="#FFA500" stroke-width="2"/>
+  <!-- Body -->
+  <ellipse cx="100" cy="110" rx="45" ry="55" fill="#4B0082"/>
+  <!-- Face -->
+  <circle cx="85" cy="95" r="6" fill="#FFF"/>
+  <circle cx="115" cy="95" r="6" fill="#FFF"/>
+  <circle cx="85" cy="95" r="3" fill="#000"/>
+  <circle cx="115" cy="95" r="3" fill="#000"/>
+  <!-- Mischievous smile -->
+  <path d="M 80 115 Q 100 130 120 115" stroke="#FFF" stroke-width="3" fill="none"/>
+  <!-- X mark -->
+  <text x="100" y="155" font-size="30" fill="#FFF" text-anchor="middle" font-weight="bold">✕</text>
+  <!-- Name -->
+  <text x="100" y="190" font-size="12" fill="#4B0082" text-anchor="middle" font-weight="bold">Граф Ошибок</text>
+</svg>

@@ -20,6 +20,7 @@ export const ROUTES = {
   FRIENDS: '/friends',
   PROFILE: '/profile',
   PROFILE_HISTORY: '/profile/history',
+  PROFILE_REPORT: '/profile/report',
   VILLAIN: '/villain',
   VILLAIN_VICTORY: '/villain/victory',
 } as const;

@@ -14,14 +14,15 @@ export const checkAPI = {
    */
   async createAttempt(
     childProfileId: string,
-    scenario: CheckScenario
+    _scenario: CheckScenario
   ): Promise<CreateCheckAttemptResponse> {
     const response = await apiClient.post<{ attempt_id: string; status: string }>(
       '/attempts',
       {
         child_profile_id: childProfileId,
         type: 'check',
-        scenario_type: scenario,
+        // Note: scenario_type is NOT accepted by backend here
+        // It will be sent later when uploading images
       }
     );
 
@@ -79,14 +80,16 @@ export const checkAPI = {
 
   /**
    * Подтвердить качество изображения
+   * Note: Backend doesn't have this endpoint, so this is a no-op
+   * Quality is confirmed implicitly when processing starts
    */
   async confirmQuality(
-    attemptId: string,
-    imageRole: ImageRole
+    _attemptId: string,
+    _imageRole: ImageRole
   ): Promise<void> {
-    return apiClient.post<void>(`/attempts/${attemptId}/confirm-quality`, {
-      imageRole,
-    });
+    // Backend doesn't have a separate quality confirmation endpoint
+    // Quality is confirmed when we call processAttempt
+    return Promise.resolve();
   },
 
   /**

@@ -17,7 +17,22 @@ export default function ProcessingPage() {
   const [seconds, setSeconds] = useState(0);
   const [dots, setDots] = useState('');
   const attemptId = location.state?.attemptId as string;
-  const imageUrl = location.state?.imageUrl as string;
+  const [imageUrl, setImageUrl] = useState<string | null>(location.state?.imageUrl as string);
+
+  // Загружаем изображение из sessionStorage если нет в state
+  useEffect(() => {
+    if (!imageUrl) {
+      const helpPhotoStr = sessionStorage.getItem('help_photo_data');
+      if (helpPhotoStr) {
+        try {
+          const helpPhoto = JSON.parse(helpPhotoStr);
+          setImageUrl(helpPhoto.base64);
+        } catch (e) {
+          console.error('[ProcessingPage] Failed to parse help photo data:', e);
+        }
+      }
+    }
+  }, [imageUrl]);
 
   // Счётчик секунд
   useEffect(() => {

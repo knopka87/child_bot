@@ -124,6 +124,17 @@ func (s *AttemptService) UploadImage(ctx context.Context, attemptID, imageType, 
 
 // ProcessHelp обрабатывает help попытку через LLM
 func (s *AttemptService) ProcessHelp(ctx context.Context, attemptID string, imageBase64 string) error {
+	// Восстановление после паники
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[AttemptService] PANIC in ProcessHelp for attempt %s: %v", attemptID, r)
+			// Пытаемся обновить статус на failed
+			if id, err := uuid.Parse(attemptID); err == nil {
+				_ = s.store.Attempts.UpdateStatus(context.Background(), id, "failed")
+			}
+		}
+	}()
+
 	// Парсим UUID
 	id, err := uuid.Parse(attemptID)
 	if err != nil {
@@ -213,6 +224,17 @@ func (s *AttemptService) ProcessHelp(ctx context.Context, attemptID string, imag
 
 // ProcessCheck обрабатывает check попытку через LLM
 func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfileID, taskImageBase64, answerImageBase64 string) error {
+	// Восстановление после паники
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[AttemptService] PANIC in ProcessCheck for attempt %s: %v", attemptID, r)
+			// Пытаемся обновить статус на failed
+			if id, err := uuid.Parse(attemptID); err == nil {
+				_ = s.store.Attempts.UpdateStatus(context.Background(), id, "failed")
+			}
+		}
+	}()
+
 	// Парсим UUID
 	id, err := uuid.Parse(attemptID)
 	if err != nil {
@@ -333,6 +355,14 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 						log.Printf("[AttemptService] Failed to check villain achievements for child %s: %v", childProfileID, err)
 					}
 				}
+
+				// 3.5. Если монстр побеждён, начисляем XP
+				if defeated && s.profileService != nil {
+					err := s.profileService.AwardVillainDefeat(ctx, childProfileID)
+					if err != nil {
+						log.Printf("[AttemptService] Failed to award villain defeat XP for child %s: %v", childProfileID, err)
+					}
+				}
 			}
 		}
 
@@ -350,12 +380,28 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 				log.Printf("[AttemptService] Failed to check tasks no hints achievements: %v", err)
 			}
 		}
+
+		// 3.6. Начисляем XP за правильное решение
+		if s.profileService != nil {
+			err := s.profileService.AwardCorrectAnswer(ctx, childProfileID)
+			if err != nil {
+				log.Printf("[AttemptService] Failed to award correct answer XP for %s: %v", childProfileID, err)
+			}
+		}
 	} else {
-		// 3.6. Если решение неправильное (найдены ошибки), проверяем достижения за найденные ошибки
+		// 3.7. Если решение неправильное (найдены ошибки), проверяем достижения за найденные ошибки
 		if s.achievementService != nil {
 			err := s.achievementService.CheckErrorsFoundAchievements(ctx, childProfileID)
 			if err != nil {
 				log.Printf("[AttemptService] Failed to check errors found achievements: %v", err)
+			}
+		}
+
+		// 3.8. Начисляем XP за попытку исправления ошибок
+		if s.profileService != nil {
+			err := s.profileService.AwardFixErrors(ctx, childProfileID)
+			if err != nil {
+				log.Printf("[AttemptService] Failed to award fix errors XP for %s: %v", childProfileID, err)
 			}
 		}
 	}
@@ -366,6 +412,21 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 		log.Printf("[AttemptService] Failed to save check result: %v", err)
 		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
 		return fmt.Errorf("failed to save check result: %w", err)
+	}
+
+	// 5. Проверяем достижения после сохранения результата (даже если LLM не смог оценить)
+	if s.achievementService != nil {
+		// Проверяем достижения за правильные задачи
+		err := s.achievementService.CheckTasksCorrectAchievements(ctx, childProfileID)
+		if err != nil {
+			log.Printf("[AttemptService] Failed to check tasks correct achievements: %v", err)
+		}
+
+		// Проверяем достижения за найденные ошибки
+		err = s.achievementService.CheckErrorsFoundAchievements(ctx, childProfileID)
+		if err != nil {
+			log.Printf("[AttemptService] Failed to check errors found achievements: %v", err)
+		}
 	}
 
 	log.Printf("[AttemptService] Check completed successfully: decision=%s", checkResp.Decision)
@@ -438,13 +499,28 @@ func (s *AttemptService) GetNextHint(ctx context.Context, attemptID string) (*do
 		// Продолжаем работу даже если не удалось обновить счётчик
 	}
 
-	// УВЕЛИЧИВАЕМ СЧЁТЧИК В ПРОФИЛЕ: hints_used_total + 1
+	log.Printf("[AttemptService.GetNextHint] profileService is nil: %v", s.profileService == nil)
+	log.Printf("[AttemptService.GetNextHint] Attempt child_profile_id: %s", attempt.ChildProfileID.String())
+
+	// УВЕЛИЧИВАЕМ СЧЁТЧИК В ПРОФИЛЕ: hints_used_total + 1 И НАЧИСЛЯЕМ XP
 	if s.profileService != nil {
+		log.Printf("[AttemptService.GetNextHint] Calling IncrementHintsUsed...")
 		err = s.profileService.IncrementHintsUsed(ctx, attempt.ChildProfileID.String())
 		if err != nil {
 			log.Printf("[AttemptService] Failed to increment hints_used_total for profile %s: %v",
 				attempt.ChildProfileID, err)
 		} else {
+			log.Printf("[AttemptService.GetNextHint] IncrementHintsUsed succeeded, now calling AwardHintRequest...")
+
+			// Начисляем XP за запрос подсказки
+			err = s.profileService.AwardHintRequest(ctx, attempt.ChildProfileID.String())
+			if err != nil {
+				log.Printf("[AttemptService] Failed to award hint request XP for %s: %v",
+					attempt.ChildProfileID, err)
+			} else {
+				log.Printf("[AttemptService.GetNextHint] ✓ Successfully awarded 10 XP for hint request to profile %s", attempt.ChildProfileID)
+			}
+
 			// Проверяем достижения за использование подсказок (Мудрая сова)
 			if s.achievementService != nil {
 				err = s.achievementService.CheckHintsUsedAchievements(ctx, attempt.ChildProfileID.String())
@@ -455,6 +531,8 @@ func (s *AttemptService) GetNextHint(ctx context.Context, attemptID string) (*do
 				}
 			}
 		}
+	} else {
+		log.Printf("[AttemptService.GetNextHint] ⚠️ profileService is NIL - cannot award XP for hint")
 	}
 
 	// Распарсим ParseResult для получения темы и текста задачи

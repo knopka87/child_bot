@@ -106,6 +106,7 @@ export const helpAPI = {
       hints: response.result?.hints || [],
       coinsEarned: response.result?.coins_earned || 0,
       damageDealt: response.result?.damage_dealt || 0,
+      taskImage: response.result?.task_image, // Изображение задания
     };
   },
 

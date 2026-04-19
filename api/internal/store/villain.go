@@ -135,6 +135,23 @@ func (s *VillainStore) UpdateBattleProgress(ctx context.Context, battleID int64,
 	return nil
 }
 
+// MarkBattleAbandoned помечает битву как заброшенную (когда злодей не соответствует дню)
+func (s *VillainStore) MarkBattleAbandoned(ctx context.Context, battleID int64) error {
+	query := `
+		UPDATE villain_battles
+		SET status = 'abandoned',
+		    updated_at = NOW()
+		WHERE id = $1
+	`
+
+	_, err := s.db.ExecContext(ctx, query, battleID)
+	if err != nil {
+		return fmt.Errorf("failed to mark battle abandoned: %w", err)
+	}
+
+	return nil
+}
+
 // MarkBattleDefeated помечает битву как побеждённую
 func (s *VillainStore) MarkBattleDefeated(ctx context.Context, battleID int64) error {
 	query := `
@@ -204,6 +221,82 @@ func (s *VillainStore) CreateBattle(ctx context.Context, childProfileID, villain
 	return nil
 }
 
+// GetVillainBattleByVillainID получает битву по ID злодея
+func (s *VillainStore) GetVillainBattleByVillainID(ctx context.Context, childProfileID, villainID string) (*VillainBattleRow, *VillainRow, error) {
+	query := `
+		SELECT
+			vb.id, vb.child_profile_id, vb.villain_id, vb.status,
+			vb.current_hp, vb.total_damage_dealt, vb.correct_tasks_count,
+			vb.rewards_claimed, vb.started_at, vb.defeated_at, vb.updated_at,
+			v.id, v.name, v.description, v.image_url, v.max_hp, v.level,
+			v.damage_per_correct_task, v.unlock_order, v.reward_coins,
+			v.reward_achievement_id, v.is_boss, v.created_at
+		FROM villain_battles vb
+		JOIN villains v ON vb.villain_id = v.id
+		WHERE vb.child_profile_id = $1
+			AND vb.villain_id = $2
+		ORDER BY vb.started_at DESC
+		LIMIT 1
+	`
+
+	var battle VillainBattleRow
+	var villain VillainRow
+
+	err := s.db.QueryRowContext(ctx, query, childProfileID, villainID).Scan(
+		&battle.ID, &battle.ChildProfileID, &battle.VillainID, &battle.Status,
+		&battle.CurrentHP, &battle.TotalDamageDealt, &battle.CorrectTasksCount,
+		&battle.RewardsClaimed, &battle.StartedAt, &battle.DefeatedAt, &battle.UpdatedAt,
+		&villain.ID, &villain.Name, &villain.Description, &villain.ImageURL,
+		&villain.MaxHP, &villain.Level, &villain.DamagePerCorrectTask,
+		&villain.UnlockOrder, &villain.RewardCoins, &villain.RewardAchievementID,
+		&villain.IsBoss, &villain.CreatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil, nil // Нет битвы с этим злодеем
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get villain battle: %w", err)
+	}
+
+	return &battle, &villain, nil
+}
+
+// GetVillainByID получает злодея по ID
+func (s *VillainStore) GetVillainByID(ctx context.Context, villainID string) (*VillainRow, error) {
+	query := `
+		SELECT id, name, description, image_url, max_hp, level,
+		       damage_per_correct_task, unlock_order, reward_coins, reward_achievement_id, is_boss
+		FROM villains
+		WHERE id = $1
+		LIMIT 1
+	`
+
+	var villain VillainRow
+	err := s.db.QueryRowContext(ctx, query, villainID).Scan(
+		&villain.ID,
+		&villain.Name,
+		&villain.Description,
+		&villain.ImageURL,
+		&villain.MaxHP,
+		&villain.Level,
+		&villain.DamagePerCorrectTask,
+		&villain.UnlockOrder,
+		&villain.RewardCoins,
+		&villain.RewardAchievementID,
+		&villain.IsBoss,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get villain by ID: %w", err)
+	}
+
+	return &villain, nil
+}
+
 // GetDamageEvents получает последние события урона для битвы
 func (s *VillainStore) GetDamageEvents(ctx context.Context, battleID int64, limit int) ([]DamageEventRow, error) {
 	query := `
@@ -234,6 +327,53 @@ func (s *VillainStore) GetDamageEvents(ctx context.Context, battleID int64, limi
 	}
 
 	return events, nil
+}
+
+// GetLastDefeatedAt получает дату последнего поражения злодея
+func (s *VillainStore) GetLastDefeatedAt(ctx context.Context, childProfileID string) (*time.Time, error) {
+	query := `
+		SELECT defeated_at
+		FROM villain_battles
+		WHERE child_profile_id = $1
+			AND status = 'defeated'
+		ORDER BY defeated_at DESC
+		LIMIT 1
+	`
+
+	var defeatedAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, query, childProfileID).Scan(&defeatedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // Нет побеждённых злодеев
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last defeated date: %w", err)
+	}
+
+	if !defeatedAt.Valid {
+		return nil, nil
+	}
+
+	return &defeatedAt.Time, nil
+}
+
+// ResetBattleHP сбрасывает HP битвы до начального
+func (s *VillainStore) ResetBattleHP(ctx context.Context, battleID int64, maxHP int) error {
+	query := `
+		UPDATE villain_battles
+		SET current_hp = $1,
+		    total_damage_dealt = 0,
+		    correct_tasks_count = 0,
+		    updated_at = NOW()
+		WHERE id = $2
+	`
+
+	_, err := s.db.ExecContext(ctx, query, maxHP, battleID)
+	if err != nil {
+		return fmt.Errorf("failed to reset battle HP: %w", err)
+	}
+
+	return nil
 }
 
 // GetLastBossDefeatedAt получает дату последней победы над боссом

@@ -13,9 +13,12 @@ import (
 
 // VillainServiceInterface интерфейс для VillainService
 type VillainServiceInterface interface {
+	ListVillains(ctx context.Context, childProfileID string) ([]service.Villain, error)
 	GetActiveVillain(ctx context.Context, childProfileID string) (*service.Villain, error)
+	GetVillainByID(ctx context.Context, childProfileID, villainID string) (*service.Villain, error)
 	GetVillainBattle(ctx context.Context, childProfileID, villainID string) (*service.VillainBattle, error)
 	GetVillainVictory(ctx context.Context, childProfileID, villainID string) (*service.VictoryData, error)
+	DealDamage(ctx context.Context, childProfileID, villainID, attemptID string, damage int) (*service.DamageResult, error)
 }
 
 // VillainHandler обрабатывает запросы злодеев
@@ -98,26 +101,31 @@ func (h *VillainHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Phase 4 - получение списка через service layer
-	// villains, err := h.service.ListVillains(r.Context(), childProfileID)
-
-	// Placeholder
-	villains := []Villain{
-		{
-			ID:          "villain_1",
-			Name:        "Граф Ошибок",
-			Description: "Злодей, который распространяет ошибки в задачах",
-			ImageURL:    "/assets/villains/count_error.png",
-			HP:          100,
-			MaxHP:       100,
-			Level:       1,
-			Taunt:       "Ха-ха! Попробуй-ка реши задачки!",
-			IsActive:    true,
-			IsDefeated:  false,
-		},
+	// Получаем список всех злодеев через service layer
+	villains, err := h.service.ListVillains(r.Context(), childProfileID)
+	if err != nil {
+		log.Printf("[VillainHandler] ListVillains error: %v", err)
+		response.InternalError(w, "Failed to get villains list")
+		return
 	}
 
-	response.OK(w, villains)
+	// Конвертируем в API response
+	apiVillains := make([]Villain, 0, len(villains))
+	for _, v := range villains {
+		apiVillains = append(apiVillains, Villain{
+			ID:          v.ID,
+			Name:        v.Name,
+			Description: v.Description,
+			ImageURL:    v.ImageURL,
+			HP:          v.HP,
+			MaxHP:       v.MaxHP,
+			Level:       v.Level,
+			IsActive:    v.IsActive,
+			IsDefeated:  v.IsDefeated,
+		})
+	}
+
+	response.OK(w, apiVillains)
 }
 
 // GetActive получает активного злодея
@@ -198,21 +206,37 @@ func (h *VillainHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Phase 4 - получение через service layer
-	// villain, err := h.service.GetVillainByID(r.Context(), childProfileID, villainID)
+	// Получаем злодея через service layer
+	villainData, err := h.service.GetVillainByID(r.Context(), childProfileID, villainID)
+	if err != nil {
+		log.Printf("[VillainHandler] GetVillainByID error: %v", err)
+		response.InternalError(w, "Failed to get villain")
+		return
+	}
 
-	// Placeholder
+	if villainData == nil {
+		response.NotFound(w, "Villain not found")
+		return
+	}
+
+	// Конвертируем в API response
 	villain := Villain{
-		ID:          villainID,
-		Name:        "Граф Ошибок",
-		Description: "Злодей, который распространяет ошибки в задачах",
-		ImageURL:    "/assets/villains/count_error.png",
-		HP:          75,
-		MaxHP:       100,
-		Level:       1,
-		Taunt:       "Ха-ха! Попробуй-ка реши задачки!",
-		IsActive:    true,
-		IsDefeated:  false,
+		ID:          villainData.ID,
+		Name:        villainData.Name,
+		Description: villainData.Description,
+		ImageURL:    villainData.ImageURL,
+		HP:          villainData.HP,
+		MaxHP:       villainData.MaxHP,
+		Level:       villainData.Level,
+		IsActive:    villainData.IsActive,
+		IsDefeated:  villainData.IsDefeated,
+	}
+
+	if villainData.UnlockedAt != nil {
+		villain.UnlockedAt = villainData.UnlockedAt.Format("2006-01-02T15:04:05Z07:00")
+	}
+	if villainData.DefeatedAt != nil {
+		villain.DefeatedAt = villainData.DefeatedAt.Format("2006-01-02T15:04:05Z07:00")
 	}
 
 	response.OK(w, villain)
@@ -290,30 +314,53 @@ func (h *VillainHandler) GetVictory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Phase 4 - получение победы через service layer
-	// victory, err := h.service.GetVillainVictory(r.Context(), childProfileID, villainID)
+	// Получаем данные победы через service layer
+	victoryData, err := h.service.GetVillainVictory(r.Context(), childProfileID, villainID)
+	if err != nil {
+		log.Printf("[VillainHandler] GetVillainVictory error: %v", err)
+		response.InternalError(w, "Failed to get villain victory")
+		return
+	}
 
-	// Placeholder
+	if victoryData == nil {
+		response.NotFound(w, "Victory data not found")
+		return
+	}
+
+	// Конвертируем награды
+	rewards := make([]VictoryReward, 0, len(victoryData.Rewards))
+	for _, reward := range victoryData.Rewards {
+		rewards = append(rewards, VictoryReward{
+			Type:     reward.Type,
+			ID:       reward.ID,
+			Name:     reward.Name,
+			ImageURL: reward.ImageURL,
+			Amount:   reward.Amount,
+		})
+	}
+
+	// Конвертируем следующего злодея
+	var nextVillain *Villain
+	if victoryData.NextVillain != nil {
+		nextVillain = &Villain{
+			ID:          victoryData.NextVillain.ID,
+			Name:        victoryData.NextVillain.Name,
+			Description: victoryData.NextVillain.Description,
+			ImageURL:    victoryData.NextVillain.ImageURL,
+			HP:          victoryData.NextVillain.HP,
+			MaxHP:       victoryData.NextVillain.MaxHP,
+			Level:       victoryData.NextVillain.Level,
+		}
+	}
+
 	victory := VictoryData{
-		VillainID:      villainID,
-		VillainName:    "Граф Ошибок",
-		DefeatedAt:     "2024-03-31T10:00:00Z",
-		TotalDamage:    100,
-		TasksCompleted: 20,
-		Rewards: []VictoryReward{
-			{
-				Type:   "coins",
-				ID:     "coins_100",
-				Name:   "100 монет",
-				Amount: 100,
-			},
-			{
-				Type:     "achievement",
-				ID:       "achievement_villain_1",
-				Name:     "Победитель Графа",
-				ImageURL: "/assets/achievements/villain_1.png",
-			},
-		},
+		VillainID:      victoryData.VillainID,
+		VillainName:    victoryData.VillainName,
+		DefeatedAt:     victoryData.DefeatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		TotalDamage:    victoryData.TotalDamage,
+		TasksCompleted: victoryData.TasksCompleted,
+		Rewards:        rewards,
+		NextVillain:    nextVillain,
 	}
 
 	response.OK(w, victory)
@@ -340,16 +387,34 @@ func (h *VillainHandler) DealDamage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Phase 4 - нанести урон через service layer
-	// result, err := h.service.DealDamageToVillain(r.Context(), childProfileID, villainID, req)
-
-	// Placeholder
-	result := map[string]interface{}{
-		"damage_dealt": 5,
-		"villain_hp":   70,
-		"is_defeated":  false,
-		"message":      "Нанесено 5 урона!",
+	// Наносим урон через service layer
+	result, err := h.service.DealDamage(r.Context(), childProfileID, villainID, req.AttemptID, req.Damage)
+	if err != nil {
+		log.Printf("[VillainHandler] DealDamage error: %v", err)
+		response.InternalError(w, "Failed to deal damage")
+		return
 	}
 
-	response.OK(w, result)
+	// Формируем ответ
+	responseData := map[string]interface{}{
+		"damage_dealt": result.DamageDealt,
+		"villain_hp":   result.VillainHP,
+		"is_defeated":  result.IsDefeated,
+	}
+
+	if result.IsDefeated {
+		// Добавляем награды
+		rewards := make([]map[string]interface{}, 0, len(result.Rewards))
+		for _, reward := range result.Rewards {
+			rewards = append(rewards, map[string]interface{}{
+				"type":   reward.Type,
+				"id":     reward.ID,
+				"name":   reward.Name,
+				"amount": reward.Amount,
+			})
+		}
+		responseData["rewards"] = rewards
+	}
+
+	response.OK(w, responseData)
 }

@@ -131,7 +131,7 @@ export function HistoryPage() {
     }
 
     // Для остальных случаев
-    const status = attempt.status as 'success' | 'error' | 'in_progress' | 'completed';
+    const status = attempt.status as 'success' | 'error' | 'in_progress' | 'completed' | 'failed';
 
     switch (status) {
       case 'success':
@@ -157,6 +157,12 @@ export function HistoryPage() {
           label: 'Завершено',
           icon: <CheckCircle size={16} />,
           className: styles.success,
+        };
+      case 'failed':
+        return {
+          label: 'Ошибка обработки',
+          icon: <XCircle size={16} />,
+          className: styles.error,
         };
       default:
         return {

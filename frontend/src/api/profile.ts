@@ -56,7 +56,6 @@ export const profileAPI = {
     _childProfileId: string,
     filters?: HistoryFilters
   ): Promise<HistoryAttempt[]> {
-    // Backend format (snake_case)
     interface BackendHistoryAttempt {
       id: string;
       mode: 'help' | 'check';
@@ -85,7 +84,6 @@ export const profileAPI = {
       hints_used?: number;
     }
 
-    // Формируем query параметры
     const params: Record<string, string> = {};
 
     if (filters?.mode && filters.mode !== 'all') {
@@ -111,7 +109,6 @@ export const profileAPI = {
 
     console.log('[profileAPI] History response:', response);
 
-    // Конвертируем snake_case в camelCase
     return response.map(
       (attempt): HistoryAttempt => ({
         id: attempt.id,
@@ -147,15 +144,11 @@ export const profileAPI = {
 
   /**
    * Получить детали попытки
-   * Примечание: детали уже загружаются в getHistory,
-   * этот метод нужен только если требуется дополнительная информация
    */
   async getHistoryDetail(
     _childProfileId: string,
     attemptId: string
   ): Promise<HistoryAttempt> {
-    // Для деталей используем тот же эндпоинт истории
-    // и фильтруем по ID (или можно использовать отдельный эндпоинт если он появится)
     const history = await this.getHistory(_childProfileId);
     const attempt = history.find((a) => a.id === attemptId);
 
@@ -169,50 +162,57 @@ export const profileAPI = {
   /**
    * Получить настройки отчётов
    */
-  async getReportSettings(parentUserId: string): Promise<ReportSettings> {
-    return apiClient.get<ReportSettings>(`/reports/${parentUserId}/settings`);
+  async getReportSettings(childProfileId: string): Promise<ReportSettings> {
+    return apiClient.get<ReportSettings>(`/reports/${childProfileId}/settings`);
   },
 
   /**
    * Обновить настройки отчётов
    */
   async updateReportSettings(
-    parentUserId: string,
+    childProfileId: string,
     settings: Partial<ReportSettings>
   ): Promise<void> {
-    return apiClient.patch<void>(`/reports/${parentUserId}/settings`, settings);
+    return apiClient.patch<void>(`/reports/${childProfileId}/settings`, settings);
   },
 
   /**
    * Получить архив отчётов
    */
-  async getReportArchive(parentUserId: string): Promise<WeeklyReport[]> {
-    return apiClient.get<WeeklyReport[]>(`/reports/${parentUserId}/archive`);
+  async getReportArchive(childProfileId: string): Promise<WeeklyReport[]> {
+    return apiClient.get<WeeklyReport[]>(`/reports/${childProfileId}/archive`);
   },
 
   /**
    * Скачать отчёт
    */
   async downloadReport(
-    parentUserId: string,
+    childProfileId: string,
     reportId: string
   ): Promise<Blob> {
     const response = await apiClient.get<Blob>(
-      `/reports/${parentUserId}/${reportId}/download`,
+      `/reports/${childProfileId}/${reportId}/download`,
       { responseType: 'blob' }
     );
     return response;
   },
 
   /**
+   * Отправить тестовый отчёт
+   */
+  async sendTestReport(childProfileId: string): Promise<void> {
+    return apiClient.post<void>(`/reports/${childProfileId}/send-test`);
+  },
+
+  /**
    * Отправить сообщение в поддержку
    */
   async sendSupportMessage(
-    parentUserId: string,
+    childProfileId: string,
     message: string
   ): Promise<void> {
     return apiClient.post<void>(`/support/messages`, {
-      parentUserId,
+      childProfileId,
       message,
     });
   },
