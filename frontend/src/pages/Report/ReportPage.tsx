@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import { getCurrentChildProfileId } from "@/lib/auth";
 import { ROUTES } from "@/config/routes";
 import { BottomNav } from "@/components/layout/BottomNav";
-import styles from "@/pages/Profile/ProfilePage.module.css";
 
 // API configuration
 const API_BASE_URL = "http://localhost:8080";
