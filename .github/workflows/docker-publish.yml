@@ -2,7 +2,7 @@ name: Docker publish
 
 on:
   push:
-    branches: [ "main" ]   # при пуше в main
+    branches: [ "main", "prod-v1" ]   # при пуше в main
   workflow_dispatch:        # возможность запустить руками из UI
 
 permissions:
@@ -27,24 +27,48 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Формируем теги/лейблы; основной тег — "main", дополнительный — короткий SHA
-      - name: Docker meta
-        id: meta
+      # Docker meta for backend
+      - name: Docker meta backend
+        id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/child-bot
+          images: ghcr.io/${{ github.repository_owner }}/child_bot-backend
           tags: |
-            type=raw,value=main
+            type=raw,value=latest
             type=sha,format=short
 
-      - name: Build & Push
+      # Build & Push backend
+      - name: Build & Push backend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           platforms: linux/amd64     # для VDS на x86_64 этого достаточно
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Docker meta for frontend
+      - name: Docker meta frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/child_bot-frontend
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      # Build & Push frontend
+      - name: Build & Push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
