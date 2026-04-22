@@ -2,7 +2,7 @@
 # Build stage
 ########################
 # Используем стабильный Debian-based образ (меньше проблем с сетью, чаще кешируется)
-FROM golang:1.22-bookworm AS build
+FROM golang:1.25-bookworm AS build
 WORKDIR /src
 
 # Добавляем retry для apt (на случай сбоев сети)
