@@ -2,6 +2,8 @@
 .claude
 /.env
 /.env_old
+/.env.old
+/.env.new
 /api/test/e2e/testdata/answers/*.jpg
 /api/test/e2e/testdata/tasks/*.jpg
 /api/test/e2e/results/*.json

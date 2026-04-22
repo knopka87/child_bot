@@ -1,28 +1,21 @@
 import { useNavigate } from "react-router";
-import { ArrowLeft, Image, Images, BookOpen } from "lucide-react";
+import { ArrowLeft, Image, Images } from "lucide-react";
 import { motion } from "motion/react";
 
 const scenarios = [
   {
     id: "single",
-    icon: <Image size={28} />,
+    icon: <Image size={32} />,
     title: "1 фото",
     desc: "Задание и ответ на одном фото",
     color: "from-primary to-secondary",
   },
   {
     id: "two-separate",
-    icon: <Images size={28} />,
+    icon: <Images size={32} />,
     title: "2 фото",
     desc: "Задание отдельно, ответ отдельно",
     color: "from-[#00B894] to-[#55EFC4]",
-  },
-  {
-    id: "two-pages",
-    icon: <BookOpen size={28} />,
-    title: "2 фото задания",
-    desc: "Задание на нескольких страницах",
-    color: "from-[#FDCB6E] to-[#F9CA24]",
   },
 ];
 
@@ -32,10 +25,8 @@ export function CheckScenario() {
   const handleSelect = (id: string) => {
     if (id === "single") {
       navigate("/check/upload?scenario=single");
-    } else if (id === "two-separate") {
-      navigate("/check/upload?scenario=two-separate");
     } else {
-      navigate("/check/upload?scenario=two-pages");
+      navigate("/check/upload?scenario=two-separate");
     }
   };
 
@@ -56,7 +47,8 @@ export function CheckScenario() {
         </p>
       </div>
 
-      <div className="flex flex-col gap-4">
+      {/* Two equal-weight cards */}
+      <div className="flex flex-col gap-4 flex-1">
         {scenarios.map((s, i) => (
           <motion.button
             key={s.id}
@@ -64,9 +56,9 @@ export function CheckScenario() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
             onClick={() => handleSelect(s.id)}
-            className={`bg-gradient-to-r ${s.color} text-white rounded-3xl p-5 flex items-center gap-4 shadow-lg active:scale-[0.98] transition-transform`}
+            className={`bg-gradient-to-r ${s.color} text-white rounded-3xl p-6 flex items-center gap-4 shadow-lg active:scale-[0.98] transition-transform flex-1`}
           >
-            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
               {s.icon}
             </div>
             <div className="text-left">

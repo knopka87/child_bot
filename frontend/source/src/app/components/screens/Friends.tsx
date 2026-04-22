@@ -31,7 +31,7 @@ export function FriendsScreen() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-r from-[#FDCB6E] to-[#F9CA24] rounded-3xl p-5 mb-6 text-center"
+        className="bg-gradient-to-r from-primary to-secondary rounded-3xl p-5 mb-6 text-center"
       >
         <div className="flex items-center justify-center gap-2 mb-2">
           <Gift size={20} className="text-white" />
@@ -43,7 +43,7 @@ export function FriendsScreen() {
               key={i}
               className={`w-8 h-8 rounded-full flex items-center justify-center text-[14px] ${
                 i < invitedCount
-                  ? "bg-white text-[#E17055]"
+                  ? "bg-white text-primary"
                   : "bg-white/30 text-white/80"
               }`}
             >

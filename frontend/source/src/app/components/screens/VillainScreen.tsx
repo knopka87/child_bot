@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import { ArrowLeft } from "lucide-react";
-import { motion } from "motion/react";
+import { Villain } from "../Villain";
 
 export function VillainScreen() {
   const navigate = useNavigate();
@@ -17,13 +17,7 @@ export function VillainScreen() {
       </button>
 
       <div className="flex-1 flex flex-col items-center justify-center text-center">
-        <motion.div
-          animate={{ y: [0, -8, 0] }}
-          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-          className="text-[100px] mb-4"
-        >
-          👾
-        </motion.div>
+        <Villain size="lg" className="mb-4" />
 
         <h2 className="text-foreground mb-1">Злодей Кракозябра</h2>
         <p className="text-muted-foreground text-[14px] mb-6">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ArrowLeft, ChevronDown, ChevronUp, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { Villain } from "../Villain";
 
 const hints = [
   {
@@ -25,7 +26,7 @@ export function HelpResult() {
   const navigate = useNavigate();
   const [unlockedLevel, setUnlockedLevel] = useState(1);
   const [openHints, setOpenHints] = useState<string[]>(["Л1"]);
-  const [villainHealth, setVillainHealth] = useState(3);
+  const villainHealth = 3;
 
   const toggleHint = (id: string) => {
     const level = parseInt(id.replace("Л", ""));
@@ -43,12 +44,9 @@ export function HelpResult() {
     }
   };
 
+  // "Отправить ответ" now goes to upload → confirm → crop → processing → result
   const handleSubmitAnswer = () => {
-    const newHealth = villainHealth - 1;
-    setVillainHealth(newHealth);
-    if (newHealth <= 0) {
-      navigate("/victory");
-    }
+    navigate("/help/upload");
   };
 
   return (
@@ -64,8 +62,8 @@ export function HelpResult() {
       <h2 className="text-primary mb-2">Подсказки</h2>
 
       {/* Villain health bar */}
-      <div className="bg-white rounded-2xl p-3 mb-4 flex items-center gap-3">
-        <span className="text-[20px]">👾</span>
+      <div className="bg-white rounded-2xl p-3 mb-4 flex items-center gap-3 shadow-sm">
+        <Villain size="sm" className="flex-shrink-0" />
         <div className="flex-1">
           <p className="text-[12px] text-muted-foreground mb-1">Здоровье злодея</p>
           <div className="flex gap-1.5">

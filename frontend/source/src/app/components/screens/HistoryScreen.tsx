@@ -3,11 +3,11 @@ import { useNavigate } from "react-router";
 import { ArrowLeft, BookOpen, ClipboardCheck, CheckCircle, XCircle, Clock, Lightbulb, Loader, RefreshCw, Pencil } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-type Status = "correct" | "incorrect" | "unfinished" | "hints" | "processing";
+type Status = "correct" | "errors" | "unfinished" | "hints" | "processing";
 
 const historyItems = [
   { id: 1, date: "10 марта 2026", mode: "help" as const, title: "Математика — задача про яблоки", status: "correct" as Status },
-  { id: 2, date: "9 марта 2026", mode: "check" as const, title: "Русский — упражнение 45", status: "incorrect" as Status },
+  { id: 2, date: "9 марта 2026", mode: "check" as const, title: "Русский — упражнение 45", status: "errors" as Status },
   { id: 3, date: "9 марта 2026", mode: "help" as const, title: "Математика — примеры", status: "unfinished" as Status },
   { id: 4, date: "8 марта 2026", mode: "help" as const, title: "Окружающий мир — вопросы", status: "hints" as Status },
   { id: 5, date: "7 марта 2026", mode: "check" as const, title: "Математика — задание 12", status: "processing" as Status },
@@ -15,7 +15,7 @@ const historyItems = [
 
 const statusConfig: Record<Status, { label: string; icon: React.ReactNode; color: string; bg: string }> = {
   correct: { label: "Решено верно", icon: <CheckCircle size={14} />, color: "text-[#00B894]", bg: "bg-[#E8FFF8]" },
-  incorrect: { label: "Решено неверно", icon: <XCircle size={14} />, color: "text-destructive", bg: "bg-red-50" },
+  errors: { label: "Есть ошибки", icon: <XCircle size={14} />, color: "text-[#E17055]", bg: "bg-[#FFF0F0]" },
   unfinished: { label: "Незакончено", icon: <Clock size={14} />, color: "text-[#FDCB6E]", bg: "bg-[#FFF9E8]" },
   hints: { label: "Использованы подсказки", icon: <Lightbulb size={14} />, color: "text-primary", bg: "bg-primary/10" },
   processing: { label: "В обработке", icon: <Loader size={14} />, color: "text-muted-foreground", bg: "bg-muted" },
@@ -97,7 +97,7 @@ export function HistoryScreen() {
               </div>
 
               <div className="flex flex-col gap-3">
-                {(selectedItem.status === "incorrect" || selectedItem.status === "unfinished") && (
+                {(selectedItem.status === "errors" || selectedItem.status === "unfinished") && (
                   <button
                     onClick={() => {
                       setSelectedId(null);

@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router";
 import { motion } from "motion/react";
+import { Mascot } from "../Mascot";
+import { Villain } from "../Villain";
 
 export function VictoryScreen() {
   const navigate = useNavigate();
@@ -27,15 +29,15 @@ export function VictoryScreen() {
           </p>
         </motion.div>
 
-        {/* Defeated villain */}
+        {/* Characters */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="mb-6"
+          className="flex items-end gap-6 mb-6"
         >
-          <div className="text-[64px] opacity-50 grayscale">👾</div>
-          <p className="text-muted-foreground text-[12px]">Побеждён!</p>
+          <Mascot size="sm" message="Мы победили!" />
+          <Villain size="sm" defeated />
         </motion.div>
 
         {/* Reward */}
