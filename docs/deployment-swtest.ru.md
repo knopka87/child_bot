@@ -176,83 +176,56 @@ EMAIL_FROM=noreply@swtest.ru
 
 ---
 
-### 📌 Шаг 3. Подготовка файла `.env.production` (на локальной машине)
+### 📌 Шаг 3. Подготовка переменных окружения
 
-⚠️ **Этот шаг нужно выполнить на вашем компьютере ПЕРЕД загрузкой в swtest.ru**
+⚠️ **ВАЖНО:** Переменные окружения НЕ хранятся в Git репозитории из соображений безопасности. Вы будете вводить их напрямую в интерфейсе swtest.ru на следующем шаге.
 
-```bash
-# 1. Перейдите в директорию проекта
-cd /path/to/child_bot
-
-# 2. Скопируйте шаблон
-cp .env.production.example .env.production
-
-# 3. Сгенерируйте безопасные пароли
-echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)"
-echo "REDIS_PASSWORD=$(openssl rand -base64 32)"
-
-# 4. Откройте файл в редакторе
-nano .env.production  # или code .env.production
-```
-
-**Заполните следующие переменные:**
+**Подготовьте следующие значения:**
 
 ```bash
-# Environment
-ENV=production
-LOG_LEVEL=info
+# 1. Сгенерируйте безопасные пароли (выполните на локальной машине)
+openssl rand -base64 32  # для POSTGRES_PASSWORD
+openssl rand -base64 32  # для REDIS_PASSWORD
 
-# Database
-POSTGRES_PASSWORD=сгенерированный_пароль_postgresql
-REDIS_PASSWORD=сгенерированный_пароль_redis
-
-# Backend
-PORT=8080
-DEFAULT_LLM=gpt
-LLM_SERVER_URL=http://138.124.55.145:8000  # или ваш адрес
-ALLOWED_ORIGINS=https://swtest.ru,https://vk.com
-APP_URL=https://swtest.ru
-
-# VK Mini App (из VK Admin)
-VK_APP_ID=54517931
-VK_APP_SECRET=ваш_vk_app_secret_из_vk_admin
-
-# Email (Mailtrap рекомендуется - 1000 писем/месяц бесплатно)
-EMAIL_PROVIDER=mailtrap  # Или: sendgrid, ses, mailgun
-EMAIL_API_KEY=ваш_mailtrap_api_key_из_mailtrap_io
-EMAIL_FROM=noreply@swtest.ru
-
-# Frontend (Vite build args)
-VITE_API_BASE_URL=/api/v1
-VITE_APP_VERSION=1.0.0
-VITE_ANALYTICS_ENABLED=true
-VITE_VK_APP_ID=54517931
-VITE_MAX_APP_ID=ваш_max_app_id
-VITE_TELEGRAM_BOT_USERNAME=ваш_bot_username
+# 2. Сохраните эти значения в надежном месте (менеджер паролей)
 ```
-
-**Проверка перед использованием:**
-```bash
-# Убедитесь что нет незаполненных значений
-grep -E "CHANGE_ME|your_vk|your_max|your_bot|your-llm|ваш_|сгенерированный_" .env.production
-
-# Результат должен быть пустым!
-```
-
-💾 **Сохраните файл `.env.production` - он понадобится в следующем шаге**
 
 ---
 
 ### 📌 Шаг 4. Настройка переменных окружения (в swtest.ru)
 
 1. Перейдите на вкладку **Environment variables / Переменные окружения**
-2. Нажмите **Load variables from .env file**
-3. Загрузите подготовленный файл `.env.production` (созданный в Шаге 3)
-4. Проверьте что все переменные загрузились корректно
+2. Нажмите **+ Add environment variable** для каждой переменной
+3. Введите следующие переменные вручную:
 
-⚠️ **Если загрузка файла не работает:**
-- Введите переменные вручную по одной через кнопку **Add variable**
-- Скопируйте имя и значение из вашего `.env.production` файла
+**Обязательные переменные:**
+
+| Имя переменной | Значение | Комментарий |
+|----------------|----------|-------------|
+| `ENV` | `production` | Режим работы |
+| `LOG_LEVEL` | `info` | Уровень логирования |
+| `POSTGRES_DB` | `child_bot` | Имя БД |
+| `POSTGRES_USER` | `child_bot` | Пользователь БД |
+| `POSTGRES_PASSWORD` | сгенерированный пароль | ⚠️ Из шага 3 |
+| `REDIS_PASSWORD` | сгенерированный пароль | ⚠️ Из шага 3 |
+| `PORT` | `8080` | Порт backend |
+| `DEFAULT_LLM` | `gpt` | LLM провайдер |
+| `LLM_SERVER_URL` | `http://138.124.55.145:8000` | LLM сервер |
+| `ALLOWED_ORIGINS` | `https://swtest.ru,https://vk.com` | CORS домены |
+| `APP_URL` | `https://swtest.ru` | URL приложения |
+| `VK_APP_ID` | `54517931` | VK App ID |
+| `VK_APP_SECRET` | ваш_secret | ⚠️ Из VK Admin |
+| `EMAIL_PROVIDER` | `mailtrap` | Email провайдер |
+| `EMAIL_API_KEY` | ваш_api_key | ⚠️ Из Mailtrap |
+| `EMAIL_FROM` | `noreply@swtest.ru` | Email отправителя |
+| `VITE_API_BASE_URL` | `/api/v1` | Frontend API URL |
+| `VITE_APP_VERSION` | `1.0.0` | Версия приложения |
+| `VITE_ANALYTICS_ENABLED` | `true` | Аналитика |
+| `VITE_VK_APP_ID` | `54517931` | VK App ID для frontend |
+| `VITE_MAX_APP_ID` | ваш_max_id | MAX App ID (опционально) |
+| `VITE_TELEGRAM_BOT_USERNAME` | ваш_bot | Telegram bot (опционально) |
+
+💡 **Совет:** Скопируйте таблицу в текстовый редактор, заполните значения, затем вводите в Portainer
 
 ---
 
