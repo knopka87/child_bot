@@ -1,0 +1,149 @@
+/* Tailwind CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    color: #2D3436;
+    color: var(--vkui--color_text_primary, #2D3436);
+  }
+  
+  /* Переопределяем принудительно все жестко заданные цвета */
+  .text-foreground,
+  .text-muted-foreground,
+  .text-primary,
+  .text-secondary,
+  [class*="text-gray"],
+  [class*="text-slate"],
+  [style*="color:"] {
+    color: #2D3436 !important;
+  }
+}
+
+/* Reset и базовые стили */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #2C2D2E;
+  color: var(--vkui--color_text_primary, #2C2D2E);
+  background-color: #E8E5F5;
+  background-color: var(--vkui--color_background_content, #E8E5F5);
+}
+
+* {
+  color: inherit;
+}
+
+/* VK MiniApp specific */
+#root {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe area для iOS устройств */
+@layer utilities {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+/* Кастомизация VKUI цветов */
+:root {
+  /* Фиолетовая primary кнопка как в дизайне */
+  --vkui--color_accent_themed: #5B4FDB;
+  --vkui--color_accent: #5B4FDB;
+  --vkui--color_background_accent: #5B4FDB;
+  --vkui--color_background_accent--hover: #4A3EC5;
+  --vkui--color_background_accent--active: #3D32A8;
+
+  /* Темный текст вместо черного */
+  --vkui--color_text_primary: #2C2D2E;
+
+  /* Радиус кнопок */
+  --vkui--size_border_radius--regular: 12px;
+}
+
+/* Принудительный цвет для primary кнопок */
+.vkuiButton--mode-primary {
+  background-color: #5B4FDB !important;
+}
+
+.vkuiButton--mode-primary:hover {
+  background-color: #4A3EC5 !important;
+}
+
+.vkuiButton--mode-primary:active {
+  background-color: #3D32A8 !important;
+}
+
+/* Desktop layout - ограничение ширины с фоновым цветом */
+.app-desktop-wrapper {
+  background: #E8E4FF;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.app-desktop-container {
+  width: 100%;
+  max-width: 430px;
+  min-height: 100vh;
+  background: #F0F4FF;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.06);
+  position: relative;
+}
+
+/* На мобильных убираем wrapper */
+@media (max-width: 768px) {
+  .app-desktop-wrapper {
+    background: transparent;
+  }
+
+  .app-desktop-container {
+    max-width: 100%;
+    box-shadow: none;
+  }
+}
+
+/* Bottom navigation ограничение по ширине для desktop */
+.bottom-nav-bar {
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%);
+  max-width: 430px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .bottom-nav-bar {
+    left: 0 !important;
+    right: 0 !important;
+    transform: none;
+    max-width: 100%;
+  }
+}

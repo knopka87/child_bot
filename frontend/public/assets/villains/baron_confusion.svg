@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#E0F0FF" rx="10"/>
+  <!-- Top hat -->
+  <rect x="75" y="35" width="50" height="10" fill="#2C3E50" rx="2"/>
+  <rect x="85" y="15" width="30" height="25" fill="#2C3E50" rx="2"/>
+  <!-- Body -->
+  <rect x="70" y="60" width="60" height="80" fill="#34495E" rx="10"/>
+  <!-- Eyes -->
+  <circle cx="85" cy="85" r="7" fill="#E74C3C"/>
+  <circle cx="115" cy="85" r="7" fill="#E74C3C"/>
+  <circle cx="85" cy="85" r="3" fill="#000"/>
+  <circle cx="115" cy="85" r="3" fill="#000"/>
+  <!-- Confused mouth -->
+  <path d="M 85 110 Q 100 100 115 110" stroke="#FFF" stroke-width="3" fill="none"/>
+  <!-- Question marks -->
+  <text x="60" y="75" font-size="20" fill="#E74C3C">?</text>
+  <text x="125" y="95" font-size="24" fill="#E74C3C">?</text>
+  <!-- Name -->
+  <text x="100" y="175" font-size="11" fill="#2C3E50" text-anchor="middle" font-weight="bold">Барон Путаница</text>
+</svg>

@@ -1,0 +1,12 @@
+# Playwright Test Results
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
+# Test artifacts
+*.trace
+*.webm
+*.zip
+
+# Screenshots
+/screenshots/

@@ -1,0 +1,58 @@
+.card {
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatarPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vkui--color_accent_blue);
+  color: white;
+  font-size: 36px;
+  font-weight: 600;
+}
+
+.info {
+  flex: 1;
+}
+
+.name {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+  color: var(--vkui--color_text_primary);
+}
+
+.grade {
+  font-size: 14px;
+  color: var(--vkui--color_text_secondary);
+  margin-bottom: 8px;
+}
+
+.subscription {
+  font-size: 14px;
+  font-weight: 500;
+}

@@ -1,0 +1,21 @@
+.card {
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.bordered {
+  border: 1px solid var(--vkui--color_separator_primary);
+}
+
+.clickable {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.clickable:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.clickable:active {
+  transform: scale(0.98);
+}

@@ -1,0 +1,273 @@
+/* src/pages/Profile/History/HistoryPage.module.css */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 16px 20px 100px;
+  background: linear-gradient(180deg, #E8ECFF 0%, #F5F7FF 100%);
+  position: relative;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.backButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6C5CE7;
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.2s;
+}
+
+.backButton:hover {
+  opacity: 0.8;
+}
+
+.backButton:active {
+  opacity: 0.6;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #6C5CE7;
+  margin-bottom: 20px;
+}
+
+/* Фильтры */
+
+.filtersContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filterLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6C757D;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.filters::-webkit-scrollbar {
+  display: none;
+}
+
+.filterButton {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid #E9ECEF;
+  background: white;
+  color: #495057;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.filterButton:hover {
+  background: #F8F9FA;
+}
+
+.filterButton.active {
+  background: #6C5CE7;
+  color: white;
+  border-color: #6C5CE7;
+}
+
+/* История */
+
+.historyList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.historyCard {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.08);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  width: 100%;
+  text-align: left;
+}
+
+.historyCard:hover {
+  box-shadow: 0 4px 12px rgba(108, 92, 231, 0.12);
+  transform: translateY(-2px);
+}
+
+.historyCard:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.cardHeader {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.modeIcon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #F0F4FF;
+  color: #6C5CE7;
+}
+
+.cardContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2D3436;
+  line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.cardDate {
+  font-size: 12px;
+  color: #6C757D;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Статусы */
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  width: fit-content;
+}
+
+.statusBadge.success {
+  background: #E8FFF8;
+  color: #00B894;
+}
+
+.statusBadge.error {
+  background: #FFE8E8;
+  color: #DC3545;
+}
+
+.statusBadge.processing {
+  background: #F8F9FA;
+  color: #6C757D;
+}
+
+.statusBadge.unfinished {
+  background: #FFF9E8;
+  color: #FDCB6E;
+}
+
+.statusBadge.hints {
+  background: #F0F4FF;
+  color: #6C5CE7;
+}
+
+/* Состояния */
+
+.loadingContainer,
+.errorContainer,
+.emptyContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.errorText {
+  color: #DC3545;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.emptyText {
+  color: #6C757D;
+  font-size: 15px;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.retryButton {
+  padding: 12px 24px;
+  background: #6C5CE7;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.retryButton:hover {
+  background: #5B4BC7;
+}
+
+.retryButton:active {
+  transform: scale(0.98);
+}

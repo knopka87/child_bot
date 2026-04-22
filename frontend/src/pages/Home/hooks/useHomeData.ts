@@ -1,0 +1,91 @@
+// src/pages/Home/hooks/useHomeData.ts
+import { useEffect, useState } from 'react';
+import { homeAPI } from '@/api/home';
+import type { HomeData } from '@/types/home';
+import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
+
+export function useHomeData() {
+  const [data, setData] = useState<HomeData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [childProfileId, setChildProfileId] = useState<string | null>(null);
+
+  // Загружаем child_profile_id из storage
+  useEffect(() => {
+    const loadProfileId = async () => {
+      try {
+        const profileId = await vkStorage.getItem(storageKeys.PROFILE_ID);
+        console.log('[useHomeData] Loaded child_profile_id from storage:', profileId);
+        setChildProfileId(profileId);
+      } catch (err) {
+        console.error('[useHomeData] Failed to load profile ID from storage:', err);
+        setError(err as Error);
+        setIsLoading(false);
+      }
+    };
+
+    loadProfileId();
+  }, []);
+
+  const fetchData = async () => {
+    if (!childProfileId) {
+      console.warn('[useHomeData] No child_profile_id, skipping fetch');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log('[useHomeData] Fetching home data for profile:', childProfileId);
+      const homeData = await homeAPI.getHomeData(childProfileId);
+      console.log('[useHomeData] Home data loaded successfully:', homeData);
+
+      setData(homeData);
+    } catch (err) {
+      setError(err as Error);
+      console.error('[useHomeData] Failed to fetch home data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (childProfileId) {
+      fetchData();
+    }
+  }, [childProfileId]);
+
+  // Перезагружаем данные при каждом возвращении на страницу
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && childProfileId) {
+        console.log('[useHomeData] Page became visible, refetching data...');
+        fetchData();
+      }
+    };
+
+    const handleFocus = () => {
+      if (childProfileId) {
+        console.log('[useHomeData] Window focused, refetching data...');
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [childProfileId]);
+
+  return {
+    data,
+    isLoading,
+    error,
+    refetch: fetchData,
+  };
+}

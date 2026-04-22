@@ -10,9 +10,10 @@ echo "[entrypoint] starting app…"
 # ждём БД
 # --- wait for DB socket to be reachable (TCP) ---
 ATTEMPTS=60
+DB_HOST="${POSTGRES_HOST:-postgres}"
 for i in $(seq 1 ${ATTEMPTS}); do
-  if bash -c '>/dev/tcp/db/5432' 2>/dev/null; then
-    echo "[migrate] tcp to db:5432 is open"
+  if bash -c ">/dev/tcp/${DB_HOST}/5432" 2>/dev/null; then
+    echo "[migrate] tcp to ${DB_HOST}:5432 is open"
     break
   fi
   echo "[migrate] db not ready yet… (${i}/${ATTEMPTS})"

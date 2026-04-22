@@ -12,6 +12,14 @@ type TestConfig struct {
 	LLMName     string // LLM name: "gpt", "gemini", etc.
 }
 
+// getEnvOrDefault returns environment variable value or default if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 // loadTestConfig loads test configuration from environment variables
 func loadTestConfig(t *testing.T) *TestConfig {
 	t.Helper()

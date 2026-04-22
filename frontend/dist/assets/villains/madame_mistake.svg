@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#FFF0E0" rx="10"/>
+  <!-- Glasses -->
+  <circle cx="75" cy="75" r="18" fill="none" stroke="#2C3E50" stroke-width="3"/>
+  <circle cx="125" cy="75" r="18" fill="none" stroke="#2C3E50" stroke-width="3"/>
+  <line x1="93" y1="75" x2="107" y2="75" stroke="#2C3E50" stroke-width="3"/>
+  <!-- Eyes behind glasses -->
+  <circle cx="75" cy="75" r="5" fill="#E74C3C"/>
+  <circle cx="125" cy="75" r="5" fill="#E74C3C"/>
+  <!-- Body -->
+  <path d="M 70 100 L 130 100 L 120 160 L 80 160 Z" fill="#E74C3C"/>
+  <!-- Evil smile -->
+  <path d="M 80 110 Q 100 125 120 110" stroke="#FFF" stroke-width="3" fill="none"/>
+  <!-- Red X marks -->
+  <text x="60" y="140" font-size="20" fill="#C0392B">✕</text>
+  <text x="125" y="150" font-size="24" fill="#C0392B">✕</text>
+  <!-- Name -->
+  <text x="100" y="185" font-size="12" fill="#E74C3C" text-anchor="middle" font-weight="bold">Мадам Ошибка</text>
+</svg>

@@ -1,0 +1,65 @@
+.successSection,
+.errorSection {
+  text-align: center;
+  padding: 24px 0;
+}
+
+.checkmark {
+  font-size: 64px;
+  color: var(--vkui--color_text_positive);
+  margin-bottom: 16px;
+}
+
+.errorIcon {
+  font-size: 64px;
+  color: var(--vkui--color_text_negative);
+  margin-bottom: 16px;
+}
+
+.errors {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.errorCard {
+  padding: 16px;
+  text-align: left;
+}
+
+.errorHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.errorNumber {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vkui--color_accent_blue);
+  text-transform: uppercase;
+}
+
+.errorSeverity {
+  font-size: 16px;
+}
+
+.rewardsCard {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--vkui--color_background_secondary);
+}
+
+.rewards {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.reward {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vkui--color_text_primary);
+}

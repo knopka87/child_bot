@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#FFE8F0" rx="10"/>
+  <!-- Dress -->
+  <path d="M 70 140 L 130 140 L 115 60 L 85 60 Z" fill="#9B59B6"/>
+  <!-- Head -->
+  <circle cx="100" cy="50" r="25" fill="#FFE0BD"/>
+  <!-- Hair -->
+  <path d="M 75 40 Q 100 20 125 40" fill="#E67E22" stroke="#D35400" stroke-width="2"/>
+  <!-- Eyes -->
+  <circle cx="90" cy="48" r="4" fill="#000"/>
+  <circle cx="110" cy="48" r="4" fill="#000"/>
+  <!-- Smirk -->
+  <path d="M 92 60 Q 100 65 108 60" stroke="#000" stroke-width="2" fill="none"/>
+  <!-- Attention icons -->
+  <text x="55" y="80" font-size="18">📱</text>
+  <text x="135" y="90" font-size="18">🎮</text>
+  <text x="65" y="120" font-size="16">🎬</text>
+  <!-- Name -->
+  <text x="100" y="175" font-size="11" fill="#9B59B6" text-anchor="middle" font-weight="bold">Герцогиня Отвлечения</text>
+</svg>

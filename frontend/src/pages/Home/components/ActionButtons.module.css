@@ -1,0 +1,29 @@
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.helpButton,
+.checkButton {
+  height: 96px;
+  padding: 16px;
+}
+
+.buttonContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.buttonTitle {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.buttonSubtitle {
+  font-size: 14px;
+  opacity: 0.8;
+}

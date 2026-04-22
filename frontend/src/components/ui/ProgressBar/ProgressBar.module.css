@@ -1,0 +1,39 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress {
+  flex: 1;
+}
+
+.size-sm {
+  height: 4px;
+}
+
+.size-md {
+  height: 8px;
+}
+
+.size-lg {
+  height: 12px;
+}
+
+.variant-default {
+  --vkui--color_background_accent: var(--vkui--color_accent_blue);
+}
+
+.variant-error {
+  --vkui--color_background_accent: var(--vkui--color_text_negative);
+}
+
+.variant-success {
+  --vkui--color_background_accent: var(--vkui--color_text_positive);
+}
+
+.label {
+  font-size: 12px;
+  color: var(--vkui--color_text_secondary);
+  white-space: nowrap;
+}

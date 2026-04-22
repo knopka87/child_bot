@@ -1,0 +1,11 @@
+DROP TRIGGER IF EXISTS child_profile_create_referral_code ON child_profiles;
+DROP FUNCTION IF EXISTS create_referral_code_for_profile();
+DROP FUNCTION IF EXISTS generate_referral_code();
+DROP INDEX IF EXISTS idx_child_referral_milestones_profile;
+DROP INDEX IF EXISTS idx_referral_codes_code;
+DROP INDEX IF EXISTS idx_referrals_referred;
+DROP INDEX IF EXISTS idx_referrals_referrer;
+DROP TABLE IF EXISTS child_referral_milestones;
+DROP TABLE IF EXISTS referral_milestones;
+DROP TABLE IF EXISTS referral_codes;
+DROP TABLE IF EXISTS referrals;
