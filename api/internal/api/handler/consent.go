@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"child-bot/api/internal/api/middleware"
@@ -142,16 +143,79 @@ func (h *ConsentHandler) GetConsent(w http.ResponseWriter, r *http.Request) {
 
 	// Формируем ответ
 	consentData := map[string]interface{}{
-		"id":                      consent.ID,
-		"parentUserId":            consent.ParentUserID,
-		"privacyPolicyVersion":    consent.PrivacyPolicyVersion,
-		"privacyPolicyAccepted":   consent.PrivacyPolicyAccepted,
-		"termsVersion":            consent.TermsVersion,
-		"termsAccepted":           consent.TermsAccepted,
-		"adultConsent":            consent.AdultConsent,
-		"createdAt":               consent.CreatedAt,
-		"updatedAt":               consent.UpdatedAt,
+		"id":                    consent.ID,
+		"parentUserId":          consent.ParentUserID,
+		"privacyPolicyVersion":  consent.PrivacyPolicyVersion,
+		"privacyPolicyAccepted": consent.PrivacyPolicyAccepted,
+		"termsVersion":          consent.TermsVersion,
+		"termsAccepted":         consent.TermsAccepted,
+		"adultConsent":          consent.AdultConsent,
+		"createdAt":             consent.CreatedAt,
+		"updatedAt":             consent.UpdatedAt,
 	}
 
 	response.OK(w, consentData)
+}
+
+// GetConsentHistory получает историю изменений согласий
+// GET /consent/history?parentUserId=xxx&limit=20
+func (h *ConsentHandler) GetConsentHistory(w http.ResponseWriter, r *http.Request) {
+	// Получаем platformID из middleware
+	platformID := middleware.GetPlatformID(r.Context())
+	if platformID == "" {
+		response.Unauthorized(w, "Missing platform ID")
+		return
+	}
+
+	parentUserID := r.URL.Query().Get("parentUserId")
+	if parentUserID == "" {
+		response.BadRequest(w, "parentUserId is required")
+		return
+	}
+
+	// Опциональный параметр limit
+	limit := 50
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		var err error
+		_, err = fmt.Sscanf(limitStr, "%d", &limit)
+		if err != nil || limit <= 0 || limit > 100 {
+			response.BadRequest(w, "limit must be between 1 and 100")
+			return
+		}
+	}
+
+	// Получение истории
+	history, err := h.store.GetConsentHistory(r.Context(), platformID, parentUserID, limit)
+	if err != nil {
+		response.InternalError(w, "Failed to get consent history")
+		return
+	}
+
+	// Формируем ответ
+	historyData := make([]map[string]interface{}, 0, len(history))
+	for _, h := range history {
+		entry := map[string]interface{}{
+			"id":                    h.ID,
+			"action":                h.Action,
+			"privacyPolicyVersion":  h.PrivacyPolicyVersion,
+			"privacyPolicyAccepted": h.PrivacyPolicyAccepted,
+			"termsVersion":          h.TermsVersion,
+			"termsAccepted":         h.TermsAccepted,
+			"adultConsent":          h.AdultConsent,
+			"createdAt":             h.CreatedAt,
+		}
+
+		// Добавляем changed fields только для action='updated'
+		if h.Action == "updated" && len(h.ChangedFields) > 0 {
+			entry["changedFields"] = h.ChangedFields
+			entry["previousValues"] = h.PreviousValues
+		}
+
+		historyData = append(historyData, entry)
+	}
+
+	response.OK(w, map[string]interface{}{
+		"history": historyData,
+		"count":   len(historyData),
+	})
 }

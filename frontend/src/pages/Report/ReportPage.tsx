@@ -1,70 +1,99 @@
-// src/pages/Report/ReportPage.tsx
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, Mail, Send } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { useAnalytics } from '@/hooks/useAnalytics';
-import { useProfileStore } from '@/stores/profileStore';
-import { profileAPI } from '@/api/profile';
-import { ROUTES } from '@/config/routes';
-import { BottomNav } from '@/components/layout/BottomNav';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Download, Mail, Send, FileText } from "lucide-react";
+import { motion } from "framer-motion";
+import { getCurrentChildProfileId } from "@/lib/auth";
+import { ROUTES } from "@/config/routes";
+import { BottomNav } from "@/components/layout/BottomNav";
+import styles from "@/pages/Profile/ProfilePage.module.css";
 
-interface PastReport {
+// API configuration
+const API_BASE_URL = "http://localhost:8080";
+const PLATFORM_ID = "web";
+
+interface ReportInfo {
   id: string;
-  date: string;
-  status: string;
+  reportDate: string;
+  sentAt?: string;
+  createdAt: string;
 }
-
-const MOCK_PAST_REPORTS: PastReport[] = [
-  { id: '1', date: '10 марта 2026', status: 'Отправлен' },
-  { id: '2', date: '3 марта 2026', status: 'Отправлен' },
-  { id: '3', date: '24 февраля 2026', status: 'Отправлен' },
-];
 
 export default function ReportPage() {
   const navigate = useNavigate();
-  const analytics = useAnalytics();
-  const profile = useProfileStore((state) => state.profile);
-
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [weeklyEnabled, setWeeklyEnabled] = useState(true);
-  const [pastReports] = useState<PastReport[]>(MOCK_PAST_REPORTS);
+  const [reportsList, setReportsList] = useState<ReportInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Загружаем настройки отчётов при монтировании
   useEffect(() => {
-    const loadSettings = async () => {
-      if (!profile?.child_profile_id) return;
+    loadData();
+  }, []);
 
-      try {
-        const settings = await profileAPI.getReportSettings(profile.child_profile_id);
-        setEmail(settings.email);
-        setWeeklyEnabled(settings.weeklyReportEnabled);
-      } catch {
-        setEmail('');
-        setWeeklyEnabled(true);
+  const loadData = async () => {
+    const childProfileId = await getCurrentChildProfileId();
+    if (!childProfileId) return;
+
+    try {
+      // Load email settings from backend API
+      const settingsResponse = await fetch(
+        `${API_BASE_URL}/reports/${childProfileId}/settings`,
+        {
+          headers: {
+            "X-Platform-ID": PLATFORM_ID,
+            "X-Child-Profile-ID": childProfileId,
+          },
+        }
+      );
+
+      if (settingsResponse.ok) {
+        const settings = await settingsResponse.json();
+        setEmail(settings.email || "");
+        setWeeklyEnabled(settings.weeklyReportEnabled ?? true);
       }
-    };
 
-    loadSettings();
+      // Load reports list
+      const listResponse = await fetch(
+        `${API_BASE_URL}/reports/${childProfileId}/list`,
+        {
+          headers: {
+            "X-Platform-ID": PLATFORM_ID,
+            "X-Child-Profile-ID": childProfileId,
+          },
+        }
+      );
 
-    analytics.trackEvent('profile_report_clicked', {
-      child_profile_id: profile?.child_profile_id,
-    });
-  }, [profile?.child_profile_id, analytics]);
+      if (listResponse.ok) {
+        const data = await listResponse.json();
+        setReportsList(data || []);
+      }
+    } catch (error) {
+      console.error("[ReportPage] Failed to load data:", error);
+    }
+  };
 
   const handleEmailChange = async (newEmail: string) => {
     setEmail(newEmail);
 
-    if (profile?.child_profile_id && newEmail.includes('@')) {
+    // Save to backend API
+    if (newEmail.includes("@")) {
+      const childProfileId = await getCurrentChildProfileId();
+      if (!childProfileId) return;
+
       try {
-        await profileAPI.updateReportSettings(profile.child_profile_id, { email: newEmail });
-        analytics.trackEvent('report_email_changed' as any, {
-          child_profile_id: profile.child_profile_id,
-          email_domain: newEmail.split('@')[1],
-        });
+        await fetch(
+          `${API_BASE_URL}/reports/${childProfileId}/settings`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Platform-ID": PLATFORM_ID,
+              "X-Child-Profile-ID": childProfileId,
+            },
+            body: JSON.stringify({ email: newEmail }),
+          }
+        );
       } catch (error) {
-        console.error('[ReportPage] Failed to update email:', error);
+        console.error("[ReportPage] Failed to save email:", error);
       }
     }
   };
@@ -73,56 +102,127 @@ export default function ReportPage() {
     const newValue = !weeklyEnabled;
     setWeeklyEnabled(newValue);
 
-    if (profile?.child_profile_id) {
-      try {
-        await profileAPI.updateReportSettings(profile.child_profile_id, {
-          weeklyReportEnabled: newValue,
-        });
-        analytics.trackEvent('weekly_report_toggled' as any, {
-          child_profile_id: profile.child_profile_id,
-          enabled: newValue,
-        });
-      } catch (error) {
-        console.error('[ReportPage] Failed to toggle weekly report:', error);
-        setWeeklyEnabled(!newValue);
-      }
+    const childProfileId = await getCurrentChildProfileId();
+    if (!childProfileId) return;
+
+    try {
+      await fetch(
+        `${API_BASE_URL}/reports/${childProfileId}/settings`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Platform-ID": PLATFORM_ID,
+            "X-Child-Profile-ID": childProfileId,
+          },
+          body: JSON.stringify({ weeklyReportEnabled: newValue }),
+        }
+      );
+    } catch (error) {
+      console.error("[ReportPage] Failed to save weekly setting:", error);
+      // Откатываем изменение в случае ошибки
+      setWeeklyEnabled(!newValue);
     }
   };
 
   const handleSendTestReport = async () => {
-    if (!profile?.child_profile_id) return;
+    if (!email || !email.includes("@")) {
+      alert("⚠️ Пожалуйста, введите корректный email");
+      return;
+    }
+
+    const childProfileId = await getCurrentChildProfileId();
+    if (!childProfileId) {
+      alert("⚠️ Профиль не найден");
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await profileAPI.sendTestReport(profile.child_profile_id);
-      analytics.trackEvent('test_report_sent' as any, {
-        child_profile_id: profile.child_profile_id,
-      });
-      alert('✅ Тестовый отчёт отправлен!');
+      const response = await fetch(
+        `${API_BASE_URL}/reports/${childProfileId}/send-test`,
+        {
+          method: "POST",
+          headers: {
+            "X-Platform-ID": PLATFORM_ID,
+            "X-Child-Profile-ID": childProfileId,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to send report");
+      }
+
+      const result = await response.json();
+      alert(`✅ ${result.message || "Тестовый отчёт отправлен на " + email}`);
     } catch (error) {
-      console.error('[ReportPage] Failed to send test report:', error);
-      alert('⚠️ Не удалось отправить тестовый отчёт');
+      console.error("[ReportPage] Failed to send test report:", error);
+      alert("⚠️ Не удалось отправить тестовый отчёт");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDownloadReport = async (reportId: string) => {
-    if (!profile?.child_profile_id) return;
+  const handleDownloadReport = async (reportDate: string) => {
+    const childProfileId = await getCurrentChildProfileId();
+    if (!childProfileId) {
+      alert("Профиль не найден");
+      return;
+    }
 
     try {
-      analytics.trackEvent('report_download_clicked' as any, {
-        child_profile_id: profile.child_profile_id,
-        report_id: reportId,
-      });
-      alert('📄 Отчёт скоро будет доступен для скачивания');
-    } catch (error) {
-      console.error('[ReportPage] Failed to download report:', error);
+      const response = await fetch(
+        `${API_BASE_URL}/reports/${childProfileId}/${reportDate}/download`,
+        {
+          headers: {
+            "X-Platform-ID": PLATFORM_ID,
+            "X-Child-Profile-ID": childProfileId,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      // Получаем blob и создаем ссылку для скачивания
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `report_${reportDate}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      console.error("Failed to download report:", err);
+      alert("Не удалось скачать отчёт");
     }
   };
 
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("ru-RU", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const formatShortDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  };
+
   return (
-    <div className="flex flex-col min-h-full px-5 pt-4 pb-6 bg-gradient-to-b from-[#F0F4FF] to-background">
+    <div className="flex flex-col min-h-full px-5 pt-4 pb-20 bg-gradient-to-b from-[#F0F4FF] to-background" style={{ color: '#2C2D2E' }}>
       {/* Back button */}
       <button
         onClick={() => navigate(ROUTES.PROFILE)}
@@ -162,12 +262,12 @@ export default function ReportPage() {
           <button
             onClick={handleWeeklyToggle}
             className={`w-12 h-7 rounded-full transition-all relative ${
-              weeklyEnabled ? 'bg-primary' : 'bg-switch-background'
+              weeklyEnabled ? "bg-primary" : "bg-switch-background"
             }`}
           >
             <div
               className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-all shadow-sm ${
-                weeklyEnabled ? 'right-1' : 'left-1'
+                weeklyEnabled ? "right-1" : "left-1"
               }`}
             />
           </button>
@@ -188,37 +288,54 @@ export default function ReportPage() {
         onClick={handleSendTestReport}
         disabled={isLoading || !email}
         className={`w-full py-3 bg-primary text-white rounded-2xl flex items-center justify-center gap-2 mb-6 shadow-lg shadow-primary/20 ${
-          (!email || isLoading) ? 'opacity-50 cursor-not-allowed' : ''
+          (!email || isLoading) ? "opacity-50 cursor-not-allowed" : ""
         }`}
       >
         <Send size={18} />
-        {isLoading ? 'Отправляем...' : 'Отправить тестовый отчёт'}
+        {isLoading ? "Отправляем..." : "Отправить тестовый отчёт"}
       </motion.button>
 
       {/* Archive section */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
-        <h3 className="text-foreground mb-3">Архив отчётов</h3>
-        <div className="flex flex-col gap-2">
-          {pastReports.map((report) => (
-            <div key={report.id} className="bg-white rounded-2xl p-3 flex items-center justify-between shadow-sm">
-              <div>
-                <p className="text-[14px] text-foreground">{report.date}</p>
-                <p className="text-[12px] text-[#00B894]">{report.status}</p>
-              </div>
-              <button
-                onClick={() => handleDownloadReport(report.id)}
-                className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center"
+      {reportsList.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <h3 className="text-foreground mb-3">📚 Архив отчётов</h3>
+          <div className="flex flex-col gap-2">
+            {reportsList.map((report) => (
+              <div
+                key={report.id}
+                className="bg-white rounded-2xl p-4 shadow-sm border border-border"
               >
-                <Download size={18} className="text-primary" />
-              </button>
-            </div>
-          ))}
-        </div>
-      </motion.div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                      <FileText size={20} className="text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-[14px] text-foreground font-medium">
+                        {formatDate(report.reportDate)}
+                      </p>
+                      <p className="text-[12px] text-muted-foreground">
+                        Создан {formatShortDate(report.createdAt)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDownloadReport(report.reportDate)}
+                  className="w-full py-2.5 bg-primary/10 text-primary rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                >
+                  <Download size={16} />
+                  <span className="text-[14px] font-medium">Скачать PDF</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* Bottom Nav */}
       <BottomNav />

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Spinner } from '@/components/ui/Spinner';
+import { AchievementsPageSkeleton } from '@/components/ui/skeleton';
 import { AchievementDetailModal } from './components/AchievementDetailModal';
 import { useAchievements } from './hooks/useAchievements';
 import { useNewAchievements } from '@/hooks/useNewAchievements';
@@ -82,14 +82,7 @@ export function AchievementsPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col min-h-screen bg-[#F5F3FF]">
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" />
-        </div>
-        <BottomNav />
-      </div>
-    );
+    return <AchievementsPageSkeleton />;
   }
 
   if (error) {

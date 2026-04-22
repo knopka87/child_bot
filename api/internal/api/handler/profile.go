@@ -307,3 +307,42 @@ func (h *ProfileHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	response.OK(w, stats)
 }
+
+// GetByPlatform получает профиль по platform_id и platform_user_id
+// GET /profiles/by-platform?platform_id=vk&platform_user_id=12345
+func (h *ProfileHandler) GetByPlatform(w http.ResponseWriter, r *http.Request) {
+	platformID := r.URL.Query().Get("platform_id")
+	platformUserID := r.URL.Query().Get("platform_user_id")
+
+	if platformID == "" {
+		response.BadRequest(w, "platform_id is required")
+		return
+	}
+	if platformUserID == "" {
+		response.BadRequest(w, "platform_user_id is required")
+		return
+	}
+
+	// Валидация platform_id
+	validPlatforms := map[string]bool{
+		"vk":       true,
+		"telegram": true,
+		"max":      true,
+		"web":      true,
+	}
+	if !validPlatforms[platformID] {
+		response.BadRequest(w, "invalid platform_id, must be one of: vk, telegram, max, web")
+		return
+	}
+
+	childProfileID, err := h.service.GetProfileByPlatform(r.Context(), platformID, platformUserID)
+	if err != nil {
+		log.Printf("GetByPlatform error: %v", err)
+		response.NotFound(w, "Profile not found")
+		return
+	}
+
+	response.OK(w, map[string]string{
+		"child_profile_id": childProfileID,
+	})
+}

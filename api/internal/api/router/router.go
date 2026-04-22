@@ -2,6 +2,7 @@ package router
 
 import (
 	"net/http"
+	"os"
 
 	"child-bot/api/internal/api/handler"
 	"child-bot/api/internal/api/middleware"
@@ -45,13 +46,21 @@ func New(deps *Dependencies) http.Handler {
 	homeService := service.NewHomeService(deps.Store, attemptService, profileService, villainService)
 	reportService := service.NewReportService(deps.Store)
 
+	// Инициализируем VK Pay service
+	vkPayConfig := service.VKPayConfig{
+		AppID:       os.Getenv("VK_APP_ID"),
+		AppSecret:   os.Getenv("VK_APP_SECRET"),
+		CallbackURL: deps.Config.AppURL + "/webhooks/vk-pay",
+	}
+	vkPayService := service.NewVKPayService(deps.Store, vkPayConfig)
+
 	// Инициализируем handlers с сервисами
 	attemptHandler := handler.NewAttemptHandlerWithService(attemptService, profileService)
 	homeHandler := handler.NewHomeHandler(homeService)
 	profileHandler := handler.NewProfileHandler(profileService)
 	achievementHandler := handler.NewAchievementHandler(deps.Store)
 	villainHandler := handler.NewVillainHandler(villainService)
-	subscriptionHandler := handler.NewSubscriptionHandler(deps.Store)
+	subscriptionHandler := handler.NewSubscriptionHandler(deps.Store, vkPayService)
 	referralHandler := handler.NewReferralHandler(deps.Store, deps.Config.AppURL)
 	avatarHandler := handler.NewAvatarHandler()
 	consentHandler := handler.NewConsentHandler(deps.Store)
@@ -59,6 +68,8 @@ func New(deps *Dependencies) http.Handler {
 	legalHandler := handler.NewLegalHandler(deps.Store)
 	emailHandler := handler.NewEmailHandler(deps.Store)
 	reportHandler := handler.NewReportHandler(reportService)
+	csrfHandler := handler.NewCSRFHandler()
+	vkPayWebhookHandler := handler.NewVKPayWebhookHandler(vkPayService)
 
 	// Регистрация routes
 	registerAttemptRoutes(mux, attemptHandler)
@@ -74,14 +85,21 @@ func New(deps *Dependencies) http.Handler {
 	registerLegalRoutes(mux, legalHandler)
 	registerEmailRoutes(mux, emailHandler)
 	registerReportRoutes(mux, reportHandler)
+	registerCSRFRoutes(mux, csrfHandler)
+	registerWebhookRoutes(mux, vkPayWebhookHandler)
 
 	// Применяем middleware в правильном порядке:
-	// Recovery -> Logging -> CORS -> Auth
+	// HTTPSRedirect -> SecurityHeaders -> Recovery -> Logging -> RateLimit -> CORS -> VKAuth -> Auth -> CSRFProtection
 	return middleware.Chain(
+		middleware.HTTPSRedirect,
+		middleware.SecurityHeaders,
 		middleware.Recovery,
 		middleware.Logging,
+		middleware.RateLimit(middleware.RateLimitDefault),
 		middleware.CORS,
+		middleware.VKAuthMiddleware,
 		middleware.Auth,
+		middleware.CSRFProtection,
 	)(mux)
 }
 
@@ -105,6 +123,7 @@ func registerHomeRoutes(mux *http.ServeMux, h *handler.HomeHandler) {
 // registerProfileRoutes регистрирует routes для profile
 func registerProfileRoutes(mux *http.ServeMux, h *handler.ProfileHandler) {
 	mux.HandleFunc("POST /profiles/child", h.CreateChild)
+	mux.HandleFunc("GET /profiles/by-platform", h.GetByPlatform)
 	mux.HandleFunc("GET /profile", h.Get)
 	mux.HandleFunc("PUT /profile", h.Update)
 	mux.HandleFunc("GET /profile/history", h.GetHistory)
@@ -159,6 +178,7 @@ func registerConsentRoutes(mux *http.ServeMux, h *handler.ConsentHandler) {
 	mux.HandleFunc("POST /consent", h.SaveConsent)
 	mux.HandleFunc("GET /consent", h.GetConsent)
 	mux.HandleFunc("GET /consent/check", h.CheckConsent)
+	mux.HandleFunc("GET /consent/history", h.GetConsentHistory)
 }
 
 // registerAnalyticsRoutes регистрирует routes для analytics
@@ -181,6 +201,23 @@ func registerEmailRoutes(mux *http.ServeMux, h *handler.EmailHandler) {
 
 // registerReportRoutes регистрирует routes для отчётов
 func registerReportRoutes(mux *http.ServeMux, h *handler.ReportHandler) {
-	mux.HandleFunc("GET /reports/{childProfileId}/weekly/pdf", h.GetWeeklyPDF)
 	mux.HandleFunc("GET /reports/{childProfileId}/weekly/data", h.GetWeeklyData)
+	mux.HandleFunc("GET /reports/{childProfileId}/weekly/html", h.GetWeeklyHTML)
+	mux.HandleFunc("GET /reports/{childProfileId}/list", h.GetReportsList)
+	mux.HandleFunc("GET /reports/{childProfileId}/{reportDate}/html", h.GetReportByDate)
+	mux.HandleFunc("GET /reports/{childProfileId}/{reportDate}/download", h.DownloadReportPDF)
+	mux.HandleFunc("POST /reports/{childProfileId}/generate", h.GenerateReport)
+	mux.HandleFunc("GET /reports/{childProfileId}/settings", h.GetReportSettings)
+	mux.HandleFunc("PUT /reports/{childProfileId}/settings", h.UpdateReportSettings)
+	mux.HandleFunc("POST /reports/{childProfileId}/send-test", h.SendTestReport)
+}
+
+// registerCSRFRoutes регистрирует routes для CSRF
+func registerCSRFRoutes(mux *http.ServeMux, h *handler.CSRFHandler) {
+	mux.HandleFunc("GET /csrf-token", h.GetToken)
+}
+
+// registerWebhookRoutes регистрирует routes для webhooks
+func registerWebhookRoutes(mux *http.ServeMux, h *handler.VKPayWebhookHandler) {
+	mux.HandleFunc("POST /webhooks/vk-pay", h.HandleWebhook)
 }

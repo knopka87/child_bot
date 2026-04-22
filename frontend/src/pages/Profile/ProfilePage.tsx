@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { History, FileText, HelpCircle, ChevronRight, CreditCard } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Spinner } from '@/components/ui/Spinner';
+import { ProfilePageSkeleton } from '@/components/ui/skeleton';
 import { useProfileData } from './hooks/useProfileData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
@@ -111,13 +111,7 @@ export function ProfilePage() {
   };
 
   if (isLoading) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.loadingContainer}>
-          <Spinner size="lg" />
-        </div>
-      </div>
-    );
+    return <ProfilePageSkeleton />;
   }
 
   if (error || !data) {

@@ -1,0 +1,18 @@
+{
+  "static_path": "dist",
+  "app_id": 0,
+  "endpoints": {
+    "mobile": "index.html",
+    "mvk": "index.html",
+    "web": "index.html"
+  },
+  "alias": {
+    "\\/_next\\/(.*)": "/_next/$1",
+    "\\/assets\\/(.*)": "/assets/$1",
+    "\\/(.*)\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|webp|webm|mp4)$": "/$1.$2"
+  },
+  "routes": {
+    "/": "index.html",
+    "/*": "index.html"
+  }
+}

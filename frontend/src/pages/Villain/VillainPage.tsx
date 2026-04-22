@@ -7,6 +7,7 @@ import { useVillainData } from './hooks/useVillainData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { ROUTES } from '@/config/routes';
+import { VillainPageSkeleton } from '@/components/ui/skeleton';
 
 export function VillainPage() {
   const navigate = useNavigate();
@@ -49,14 +50,7 @@ export function VillainPage() {
   }, [villain?.is_defeated, navigate]);
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка...</p>
-        </div>
-      </div>
-    );
+    return <VillainPageSkeleton />;
   }
 
   if (error || !villain) {

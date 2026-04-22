@@ -42,18 +42,6 @@ export function useHomeData() {
       const homeData = await homeAPI.getHomeData(childProfileId);
       console.log('[useHomeData] Home data loaded successfully:', homeData);
 
-      // ВРЕМЕННО: Добавляем мок-данные для villain, если их нет
-      if (!homeData.villain) {
-        console.log('[useHomeData] Adding mock villain data for development');
-        homeData.villain = {
-          id: 'villain-1',
-          name: 'Кракозябра',
-          imageUrl: '/images/villain.png',
-          healthPercent: 66, // 2 из 3 полосок
-          isDefeated: false,
-        };
-      }
-
       setData(homeData);
     } catch (err) {
       setError(err as Error);

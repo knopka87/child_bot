@@ -34,12 +34,12 @@ class APIClient {
   private setupInterceptors() {
     // Request interceptor - добавляем Platform ID и Child Profile ID
     this.client.interceptors.request.use(
-      async (requestConfig: InternalAxiosRequestConfig) => {
+        async (requestConfig: InternalAxiosRequestConfig) => {
         console.log('[APIClient] Request interceptor START', { url: requestConfig.url });
 
         // Добавляем X-Platform-ID (определяем платформу)
         console.log('[APIClient] Getting platform_id from storage...');
-        let platformID = await vkStorage.getItem('platform_id');
+        let platformID = localStorage.getItem('platform_id');
         console.log('[APIClient] platformID from storage:', platformID);
 
         if (!platformID) {
@@ -47,7 +47,12 @@ class APIClient {
           const urlParams = new URLSearchParams(window.location.search);
           platformID = urlParams.get('vk_platform') ? 'vk' : 'web';
           console.log('[APIClient] Using fallback platformID:', platformID);
-          await vkStorage.setItem('platform_id', platformID);
+          localStorage.setItem('platform_id', platformID);
+        }
+
+        // Dev режим локально - всегда устанавливаем платформу принудительно
+        if (import.meta.env.DEV) {
+          platformID = 'web';
         }
 
         if (requestConfig.headers) {

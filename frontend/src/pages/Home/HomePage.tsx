@@ -12,7 +12,7 @@ import { useNewAchievements } from '@/hooks/useNewAchievements';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { homeAPI } from '@/api/home';
 import { ROUTES } from '@/config/routes';
-import { Spinner } from '@/components/ui/Spinner';
+import { HomePageSkeleton } from '@/components/ui/skeleton';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -198,11 +198,7 @@ export default function HomePage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-[#E8E4FF]">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <HomePageSkeleton />;
   }
 
   if (error || !data) {

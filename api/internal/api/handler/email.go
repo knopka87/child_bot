@@ -11,17 +11,22 @@ import (
 	"child-bot/api/internal/api/middleware"
 	"child-bot/api/internal/api/response"
 	"child-bot/api/internal/api/validation"
+	"child-bot/api/internal/service"
 	"child-bot/api/internal/store"
 )
 
 // EmailHandler обрабатывает запросы верификации email
 type EmailHandler struct {
-	store *store.Store
+	store        *store.Store
+	emailService *service.EmailService
 }
 
 // NewEmailHandler создает новый EmailHandler
 func NewEmailHandler(store *store.Store) *EmailHandler {
-	return &EmailHandler{store: store}
+	return &EmailHandler{
+		store:        store,
+		emailService: service.NewEmailService(),
+	}
 }
 
 type SendVerificationRequest struct {
@@ -91,18 +96,31 @@ func (h *EmailHandler) SendVerification(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// TODO: Отправка email через email service
-	// Пока логируем код для dev режима
-	log.Printf("[EmailHandler] Verification code for %s: %s (expires at %v)", req.Email, code, expiresAt)
+	// Отправляем email через email service
+	if !h.emailService.IsDevelopmentMode() {
+		err = h.emailService.SendVerificationCode(req.Email, code, expiresAt)
+		if err != nil {
+			log.Printf("[EmailHandler] Failed to send email: %v", err)
+			// Не фейлим запрос если email не отправился, код всё равно в БД
+		} else {
+			log.Printf("[EmailHandler] Verification email sent to %s", req.Email)
+		}
+	} else {
+		log.Printf("[EmailHandler] Dev mode: verification code for %s: %s (expires at %v)", req.Email, code, expiresAt)
+	}
 
-	// В dev режиме возвращаем код в ответе для тестирования
-	// В production это нужно убрать!
-	response.OK(w, map[string]interface{}{
+	// Формируем ответ
+	responseData := map[string]interface{}{
 		"message":   "Verification code sent to email",
 		"expiresAt": expiresAt,
-		// TODO: удалить в production!
-		"devCode": code,
-	})
+	}
+
+	// Включаем код только в dev режиме для удобства тестирования
+	if h.emailService.IsDevelopmentMode() {
+		responseData["devCode"] = code
+	}
+
+	response.OK(w, responseData)
 }
 
 // VerifyCode проверяет введенный код верификации

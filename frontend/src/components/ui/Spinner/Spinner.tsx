@@ -10,9 +10,9 @@ export interface SpinnerProps extends Omit<VKUISpinnerProps, 'size'> {
  */
 export function Spinner({ size = 'md', ...props }: SpinnerProps) {
   const sizeMap = {
-    sm: 'small',
-    md: 'medium',
-    lg: 'large',
+    sm: 's',
+    md: 'm',
+    lg: 'l',
   } as const;
 
   return <VKUISpinner size={sizeMap[size]} {...props} />;

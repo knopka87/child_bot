@@ -1,22 +1,29 @@
 package handler
 
 import (
+	"log"
 	"net/http"
+	"time"
 
 	"child-bot/api/internal/api/middleware"
 	"child-bot/api/internal/api/response"
 	"child-bot/api/internal/api/validation"
+	"child-bot/api/internal/service"
 	"child-bot/api/internal/store"
 )
 
 // SubscriptionHandler обрабатывает запросы подписок
 type SubscriptionHandler struct {
-	store *store.Store
+	store        *store.Store
+	vkPayService *service.VKPayService
 }
 
 // NewSubscriptionHandler создает новый SubscriptionHandler
-func NewSubscriptionHandler(store *store.Store) *SubscriptionHandler {
-	return &SubscriptionHandler{store: store}
+func NewSubscriptionHandler(store *store.Store, vkPayService *service.VKPayService) *SubscriptionHandler {
+	return &SubscriptionHandler{
+		store:        store,
+		vkPayService: vkPayService,
+	}
 }
 
 // SubscriptionStatus структура статуса подписки
@@ -62,16 +69,64 @@ func (h *SubscriptionHandler) GetStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// TODO: Phase 4 - получение статуса через service layer
-	// status, err := h.service.GetSubscriptionStatus(r.Context(), childProfileID)
+	// Получаем активную подписку
+	subscription, err := h.store.GetActiveSubscription(r.Context(), childProfileID)
+	if err != nil && err.Error() != "subscription not found" {
+		log.Printf("[SubscriptionHandler] Failed to get subscription: %v", err)
+		response.InternalError(w, "Failed to get subscription status")
+		return
+	}
 
-	// Placeholder
+	// Базовые фичи для всех
+	features := []string{"unlimited_tasks", "hints", "achievements"}
+
+	// Если нет подписки - возвращаем trial статус
+	if subscription == nil {
+		status := SubscriptionStatus{
+			Status:             "trial",
+			Features:           features,
+			TrialDaysRemaining: 7,
+			CanCancel:          false,
+			CanResume:          false,
+		}
+		response.OK(w, status)
+		return
+	}
+
+	// Загружаем информацию о плане
+	plan, err := h.store.GetSubscriptionPlan(r.Context(), subscription.PlanID)
+	if err != nil {
+		log.Printf("[SubscriptionHandler] Failed to get plan: %v", err)
+	}
+
+	// Формируем статус
 	status := SubscriptionStatus{
-		Status:             "trial",
-		Features:           []string{"unlimited_tasks", "hints", "achievements"},
-		TrialDaysRemaining: 7,
-		CanCancel:          false,
-		CanResume:          false,
+		Status:    subscription.Status,
+		PlanID:    subscription.PlanID,
+		Features:  features,
+		ExpiresAt: subscription.ExpiresAt.Format(time.RFC3339),
+		CanCancel: subscription.Status == "active" && subscription.CancelledAt == nil,
+		CanResume: subscription.CancelledAt != nil,
+	}
+
+	if plan != nil {
+		status.PlanName = plan.Name
+	}
+
+	if subscription.CancelledAt != nil {
+		status.CancelledAt = subscription.CancelledAt.Format(time.RFC3339)
+	}
+
+	if subscription.Status == "trial" && subscription.TrialEndsAt != nil {
+		daysRemaining := int(time.Until(*subscription.TrialEndsAt).Hours() / 24)
+		if daysRemaining < 0 {
+			daysRemaining = 0
+		}
+		status.TrialDaysRemaining = daysRemaining
+	}
+
+	if subscription.Status == "active" && subscription.AutoRenew {
+		status.RenewsAt = subscription.ExpiresAt.Format(time.RFC3339)
 	}
 
 	response.OK(w, status)
@@ -80,45 +135,52 @@ func (h *SubscriptionHandler) GetStatus(w http.ResponseWriter, r *http.Request) 
 // GetPlans получает список доступных планов
 // GET /subscription/plans
 func (h *SubscriptionHandler) GetPlans(w http.ResponseWriter, r *http.Request) {
-	// TODO: Phase 4 - получение планов через service layer
-	// plans, err := h.service.GetSubscriptionPlans(r.Context())
+	// Загружаем активные планы из БД
+	dbPlans, err := h.store.GetActivePlans(r.Context())
+	if err != nil {
+		log.Printf("[SubscriptionHandler] Failed to get plans: %v", err)
+		response.InternalError(w, "Failed to get subscription plans")
+		return
+	}
 
-	// Placeholder
-	plans := []SubscriptionPlan{
-		{
-			ID:          "plan_monthly",
-			Name:        "Месячная подписка",
-			Description: "Полный доступ ко всем функциям на 1 месяц",
-			Price:       49900, // 499 руб
-			Currency:    "RUB",
-			Duration:    "month",
-			Features: []string{
-				"Неограниченное количество задач",
-				"Умные подсказки",
-				"Проверка решений",
-				"Достижения и награды",
-			},
-			IsPopular: true,
-			TrialDays: 7,
-		},
-		{
-			ID:          "plan_yearly",
-			Name:        "Годовая подписка",
-			Description: "Выгодная подписка на целый год",
-			Price:       399900, // 3999 руб
-			Currency:    "RUB",
-			Duration:    "year",
-			Features: []string{
-				"Неограниченное количество задач",
-				"Умные подсказки",
-				"Проверка решений",
-				"Достижения и награды",
-				"Приоритетная поддержка",
-			},
-			IsPopular:       false,
-			TrialDays:       14,
-			DiscountPercent: 33,
-		},
+	// Базовые features для всех планов
+	baseFeatures := []string{
+		"Неограниченное количество задач",
+		"Умные подсказки",
+		"Проверка решений",
+		"Достижения и награды",
+	}
+
+	// Преобразуем в API формат
+	plans := make([]SubscriptionPlan, 0, len(dbPlans))
+	for _, dbPlan := range dbPlans {
+		features := make([]string, len(baseFeatures))
+		copy(features, baseFeatures)
+
+		// Добавляем дополнительные features для годовой подписки
+		if dbPlan.ID == "yearly" {
+			features = append(features, "Приоритетная поддержка")
+		}
+
+		// Определяем duration string
+		duration := "month"
+		if dbPlan.DurationDays >= 365 {
+			duration = "year"
+		}
+
+		plan := SubscriptionPlan{
+			ID:              dbPlan.ID,
+			Name:            dbPlan.Name,
+			Description:     dbPlan.Description,
+			Price:           dbPlan.PriceCents,
+			Currency:        dbPlan.Currency,
+			Duration:        duration,
+			Features:        features,
+			IsPopular:       dbPlan.IsPopular,
+			TrialDays:       dbPlan.TrialDays,
+			DiscountPercent: dbPlan.DiscountPercent,
+		}
+		plans = append(plans, plan)
 	}
 
 	response.OK(w, plans)
@@ -130,6 +192,13 @@ func (h *SubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Request) 
 	childProfileID := middleware.GetChildProfileID(r.Context())
 	if childProfileID == "" {
 		response.Unauthorized(w, "Missing child_profile_id")
+		return
+	}
+
+	// Получаем VK User ID из контекста
+	vkUserID := middleware.GetVKUserID(r.Context())
+	if vkUserID == "" {
+		response.Unauthorized(w, "Missing vk_user_id")
 		return
 	}
 
@@ -150,15 +219,45 @@ func (h *SubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// TODO: Phase 4 - оформление подписки через service layer
-	// result, err := h.service.Subscribe(r.Context(), childProfileID, req)
+	// Поддерживаем только VK Pay
+	if req.PaymentMethod != "vk_pay" {
+		response.BadRequest(w, "Only vk_pay payment method is supported")
+		return
+	}
 
-	// Placeholder (возвращаем URL для оплаты)
+	// Создаем платеж через VK Pay Service
+	ipAddress := r.RemoteAddr
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		ipAddress = xff
+	}
+
+	userAgent := r.Header.Get("User-Agent")
+
+	paymentReq := service.CreatePaymentRequest{
+		ChildProfileID: childProfileID,
+		PlanID:         req.PlanID,
+		IPAddress:      ipAddress,
+		UserAgent:      userAgent,
+		VKUserID:       vkUserID,
+	}
+
+	paymentOrder, err := h.vkPayService.CreatePayment(r.Context(), paymentReq)
+	if err != nil {
+		log.Printf("[SubscriptionHandler] Failed to create payment: %v", err)
+		response.InternalError(w, "Failed to create payment")
+		return
+	}
+
+	// Возвращаем данные для открытия VK Pay формы
 	result := map[string]interface{}{
-		"payment_url": "https://payment.example.com/checkout/123",
-		"payment_id":  "payment_123",
-		"status":      "pending",
-		"expires_at":  "2024-03-31T11:00:00Z",
+		"payment_id": paymentOrder.PaymentID,
+		"order_id":   paymentOrder.OrderID,
+		"vk_pay_url": paymentOrder.VKPayURL,
+		"amount":     paymentOrder.Amount,
+		"currency":   paymentOrder.Currency,
+		"status":     "pending",
+		"expires_at": paymentOrder.ExpiresAt.Format(time.RFC3339),
+		"metadata":   paymentOrder.Metadata,
 	}
 
 	response.OK(w, result)
@@ -173,14 +272,35 @@ func (h *SubscriptionHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Phase 4 - отмена подписки через service layer
-	// err := h.service.CancelSubscription(r.Context(), childProfileID)
+	// Отменяем подписку
+	err := h.store.CancelSubscription(r.Context(), childProfileID)
+	if err != nil {
+		if err.Error() == "no active subscription to cancel" {
+			response.BadRequest(w, "No active subscription to cancel")
+			return
+		}
+		log.Printf("[SubscriptionHandler] Failed to cancel subscription: %v", err)
+		response.InternalError(w, "Failed to cancel subscription")
+		return
+	}
 
-	// Placeholder
+	// Получаем обновленную подписку
+	subscription, err := h.store.GetActiveSubscription(r.Context(), childProfileID)
+	if err != nil {
+		log.Printf("[SubscriptionHandler] Failed to get subscription after cancel: %v", err)
+		// Не критичная ошибка, можем вернуть базовый ответ
+		result := map[string]interface{}{
+			"status":  "cancelled",
+			"message": "Подписка отменена. Доступ сохраняется до конца оплаченного периода.",
+		}
+		response.OK(w, result)
+		return
+	}
+
 	result := map[string]interface{}{
-		"status":       "cancelled",
-		"cancelled_at": "2024-03-31T10:00:00Z",
-		"expires_at":   "2024-04-30T23:59:59Z",
+		"status":       subscription.Status,
+		"cancelled_at": subscription.CancelledAt.Format(time.RFC3339),
+		"expires_at":   subscription.ExpiresAt.Format(time.RFC3339),
 		"message":      "Подписка отменена. Доступ сохраняется до конца оплаченного периода.",
 	}
 
@@ -196,14 +316,34 @@ func (h *SubscriptionHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Phase 4 - возобновление подписки через service layer
-	// err := h.service.ResumeSubscription(r.Context(), childProfileID)
+	// Возобновляем подписку
+	err := h.store.ResumeSubscription(r.Context(), childProfileID)
+	if err != nil {
+		if err.Error() == "no cancelled subscription to resume" {
+			response.BadRequest(w, "No cancelled subscription to resume")
+			return
+		}
+		log.Printf("[SubscriptionHandler] Failed to resume subscription: %v", err)
+		response.InternalError(w, "Failed to resume subscription")
+		return
+	}
 
-	// Placeholder
+	// Получаем обновленную подписку
+	subscription, err := h.store.GetActiveSubscription(r.Context(), childProfileID)
+	if err != nil {
+		log.Printf("[SubscriptionHandler] Failed to get subscription after resume: %v", err)
+		result := map[string]interface{}{
+			"status":  "active",
+			"message": "Подписка возобновлена",
+		}
+		response.OK(w, result)
+		return
+	}
+
 	result := map[string]interface{}{
-		"status":    "active",
-		"renews_at": "2024-04-30T23:59:59Z",
-		"message":   "Подписка возобновлена",
+		"status":    subscription.Status,
+		"renews_at": subscription.ExpiresAt.Format(time.RFC3339),
+		"message":   "Подписка возобновлена. Автопродление включено.",
 	}
 
 	response.OK(w, result)

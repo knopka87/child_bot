@@ -179,7 +179,7 @@ export default function App() {
   return (
     <div className="app-desktop-wrapper">
       <div className="app-desktop-container">
-        <ConfigProvider appearance={appearance} platform={platform}>
+        <ConfigProvider colorScheme={appearance} platform={platform}>
           <AdaptivityProvider>
             <AppRoot>
               <SplitLayout>

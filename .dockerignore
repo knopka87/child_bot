@@ -20,7 +20,7 @@ docs/
 logs/
 
 # Environment
-.env
+.env_old
 .env.local
 .env.*.local
 

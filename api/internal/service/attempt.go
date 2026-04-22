@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"runtime"
 	"time"
 
 	"child-bot/api/internal/domain"
@@ -127,7 +128,10 @@ func (s *AttemptService) ProcessHelp(ctx context.Context, attemptID string, imag
 	// Восстановление после паники
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[AttemptService] PANIC in ProcessHelp for attempt %s: %v", attemptID, r)
+			// Получаем stack trace для отладки
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			log.Printf("[AttemptService] PANIC in ProcessHelp for attempt %s: %v\nStack trace:\n%s", attemptID, r, buf[:n])
 			// Пытаемся обновить статус на failed
 			if id, err := uuid.Parse(attemptID); err == nil {
 				_ = s.store.Attempts.UpdateStatus(context.Background(), id, "failed")
@@ -162,6 +166,12 @@ func (s *AttemptService) ProcessHelp(ctx context.Context, attemptID string, imag
 		return fmt.Errorf("detect failed: %w", err)
 	}
 
+	// Проверяем что ответ не пустой
+	if detectResp.Classification.SubjectCandidate == "" {
+		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
+		return fmt.Errorf("detect returned empty classification")
+	}
+
 	// Сохраняем результат Detect
 	err = s.store.Attempts.SaveDetectResult(ctx, id, &detectResp)
 	if err != nil {
@@ -185,6 +195,12 @@ func (s *AttemptService) ProcessHelp(ctx context.Context, attemptID string, imag
 	if err != nil {
 		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
 		return fmt.Errorf("parse failed: %w", err)
+	}
+
+	// Проверяем что Task не пустой
+	if parseResp.Task.TaskTextClean == "" {
+		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
+		return fmt.Errorf("parse returned empty task")
 	}
 
 	// Сохраняем результат Parse
@@ -227,7 +243,10 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 	// Восстановление после паники
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[AttemptService] PANIC in ProcessCheck for attempt %s: %v", attemptID, r)
+			// Получаем stack trace для отладки
+			buf := make([]byte, 4096)
+			n := runtime.Stack(buf, false)
+			log.Printf("[AttemptService] PANIC in ProcessCheck for attempt %s: %v\nStack trace:\n%s", attemptID, r, buf[:n])
 			// Пытаемся обновить статус на failed
 			if id, err := uuid.Parse(attemptID); err == nil {
 				_ = s.store.Attempts.UpdateStatus(context.Background(), id, "failed")
@@ -261,6 +280,12 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 		return fmt.Errorf("detect failed: %w", err)
 	}
 
+	// Проверяем что ответ не пустой
+	if detectResp.Classification.SubjectCandidate == "" {
+		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
+		return fmt.Errorf("detect returned empty classification")
+	}
+
 	// Сохраняем результат Detect
 	err = s.store.Attempts.SaveDetectResult(ctx, id, &detectResp)
 	if err != nil {
@@ -283,6 +308,12 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 	if err != nil {
 		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
 		return fmt.Errorf("parse failed: %w", err)
+	}
+
+	// Проверяем что Task не пустой
+	if parseResp.Task.TaskTextClean == "" {
+		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
+		return fmt.Errorf("parse returned empty task")
 	}
 
 	// Сохраняем результат Parse
@@ -316,6 +347,12 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 	if err != nil {
 		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
 		return fmt.Errorf("check solution failed: %w", err)
+	}
+
+	// Проверяем что ответ не пустой
+	if checkResp.Decision == "" {
+		_ = s.store.Attempts.UpdateStatus(ctx, id, "failed")
+		return fmt.Errorf("check solution returned empty decision")
 	}
 
 	// 3. Проверяем результат и обрабатываем правильный ответ

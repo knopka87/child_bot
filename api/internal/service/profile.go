@@ -606,3 +606,24 @@ func (s *ProfileService) UpdateStreakAndActivity(ctx context.Context, childProfi
 
 	return nil
 }
+
+// GetProfileByPlatform получает профиль по platform_id и platform_user_id
+// Возвращает child_profile_id если профиль существует, иначе ошибку
+func (s *ProfileService) GetProfileByPlatform(ctx context.Context, platformID, platformUserID string) (string, error) {
+	query := `
+		SELECT id
+		FROM child_profiles
+		WHERE platform_id = $1 AND platform_user_id = $2
+	`
+
+	var childProfileID string
+	err := s.store.DB.QueryRowContext(ctx, query, platformID, platformUserID).Scan(&childProfileID)
+	if err == sql.ErrNoRows {
+		return "", domain.ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return childProfileID, nil
+}

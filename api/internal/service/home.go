@@ -209,5 +209,25 @@ func (s *HomeService) GetHomeData(ctx context.Context, childProfileID string) (*
 		log.Printf("[HomeService] No unfinished attempt found for profile: %s", childProfileID)
 	}
 
+	// Получить последние 3 завершенные попытки
+	recentAttempts, err := s.attemptService.GetRecentAttempts(ctx, childProfileID, 3)
+	if err != nil {
+		log.Printf("[HomeService] Failed to get recent attempts: %v", err)
+	} else {
+		// Преобразуем в формат RecentAttempt
+		data.RecentAttempts = make([]RecentAttempt, 0, len(recentAttempts))
+		for _, attempt := range recentAttempts {
+			data.RecentAttempts = append(data.RecentAttempts, RecentAttempt{
+				ID:            attempt.ID,
+				Mode:          attempt.Type, // help или check
+				Status:        attempt.Status,
+				CreatedAt:     attempt.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+				Thumbnail:     "", // TODO: добавить thumbnail если есть
+				ResultSummary: "", // TODO: добавить краткое резюме результата
+			})
+		}
+		log.Printf("[HomeService] Loaded %d recent attempts", len(data.RecentAttempts))
+	}
+
 	return data, nil
 }

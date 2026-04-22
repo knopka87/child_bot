@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Spinner } from '@/components/ui/Spinner';
+import { VillainPageSkeleton } from '@/components/ui/skeleton';
 import { useVictoryData } from './hooks/useVictoryData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
@@ -69,11 +69,7 @@ export function VictoryPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-[#FFF9E8] to-[#E8FFF8]">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <VillainPageSkeleton />;
   }
 
   if (error || !victory) {

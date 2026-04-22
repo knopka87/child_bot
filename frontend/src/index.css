@@ -3,6 +3,24 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    color: #2D3436;
+    color: var(--vkui--color_text_primary, #2D3436);
+  }
+  
+  /* Переопределяем принудительно все жестко заданные цвета */
+  .text-foreground,
+  .text-muted-foreground,
+  .text-primary,
+  .text-secondary,
+  [class*="text-gray"],
+  [class*="text-slate"],
+  [style*="color:"] {
+    color: #2D3436 !important;
+  }
+}
+
 /* Reset и базовые стили */
 *,
 *::before,
@@ -25,6 +43,14 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color: #2C2D2E;
+  color: var(--vkui--color_text_primary, #2C2D2E);
+  background-color: #E8E5F5;
+  background-color: var(--vkui--color_background_content, #E8E5F5);
+}
+
+* {
+  color: inherit;
 }
 
 /* VK MiniApp specific */

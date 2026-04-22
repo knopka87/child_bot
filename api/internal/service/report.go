@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"os/exec"
 	"time"
 
 	"child-bot/api/internal/store"
@@ -21,6 +23,11 @@ type ReportService struct {
 // NewReportService создаёт новый ReportService
 func NewReportService(store *store.Store) *ReportService {
 	return &ReportService{store: store}
+}
+
+// GetStore возвращает store для доступа к БД
+func (s *ReportService) GetStore() *store.Store {
+	return s.store
 }
 
 // WeeklyReportData данные для еженедельного отчёта
@@ -48,14 +55,17 @@ type WeeklyReportData struct {
 }
 
 type AchievementData struct {
-	Title      string
-	Icon       string
-	Count      int
-	UnlockedAt time.Time
+	Title            string
+	Icon             string
+	Count            int
+	CurrentProgress  int
+	RequirementValue int
+	UnlockedAt       time.Time
 }
 
 type VillainBattleData struct {
 	Name              string
+	Icon              string
 	CurrentHP         int
 	MaxHP             int
 	HPPercent         float64
@@ -104,6 +114,9 @@ func (s *ReportService) GetWeeklyReportData(ctx context.Context, childProfileID 
 		return nil, fmt.Errorf("get profile: %w", err)
 	}
 
+	// Calculate XP for next level
+	data.XPForNext = store.XPForLevel(data.Level)
+
 	// Avatar emoji
 	avatarEmojis := map[string]string{
 		"cat": "🐱", "dog": "🐶", "panda": "🐼", "fox": "🦊",
@@ -119,9 +132,9 @@ func (s *ReportService) GetWeeklyReportData(ctx context.Context, childProfileID 
 	// Get attempts data
 	attemptsQuery := `
 		SELECT COUNT(*) as total_attempts,
-			   SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as successful_attempts,
+			   COALESCE(SUM(CASE WHEN is_correct THEN 1 ELSE 0 END), 0) as successful_attempts,
 			   AVG(time_spent_seconds) as avg_time,
-			   SUM(hints_used) as total_hints
+			   COALESCE(SUM(hints_used), 0) as total_hints
 		FROM attempts
 		WHERE child_profile_id = $1 AND created_at >= $2 AND created_at < $3`
 
@@ -155,43 +168,52 @@ func (s *ReportService) GetWeeklyReportData(ctx context.Context, childProfileID 
 	}
 	data.NewAchievements = newAchievements
 
-	// Get villain battles
-	villainBattles, err := s.getVillainBattles(ctx, profileUUID)
+	// Get villain battles (active + defeated in current week)
+	villainBattles, err := s.getVillainBattles(ctx, profileUUID, weekStart, weekEnd.AddDate(0, 0, 1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get villain battles: %w", err)
 	}
 	data.VillainBattles = villainBattles
 
 	// Calculate comparison with previous week
-	if totalAttempts > 0 {
-		var prevTotalAttempts, prevSuccessfulAttempts int
-		err = s.store.DB.QueryRowContext(ctx, attemptsQuery, profileUUID, prevWeekStart, prevWeekEnd.AddDate(0, 0, 1)).Scan(
-			&prevTotalAttempts, &prevSuccessfulAttempts, nil, nil)
-		if err == nil && prevTotalAttempts > 0 {
-			attemptsChange := totalAttempts - prevTotalAttempts
-			data.AttemptsChange = &attemptsChange
+	log.Printf("[ReportService] Calculating comparison: weekStart=%s, prevWeekStart=%s, totalAttempts=%d",
+		weekStart.Format("2006-01-02"), prevWeekStart.Format("2006-01-02"), totalAttempts)
 
-			if prevSuccessfulAttempts > 0 && successfulAttempts > 0 {
-				prevAccuracy := float64(prevSuccessfulAttempts) / float64(prevTotalAttempts) * 100
-				currAccuracy := data.AccuracyPercent
-				if currAccuracy != prevAccuracy {
-					change := currAccuracy - prevAccuracy
-					data.AccuracyChange = &change
-				}
+	// Получаем данные за предыдущую неделю
+	var prevTotalAttempts, prevSuccessfulAttempts int
+	var prevAvgTime sql.NullFloat64
+	var prevHints int
+	err = s.store.DB.QueryRowContext(ctx, attemptsQuery, profileUUID, prevWeekStart, prevWeekEnd.AddDate(0, 0, 1)).Scan(
+		&prevTotalAttempts, &prevSuccessfulAttempts, &prevAvgTime, &prevHints)
+	log.Printf("[ReportService] Previous week query: err=%v, prevTotalAttempts=%d, prevSuccessfulAttempts=%d",
+		err, prevTotalAttempts, prevSuccessfulAttempts)
+
+	// Сравниваем только если есть данные за обе недели
+	if err == nil && prevTotalAttempts > 0 && totalAttempts > 0 {
+		// Сравнение количества попыток
+		attemptsChange := totalAttempts - prevTotalAttempts
+		data.AttemptsChange = &attemptsChange
+		log.Printf("[ReportService] Setting AttemptsChange to %d", attemptsChange)
+
+		// Сравнение точности
+		if prevSuccessfulAttempts > 0 && successfulAttempts > 0 {
+			prevAccuracy := float64(prevSuccessfulAttempts) / float64(prevTotalAttempts) * 100
+			currAccuracy := data.AccuracyPercent
+			if currAccuracy != prevAccuracy {
+				change := currAccuracy - prevAccuracy
+				data.AccuracyChange = &change
+				log.Printf("[ReportService] Setting AccuracyChange to %.1f", change)
 			}
+		}
 
-			if avgTime.Valid && prevTotalAttempts > 0 {
-				var prevAvgTime sql.NullFloat64
-				err = s.store.DB.QueryRowContext(ctx, attemptsQuery, profileUUID, prevWeekStart, prevWeekEnd.AddDate(0, 0, 1)).Scan(
-					nil, nil, &prevAvgTime, nil)
-				if err == nil && prevAvgTime.Valid && prevAvgTime.Float64 > 0 {
-					prevTime := prevAvgTime.Float64 / 60
-					currTime := data.WeekAvgTimeMinutes
-					if currTime != prevTime {
-						change := int((currTime - prevTime) * 60) // in minutes
-						data.TimeChange = &change
-					}
-				}
+		// Сравнение времени
+		if avgTime.Valid && prevAvgTime.Valid && prevAvgTime.Float64 > 0 {
+			prevTime := prevAvgTime.Float64 / 60
+			currTime := data.WeekAvgTimeMinutes
+			if currTime != prevTime {
+				change := int((currTime - prevTime) * 60) // in seconds
+				data.TimeChange = &change
+				log.Printf("[ReportService] Setting TimeChange to %d seconds", change)
 			}
 		}
 	}
@@ -201,11 +223,11 @@ func (s *ReportService) GetWeeklyReportData(ctx context.Context, childProfileID 
 
 func (s *ReportService) getNewAchievements(ctx context.Context, childProfileID uuid.UUID, weekStart, weekEnd time.Time) ([]AchievementData, error) {
 	query := `
-		SELECT a.title, a.icon, COUNT(*) as count, MIN(ca.unlocked_at) as unlocked_at
+		SELECT a.title, a.icon, a.requirement_value, ca.current_progress, COUNT(*) as count, MIN(ca.unlocked_at) as unlocked_at
 		FROM achievements a
 		JOIN child_achievements ca ON a.id = ca.achievement_id
 		WHERE ca.child_profile_id = $1 AND ca.unlocked_at >= $2 AND ca.unlocked_at <= $3
-		GROUP BY a.id, a.title, a.icon
+		GROUP BY a.id, a.title, a.icon, a.requirement_value, ca.current_progress
 		ORDER BY unlocked_at`
 
 	rows, err := s.store.DB.QueryContext(ctx, query, childProfileID, weekStart, weekEnd)
@@ -217,7 +239,7 @@ func (s *ReportService) getNewAchievements(ctx context.Context, childProfileID u
 	var achievements []AchievementData
 	for rows.Next() {
 		var ach AchievementData
-		err := rows.Scan(&ach.Title, &ach.Icon, &ach.Count, &ach.UnlockedAt)
+		err := rows.Scan(&ach.Title, &ach.Icon, &ach.RequirementValue, &ach.CurrentProgress, &ach.Count, &ach.UnlockedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -227,15 +249,34 @@ func (s *ReportService) getNewAchievements(ctx context.Context, childProfileID u
 	return achievements, rows.Err()
 }
 
-func (s *ReportService) getVillainBattles(ctx context.Context, childProfileID uuid.UUID) ([]VillainBattleData, error) {
+func (s *ReportService) getVillainBattles(ctx context.Context, childProfileID uuid.UUID, weekStart, weekEnd time.Time) ([]VillainBattleData, error) {
+	// Получаем активные битвы и побеждённых злодеев за текущую неделю
+	// Используем emoji вместо image_url для совместимости с PDF
+	villainEmojis := map[string]string{
+		"count_error":         "👿",
+		"baron_confusion":     "😵",
+		"duchess_distraction": "💃",
+		"sir_procrastination": "🦥",
+		"madame_mistake":      "🎭",
+		"lord_laziness":       "😴",
+		"boss_week_chaos":     "👹",
+	}
+
 	query := `
-		SELECT v.name, vb.current_hp, v.max_hp, vb.total_damage_dealt, vb.correct_tasks_count, vb.status
+		SELECT v.id, v.name, vb.current_hp, v.max_hp, vb.total_damage_dealt, vb.correct_tasks_count, vb.status
 		FROM villain_battles vb
 		JOIN villains v ON vb.villain_id = v.id
-		WHERE vb.child_profile_id = $1 AND vb.status IN ('active', 'defeated')
-		ORDER BY vb.started_at DESC`
+		WHERE vb.child_profile_id = $1
+		  AND (vb.status = 'active' OR (vb.status = 'defeated' AND vb.defeated_at >= $2 AND vb.defeated_at < $3))
+		ORDER BY
+		  CASE vb.status
+		    WHEN 'defeated' THEN 1
+		    WHEN 'active' THEN 2
+		  END,
+		  vb.defeated_at DESC,
+		  vb.started_at DESC`
 
-	rows, err := s.store.DB.QueryContext(ctx, query, childProfileID)
+	rows, err := s.store.DB.QueryContext(ctx, query, childProfileID, weekStart, weekEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -244,11 +285,20 @@ func (s *ReportService) getVillainBattles(ctx context.Context, childProfileID uu
 	var battles []VillainBattleData
 	for rows.Next() {
 		var battle VillainBattleData
-		err := rows.Scan(&battle.Name, &battle.CurrentHP, &battle.MaxHP, &battle.TotalDamageDealt, &battle.CorrectTasksCount, &battle.Status)
+		var villainID string
+		err := rows.Scan(&villainID, &battle.Name, &battle.CurrentHP, &battle.MaxHP, &battle.TotalDamageDealt, &battle.CorrectTasksCount, &battle.Status)
 		if err != nil {
 			return nil, err
 		}
 		battle.HPPercent = float64(battle.CurrentHP) / float64(battle.MaxHP) * 100
+
+		// Устанавливаем emoji для злодея
+		if emoji, ok := villainEmojis[villainID]; ok {
+			battle.Icon = emoji
+		} else {
+			battle.Icon = "👹" // fallback
+		}
+
 		battles = append(battles, battle)
 	}
 
@@ -339,45 +389,77 @@ func (s *ReportService) generateWeeklyReportHTML(data *WeeklyReportData) (string
 	// Generate achievements HTML
 	achievementsHTML := ""
 	if len(data.NewAchievements) > 0 {
-		achievementsHTML = "<ul class=\"achievements\">"
 		for _, ach := range data.NewAchievements {
+			// Для серийных достижений показываем прогресс (например "5/10")
+			progressStr := ""
+			if ach.RequirementValue > 1 {
+				progressStr = fmt.Sprintf(" <span class=\"badge progress-badge\">%d/%d</span>", ach.CurrentProgress, ach.RequirementValue)
+			}
+
+			// Если одно и то же достижение разблокировано несколько раз (маловероятно, но проверяем)
 			countStr := ""
 			if ach.Count > 1 {
-				countStr = fmt.Sprintf(" (%d)", ach.Count)
+				countStr = fmt.Sprintf(" <span class=\"badge\">×%d</span>", ach.Count)
 			}
-			achievementsHTML += fmt.Sprintf("<li>%s <strong>%s%s</strong> (%s)</li>",
-				ach.Icon, ach.Title, countStr, ach.UnlockedAt.Format("02.01.2006"))
+
+			achievementsHTML += fmt.Sprintf(`
+				<div class="achievement-item">
+					<span class="achievement-icon">%s</span>
+					<div class="achievement-info">
+						<div class="achievement-title">%s%s%s</div>
+						<div class="achievement-date">%s</div>
+					</div>
+				</div>`,
+				ach.Icon, ach.Title, progressStr, countStr, ach.UnlockedAt.Format("02.01.2006"))
 		}
-		achievementsHTML += "</ul>"
 	}
 
 	// Generate villain battles HTML
 	villainHTML := ""
 	if len(data.VillainBattles) > 0 {
 		for _, battle := range data.VillainBattles {
-			if battle.TotalDamageDealt > 0 {
-				villainHTML += fmt.Sprintf(`
-					<div class="villain">
-						<p><strong>%s</strong></p>
-						<p><strong>HP:</strong> %d/%d (%d%%)</p>
-						<div class="progress-bar"><div class="progress-fill" style="width: %d%%;"></div></div>
-						<p><strong>Общий урон:</strong> %d</p>
-						<p><strong>Правильные задачи:</strong> %d</p>
-					</div>`,
-					battle.Name, battle.CurrentHP, battle.MaxHP, int(battle.HPPercent),
-					int(battle.HPPercent), battle.TotalDamageDealt, battle.CorrectTasksCount)
+			// Для побеждённых злодеев показываем статус
+			statusBadge := ""
+			if battle.Status == "defeated" {
+				statusBadge = " <span class=\"defeated-badge\">✓ Побеждён</span>"
 			}
+
+			villainHTML += fmt.Sprintf(`
+				<div class="villain-card">
+					<div class="villain-header">
+						<span class="villain-icon">%s</span>
+						<div class="villain-info">
+							<div class="villain-name">%s%s</div>
+							<div class="villain-hp">HP: %d/%d</div>
+						</div>
+					</div>
+					<div class="progress-bar">
+						<div class="progress-fill progress-fill-hp" style="width: %.1f%%;"></div>
+					</div>
+					<div class="villain-stats">
+						<div class="villain-stat">
+							<span class="stat-label">Урон нанесён</span>
+							<span class="stat-value">%d</span>
+						</div>
+						<div class="villain-stat">
+							<span class="stat-label">Задач решено</span>
+							<span class="stat-value">%d</span>
+						</div>
+					</div>
+				</div>`,
+				battle.Icon, battle.Name, statusBadge, battle.CurrentHP, battle.MaxHP, battle.HPPercent,
+				battle.TotalDamageDealt, battle.CorrectTasksCount)
 		}
 	}
 
 	// Generate comparison HTML
 	comparisonHTML := ""
 	if data.AttemptsChange != nil || data.AccuracyChange != nil || data.TimeChange != nil {
-		comparisonHTML = "<div class=\"comparison\">"
+		comparisonHTML = "<div class=\"comparison-grid\">"
 
 		if data.AttemptsChange != nil {
 			change := *data.AttemptsChange
-			class := ""
+			class := "neutral"
 			if change > 0 {
 				class = "positive"
 			} else if change < 0 {
@@ -387,12 +469,16 @@ func (s *ReportService) generateWeeklyReportHTML(data *WeeklyReportData) (string
 			if change > 0 {
 				sign = "+"
 			}
-			comparisonHTML += fmt.Sprintf("<div><strong>Попытки:</strong> <span class=\"%s\">%s%d</span></div>", class, sign, change)
+			comparisonHTML += fmt.Sprintf(`
+				<div class="comparison-item">
+					<div class="comparison-label">Попытки</div>
+					<div class="comparison-value %s">%s%d</div>
+				</div>`, class, sign, change)
 		}
 
 		if data.AccuracyChange != nil {
 			change := *data.AccuracyChange
-			class := ""
+			class := "neutral"
 			if change > 0 {
 				class = "positive"
 			} else if change < 0 {
@@ -402,31 +488,39 @@ func (s *ReportService) generateWeeklyReportHTML(data *WeeklyReportData) (string
 			if change > 0 {
 				sign = "+"
 			}
-			comparisonHTML += fmt.Sprintf("<div><strong>Точность:</strong> <span class=\"%s\">%s%.1f%%</span></div>", class, sign, change)
+			comparisonHTML += fmt.Sprintf(`
+				<div class="comparison-item">
+					<div class="comparison-label">Точность</div>
+					<div class="comparison-value %s">%s%.1f%%%%</div>
+				</div>`, class, sign, change)
 		}
 
 		if data.TimeChange != nil {
 			change := *data.TimeChange
-			class := ""
+			class := "neutral"
 			if change < 0 {
 				class = "positive"
 			} else if change > 0 {
 				class = "negative"
 			}
-			comparisonHTML += fmt.Sprintf("<div><strong>Время:</strong> <span class=\"%s\">%s%d мин</span></div>", class,
-				func() string {
-					if change < 0 {
-						return "-"
-					} else if change > 0 {
-						return "+"
-					}
-					return ""
-				}(), int(math.Abs(float64(change))))
+			sign := ""
+			if change < 0 {
+				sign = ""
+			} else if change > 0 {
+				sign = "+"
+			}
+			comparisonHTML += fmt.Sprintf(`
+				<div class="comparison-item">
+					<div class="comparison-label">Время</div>
+					<div class="comparison-value %s">%s%d мин</div>
+				</div>`, class, sign, int(math.Abs(float64(change))))
 		}
 
 		comparisonHTML += "</div>"
 	} else {
-		comparisonHTML = "<div class=\"comparison\"><div>Недостаточно данных для сравнения</div></div>"
+		comparisonHTML = `<div class="empty-state">
+			<p>📊 Недостаточно данных для сравнения с прошлой неделей</p>
+		</div>`
 	}
 
 	// Calculate XP progress
@@ -437,8 +531,22 @@ func (s *ReportService) generateWeeklyReportHTML(data *WeeklyReportData) (string
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Еженедельный отчёт</title>
+    <title>Еженедельный отчёт — %s</title>
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* Убираем заголовки и футеры при печати в PDF */
+        @page {
+            margin: 0;
+            size: A4;
+        }
+        @media print {
+            body {
+                margin: 0;
+                padding: 16px;
+            }
+        }
+
         :root {
             --background: #F0F4FF;
             --foreground: #2D3436;
@@ -446,68 +554,298 @@ func (s *ReportService) generateWeeklyReportHTML(data *WeeklyReportData) (string
             --primary: #6C5CE7;
             --secondary: #A29BFE;
             --muted: #E8E4FF;
+            --muted-foreground: #636E72;
             --success: #00B894;
             --destructive: #FF6B6B;
             --border: rgba(108, 92, 231, 0.15);
             --radius: 1rem;
         }
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: var(--background); color: var(--foreground); }
-        .header { background-color: var(--primary); color: white; padding: 20px; text-align: center; border-radius: var(--radius); margin-bottom: 20px; }
-        .section { background-color: var(--card); margin-bottom: 20px; padding: 20px; border-radius: var(--radius); box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid var(--border); }
-        .profile { display: flex; align-items: center; }
-        .profile .avatar { font-size: 80px; margin-right: 20px; }
-        .stats { display: flex; justify-content: space-around; margin-top: 20px; flex-wrap: wrap; }
-        .stat { text-align: center; padding: 15px; background-color: var(--muted); border-radius: calc(var(--radius) - 4px); margin: 5px; flex: 1; min-width: 120px; }
-        .achievements { list-style: none; padding: 0; }
-        .achievements li { padding: 10px; background-color: var(--muted); margin-bottom: 5px; border-radius: calc(var(--radius) - 4px); }
-        .progress-bar { background-color: var(--muted); border-radius: 20px; height: 20px; margin: 10px 0; overflow: hidden; }
-        .progress-fill { background-color: var(--primary); height: 100%%; border-radius: 20px; }
-        .comparison { display: flex; justify-content: space-between; flex-wrap: wrap; }
-        .comparison div { padding: 10px; background-color: var(--muted); border-radius: calc(var(--radius) - 4px); margin: 5px; flex: 1; text-align: center; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 24px;
+            background: linear-gradient(to bottom, var(--background), #E8EFFF);
+            color: var(--foreground);
+            line-height: 1.6;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%%, var(--secondary) 100%%);
+            color: white;
+            padding: 32px;
+            text-align: center;
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+        }
+        .header h1 { font-size: 28px; font-weight: 600; margin-bottom: 8px; }
+        .header p { font-size: 16px; opacity: 0.95; }
+        .section {
+            background-color: var(--card);
+            margin-bottom: 20px;
+            padding: 24px;
+            border-radius: var(--radius);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border: 1px solid var(--border);
+        }
+        .section h2 { font-size: 20px; color: var(--primary); margin-bottom: 16px; font-weight: 600; }
+        .profile { display: flex; align-items: flex-start; gap: 20px; }
+        .profile .avatar {
+            font-size: 72px;
+            line-height: 1;
+            background: linear-gradient(135deg, var(--muted) 0%%, #D8DDFF 100%%);
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 16px;
+            flex-shrink: 0;
+        }
+        .profile-info { flex: 1; }
+        .profile-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 10px;
+            font-size: 15px;
+        }
+        .profile-label { color: var(--muted-foreground); min-width: 100px; }
+        .profile-value { font-weight: 600; color: var(--foreground); }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 20px 16px;
+            background: linear-gradient(135deg, var(--muted) 0%%, #DFE4FF 100%%);
+            border-radius: 12px;
+        }
+        .stat-card .stat-label {
+            font-size: 13px;
+            color: var(--muted-foreground);
+            margin-bottom: 6px;
+            display: block;
+        }
+        .stat-card .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--foreground);
+        }
+        .stat-card .stat-sub {
+            font-size: 13px;
+            color: var(--muted-foreground);
+            margin-top: 4px;
+        }
+        .achievement-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px;
+            background-color: var(--muted);
+            border-radius: 12px;
+            margin-bottom: 10px;
+        }
+        .achievement-icon { font-size: 32px; line-height: 1; }
+        .achievement-info { flex: 1; }
+        .achievement-title { font-weight: 600; font-size: 15px; color: var(--foreground); }
+        .achievement-date { font-size: 13px; color: var(--muted-foreground); margin-top: 2px; }
+        .badge {
+            display: inline-block;
+            background-color: var(--primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .progress-badge {
+            background-color: var(--secondary);
+            color: var(--foreground);
+            font-size: 11px;
+        }
+        .defeated-badge {
+            background-color: var(--success);
+            color: white;
+            font-size: 11px;
+            padding: 3px 10px;
+        }
+        .progress-bar {
+            background-color: var(--muted);
+            border-radius: 20px;
+            height: 12px;
+            margin: 12px 0;
+            overflow: hidden;
+            position: relative;
+        }
+        .progress-fill {
+            background: linear-gradient(90deg, var(--primary) 0%%, var(--secondary) 100%%);
+            height: 100%%;
+            border-radius: 20px;
+            transition: width 0.3s ease;
+        }
+        .progress-fill-hp {
+            background: linear-gradient(90deg, var(--destructive) 0%%, #FF8787 100%%);
+        }
+        .villain-card {
+            padding: 18px;
+            background-color: var(--muted);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+        .villain-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .villain-icon { font-size: 40px; line-height: 1; }
+        .villain-info { flex: 1; }
+        .villain-name { font-weight: 600; font-size: 16px; color: var(--foreground); }
+        .villain-hp { font-size: 13px; color: var(--muted-foreground); margin-top: 2px; }
+        .villain-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .villain-stat {
+            text-align: center;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 8px;
+        }
+        .villain-stat .stat-label {
+            font-size: 12px;
+            color: var(--muted-foreground);
+            display: block;
+        }
+        .villain-stat .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--foreground);
+            margin-top: 4px;
+        }
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+        }
+        .comparison-item {
+            padding: 16px;
+            background-color: var(--muted);
+            border-radius: 12px;
+            text-align: center;
+        }
+        .comparison-label {
+            font-size: 14px;
+            color: var(--muted-foreground);
+            margin-bottom: 8px;
+        }
+        .comparison-value {
+            font-size: 20px;
+            font-weight: 700;
+        }
         .positive { color: var(--success); }
         .negative { color: var(--destructive); }
-        .villain { padding: 15px; background-color: var(--muted); border-radius: var(--radius); margin-bottom: 10px; }
+        .neutral { color: var(--muted-foreground); }
+        .empty-state {
+            text-align: center;
+            padding: 32px;
+            color: var(--muted-foreground);
+            font-size: 15px;
+        }
+        @media (max-width: 600px) {
+            body { padding: 16px; }
+            .header { padding: 24px 20px; }
+            .header h1 { font-size: 22px; }
+            .section { padding: 18px; }
+            .profile { flex-direction: column; align-items: center; text-align: center; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Еженедельный отчёт</h1>
-        <p>Для %s | Неделя с %s по %s</p>
-    </div>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Еженедельный отчёт</h1>
+            <p>%s · Неделя с %s по %s</p>
+        </div>
 
-    <div class="section">
-        <h2>Профиль ребёнка</h2>
-        <div class="profile">
-            <div class="avatar">%s</div>
-            <div>
-                <p><strong>Имя:</strong> %s</p>
-                <p><strong>Класс:</strong> %d</p>
-                <p><strong>Уровень:</strong> %d</p>
-                <p><strong>XP:</strong> %d (предполагаемый прогресс: %d%%)</p>
-                <div class="progress-bar"><div class="progress-fill" style="width: %d%%;"></div></div>
-                <p><strong>Монеты:</strong> %d 🪙</p>
-                <p><strong>Стрик дней:</strong> %d 🔥</p>
+        <div class="section">
+            <h2>👤 Профиль ребёнка</h2>
+            <div class="profile">
+                <div class="avatar">%s</div>
+                <div class="profile-info">
+                    <div class="profile-row">
+                        <span class="profile-label">Имя:</span>
+                        <span class="profile-value">%s</span>
+                    </div>
+                    <div class="profile-row">
+                        <span class="profile-label">Класс:</span>
+                        <span class="profile-value">%d</span>
+                    </div>
+                    <div class="profile-row">
+                        <span class="profile-label">Уровень:</span>
+                        <span class="profile-value">%d</span>
+                    </div>
+                    <div class="profile-row">
+                        <span class="profile-label">XP:</span>
+                        <span class="profile-value">%d (%d%%%%)</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: %d%%%%;"></div>
+                    </div>
+                    <div class="profile-row">
+                        <span class="profile-label">Монеты:</span>
+                        <span class="profile-value">%d 🪙</span>
+                    </div>
+                    <div class="profile-row">
+                        <span class="profile-label">Стрик:</span>
+                        <span class="profile-value">%d 🔥</span>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="section">
-        <h2>Активность за неделю</h2>
-        <div class="stats">
-            <div class="stat"><strong>Попыток:</strong><br>%d</div>
-            <div class="stat"><strong>Успешных:</strong><br>%d (%.2f%%)</div>
-            <div class="stat"><strong>Подсказки:</strong><br>%d</div>
-            <div class="stat"><strong>Среднее время:</strong><br>%s</div>
+        <div class="section">
+            <h2>📈 Активность за неделю</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Попыток</span>
+                    <div class="stat-value">%d</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Успешных</span>
+                    <div class="stat-value">%d</div>
+                    <div class="stat-sub">%.1f%%</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Подсказки</span>
+                    <div class="stat-value">%d</div>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Среднее время</span>
+                    <div class="stat-value">%s</div>
+                </div>
+            </div>
+        </div>
+
+        %s
+
+        %s
+
+        <div class="section">
+            <h2>📊 Сравнение с прошлой неделей</h2>
+            %s
         </div>
     </div>
-
-    %s
-
-    %s
-
-    %s
 </body>
 </html>`,
+		data.ChildName,
 		data.ChildName,
 		data.ReportWeekStart.Format("02.01.2006"),
 		data.ReportWeekEnd.Format("02.01.2006"),
@@ -526,34 +864,29 @@ func (s *ReportService) generateWeeklyReportHTML(data *WeeklyReportData) (string
 		data.HintsUsed,
 		func() string {
 			if data.WeekAvgTimeMinutes == 0.0 {
-				return "Неизвестно"
+				return "—"
 			}
 			return fmt.Sprintf("%.1f мин", data.WeekAvgTimeMinutes)
 		}(),
 		func() string {
 			if achievementsHTML != "" {
 				return fmt.Sprintf(`<div class="section">
-        <h2>Новые достижения</h2>
-        %s
-    </div>`, achievementsHTML)
+            <h2>🏆 Новые достижения</h2>
+            %s
+        </div>`, achievementsHTML)
 			}
 			return ""
 		}(),
 		func() string {
 			if villainHTML != "" {
 				return fmt.Sprintf(`<div class="section">
-        <h2>Битва со злодеями</h2>
-        %s
-    </div>`, villainHTML)
+            <h2>⚔️ Битвы со злодеями</h2>
+            %s
+        </div>`, villainHTML)
 			}
 			return ""
 		}(),
-		func() string {
-			return fmt.Sprintf(`<div class="section">
-        <h2>Сравнение с прошлой неделей</h2>
-        %s
-    </div>`, comparisonHTML)
-		}())
+		comparisonHTML)
 
 	return html, nil
 }
@@ -624,4 +957,86 @@ func (s *ReportService) generateAndSaveWeeklyReports(ctx context.Context) {
 
 		// TODO: Send email with report
 	}
+}
+
+// GetWeeklyHTML возвращает HTML отчёт за текущую неделю (генерирует новый или берёт из БД)
+func (s *ReportService) GetWeeklyHTML(ctx context.Context, childProfileID string, weekStart time.Time) (string, error) {
+	profileUUID, err := uuid.Parse(childProfileID)
+	if err != nil {
+		return "", fmt.Errorf("invalid child_profile_id: %w", err)
+	}
+
+	// Пытаемся получить существующий отчёт из БД
+	var htmlContent string
+	query := `SELECT html_content FROM weekly_reports WHERE user_id = $1 AND report_date = $2`
+	err = s.store.DB.QueryRowContext(ctx, query, profileUUID, weekStart).Scan(&htmlContent)
+	if err == nil {
+		// Отчёт найден в БД
+		return htmlContent, nil
+	}
+
+	// Отчёта нет - генерируем новый
+	log.Printf("[ReportService] No existing report found, generating new one for %s", childProfileID)
+	report, err := s.GenerateWeeklyReport(ctx, profileUUID, weekStart)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate weekly report: %w", err)
+	}
+
+	// Сохраняем в БД
+	if err := s.SaveWeeklyReport(ctx, report); err != nil {
+		log.Printf("[ReportService] Warning: failed to save report to DB: %v", err)
+		// Продолжаем, возвращаем HTML даже если не удалось сохранить
+	}
+
+	return report.HTMLContent, nil
+}
+
+// ConvertHTMLToPDF конвертирует HTML в PDF используя headless chromium
+func (s *ReportService) ConvertHTMLToPDF(htmlContent string) ([]byte, error) {
+	// Создаем временные файлы
+	tmpHTMLFile, err := os.CreateTemp("", "report-*.html")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp HTML file: %w", err)
+	}
+	defer os.Remove(tmpHTMLFile.Name())
+
+	tmpPDFFile, err := os.CreateTemp("", "report-*.pdf")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp PDF file: %w", err)
+	}
+	defer os.Remove(tmpPDFFile.Name())
+
+	// Записываем HTML
+	if _, err := tmpHTMLFile.WriteString(htmlContent); err != nil {
+		return nil, fmt.Errorf("failed to write HTML: %w", err)
+	}
+	tmpHTMLFile.Close()
+
+	// Запускаем chromium в headless режиме для генерации PDF
+	cmd := exec.Command("chromium-browser",
+		"--headless",
+		"--disable-gpu",
+		"--no-sandbox",
+		"--disable-dev-shm-usage",
+		"--disable-software-rasterizer",
+		"--print-to-pdf="+tmpPDFFile.Name(),
+		"--print-to-pdf-no-header", // Убирает URL и дату из header/footer
+		"--no-pdf-header-footer",   // Убирает все header/footer
+		"--font-render-hinting=none",
+		"file://"+tmpHTMLFile.Name(),
+	)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("chromium failed: %w, output: %s", err, string(output))
+	}
+
+	// Читаем PDF
+	pdfContent, err := os.ReadFile(tmpPDFFile.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PDF: %w", err)
+	}
+
+	log.Printf("[ReportService] Successfully converted HTML to PDF (%d bytes)", len(pdfContent))
+	return pdfContent, nil
 }

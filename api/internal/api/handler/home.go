@@ -153,7 +153,18 @@ func (h *HomeHandler) GetHomeData(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data.RecentAttempts = []RecentAttempt{}
+	// Преобразуем recent attempts
+	data.RecentAttempts = make([]RecentAttempt, 0, len(serviceData.RecentAttempts))
+	for _, attempt := range serviceData.RecentAttempts {
+		data.RecentAttempts = append(data.RecentAttempts, RecentAttempt{
+			ID:            attempt.ID,
+			Mode:          attempt.Mode,
+			Status:        attempt.Status,
+			CreatedAt:     attempt.CreatedAt,
+			Thumbnail:     attempt.Thumbnail,
+			ResultSummary: attempt.ResultSummary,
+		})
+	}
 
 	data.Achievements.UnlockedCount = serviceData.Achievements.UnlockedCount
 	data.Achievements.TotalCount = serviceData.Achievements.TotalCount

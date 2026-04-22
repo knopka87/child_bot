@@ -28,12 +28,12 @@
   font-size: 20px;
   font-weight: 600;
   margin: 0 0 12px 0;
-  color: var(--vkui--color_text_primary, #2C2D2E);
+  color: #2D3436;
 }
 
 .description {
   font-size: 15px;
-  color: var(--vkui--color_text_secondary, #818C99);
+  color: #2D3436;
   margin: 0 0 16px 0;
   line-height: 1.4;
 }

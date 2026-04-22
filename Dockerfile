@@ -30,7 +30,19 @@ RUN chmod +x /out/entrypoint.sh
 FROM alpine:3.20
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata bash wget
+# Устанавливаем зависимости, включая chromium для генерации PDF
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    bash \
+    wget \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ttf-freefont \
+    font-noto-emoji \
+    font-dejavu
 
 # бинарь и миграции
 COPY --from=build /out/server /app/server

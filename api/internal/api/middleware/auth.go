@@ -15,6 +15,8 @@ const (
 	ContextKeyPlatformID contextKey = "platformID"
 	// ContextKeyChildProfileID ключ для childProfileID в context
 	ContextKeyChildProfileID contextKey = "childProfileID"
+	// ContextKeyVKUserID ключ для VK user ID в context
+	ContextKeyVKUserID contextKey = "vkUserID"
 )
 
 // Auth middleware для проверки платформы и профиля
@@ -77,6 +79,14 @@ func GetChildProfileID(ctx context.Context) string {
 	return ""
 }
 
+// GetVKUserID извлекает VK user ID из context
+func GetVKUserID(ctx context.Context) string {
+	if id, ok := ctx.Value(ContextKeyVKUserID).(string); ok {
+		return id
+	}
+	return ""
+}
+
 // requiresAuth проверяет, требует ли путь аутентификации
 func requiresAuth(path string) bool {
 	publicPaths := []string{
@@ -86,6 +96,7 @@ func requiresAuth(path string) bool {
 		"/avatars",          // Временно: для отладки VK Mini App
 		"/analytics/events", // Analytics events (могут отправляться без childProfileID)
 		"/legal/",           // Legal documents доступны всем
+		"/webhooks/",        // Webhooks (VK Pay, etc.) - используют собственную валидацию
 	}
 
 	for _, pp := range publicPaths {
@@ -102,9 +113,10 @@ func requiresChildProfile(path string) bool {
 	noProfilePaths := []string{
 		"/onboarding/",
 		"/avatars",
-		"/profiles/child", // Создание профиля - не требует ID, так как он ещё не создан
-		"/consent",        // Сохранение согласия - часть onboarding
-		"/email/",         // Email verification - часть onboarding, до создания профиля
+		"/profiles/child",       // Создание профиля - не требует ID, так как он ещё не создан
+		"/profiles/by-platform", // Получение профиля по platform credentials - используется для auth
+		"/consent",              // Сохранение согласия - часть onboarding
+		"/email/",               // Email verification - часть onboarding, до создания профиля
 	}
 
 	for _, npp := range noProfilePaths {

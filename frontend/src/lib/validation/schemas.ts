@@ -208,11 +208,11 @@ export function validateData<T>(
   if (!result.success) {
     const errorMessage = `Validation failed${context ? ` for ${context}` : ''}`;
     console.error(errorMessage, {
-      errors: result.error.errors,
+      errors: result.error.issues,
       data,
     });
 
-    throw new Error(`${errorMessage}: ${result.error.errors[0].message}`);
+    throw new Error(`${errorMessage}: ${result.error.issues[0].message}`);
   }
 
   return result.data;
@@ -230,7 +230,7 @@ export function validateDataWithFallback<T>(
 
   if (!result.success) {
     console.warn('Validation failed, using fallback', {
-      errors: result.error.errors,
+      errors: result.error.issues,
       fallback,
     });
     return fallback;

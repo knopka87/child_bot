@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Copy, Send, Users, CheckCircle, Gift } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Spinner } from '@/components/ui/Spinner';
+import { ListPageSkeleton } from '@/components/ui/skeleton';
 import { useReferralData } from './hooks/useReferralData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { referralAPI } from '@/api/referral';
@@ -74,13 +74,7 @@ export function FriendsPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.loadingContainer}>
-          <Spinner size="lg" />
-        </div>
-      </div>
-    );
+    return <ListPageSkeleton itemCount={3} />;
   }
 
   if (error || !data) {

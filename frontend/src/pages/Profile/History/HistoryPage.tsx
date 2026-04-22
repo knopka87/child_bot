@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BookOpen, ClipboardCheck, CheckCircle, XCircle, Clock, Lightbulb, Loader } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { BottomNav } from '@/components/layout/BottomNav';
-import { Spinner } from '@/components/ui/Spinner';
+import { ListPageSkeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/Spinner/Spinner';
 import { useHistory } from './hooks/useHistory';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
@@ -182,13 +183,7 @@ export function HistoryPage() {
   };
 
   if (isLoading && !childProfileId) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.loadingContainer}>
-          <Spinner size="lg" />
-        </div>
-      </div>
-    );
+    return <ListPageSkeleton itemCount={8} />;
   }
 
   return (
