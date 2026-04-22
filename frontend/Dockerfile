@@ -1,7 +1,8 @@
 ########################
 # Build stage
 ########################
-FROM node:20-alpine AS build
+# Используем стабильный Debian-based образ (лучше кешируется)
+FROM node:20-bookworm AS build
 
 WORKDIR /app
 
@@ -16,8 +17,10 @@ ARG VITE_TELEGRAM_BOT_USERNAME
 # Копируем package files
 COPY package*.json ./
 
-# Устанавливаем ВСЕ зависимости (включая dev для сборки)
-RUN npm ci
+# Устанавливаем ВСЕ зависимости с retry логикой
+RUN for i in 1 2 3; do \
+      npm ci && break || { echo "npm ci failed, retrying..."; sleep 10; }; \
+    done
 
 # Копируем исходники
 COPY . .
@@ -35,7 +38,8 @@ RUN npm run build
 ########################
 # Production stage with nginx
 ########################
-FROM nginx:1.25-alpine
+# Используем Debian-based nginx (лучше кешируется)
+FROM nginx:1.25-bookworm
 
 # Копируем собранные файлы
 COPY --from=build /app/dist /usr/share/nginx/html

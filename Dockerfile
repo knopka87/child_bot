@@ -1,13 +1,16 @@
 ########################
 # Build stage
 ########################
-# Используем golang:1.23-alpine (более стабильная версия, чаще кешируется)
-FROM golang:1.23-alpine AS build
+# Используем стабильный Debian-based образ (меньше проблем с сетью, чаще кешируется)
+FROM golang:1.22-bookworm AS build
 WORKDIR /src
 
-# Добавляем retry для apk (на случай сбоев сети)
+# Добавляем retry для apt (на случай сбоев сети)
 RUN for i in 1 2 3 4 5; do \
-      apk add --no-cache ca-certificates tzdata && break || sleep 5; \
+      apt-get update && \
+      apt-get install -y --no-install-recommends ca-certificates tzdata && \
+      rm -rf /var/lib/apt/lists/* && \
+      break || sleep 10; \
     done
 
 # Сначала зависимости — кэшируется отдельно
@@ -36,22 +39,25 @@ RUN chmod +x /out/entrypoint.sh
 ########################
 # Runtime stage (app-only)
 ########################
-FROM alpine:3.20
+# Используем Debian-slim для лучшей совместимости с Chromium
+FROM debian:bookworm-slim
 WORKDIR /app
 
-# Устанавливаем зависимости, включая chromium для генерации PDF
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata \
-    bash \
-    wget \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ttf-freefont \
-    font-noto-emoji \
-    font-dejavu
+# Устанавливаем зависимости с retry, включая chromium для генерации PDF
+RUN for i in 1 2 3 4 5; do \
+      apt-get update && \
+      apt-get install -y --no-install-recommends \
+        ca-certificates \
+        tzdata \
+        bash \
+        wget \
+        chromium \
+        fonts-liberation \
+        fonts-noto-emoji \
+        fonts-dejavu && \
+      rm -rf /var/lib/apt/lists/* && \
+      break || sleep 10; \
+    done
 
 # бинарь и миграции
 COPY --from=build /out/server /app/server
