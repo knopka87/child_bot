@@ -46,9 +46,12 @@
 
 **Найденные и исправленные проблемы:**
 - ❌ **КРИТИЧНО:** `.env` содержал реальный `VK_APP_SECRET` → **ИСПРАВЛЕНО**
+- ❌ `.env.old` с реальными API ключами был в Git истории → **УДАЛЕНО через git filter-branch**
 - ❌ `.env.production.example` использовал `VK_SECRET_KEY` вместо `VK_APP_SECRET` → **ИСПРАВЛЕНО**
 - ❌ Отсутствовали `EMAIL_PROVIDER` и `EMAIL_API_KEY` в production примере → **ИСПРАВЛЕНО**
 - ❌ Неиспользуемые переменные в .env файлах (SENTRY_DSN, AMPLITUDE_API_KEY, WEBHOOK_URL и др.) → **УДАЛЕНО**
+- ❌ `docker-compose.production.yml` ссылался на несуществующий `env_file: .env` → **ИСПРАВЛЕНО**
+- ❌ Переменные EMAIL_PROVIDER по умолчанию был sendgrid вместо mailtrap → **ИСПРАВЛЕНО**
 
 ---
 
@@ -215,12 +218,14 @@ child_bot/
 
 ## 🚀 Следующие шаги
 
-1. ✅ Файлы готовы - коммит в Git
-2. ⏳ Создать `.env.production` с реальными секретами
-3. ⏳ Настроить VK Mini App
-4. ⏳ Настроить Email провайдер
-5. ⏳ Следовать инструкции из `docs/deployment-swtest.ru.md`
-6. ⏳ Деплой через swtest.ru панель
+1. ✅ Файлы готовы - коммит в Git и push
+2. ⏳ Сгенерировать пароли для PostgreSQL и Redis
+3. ⏳ Настроить VK Mini App и получить `VK_APP_SECRET`
+4. ⏳ Настроить Email провайдер (Mailtrap) и получить API ключ
+5. ⏳ Следовать инструкции из `docs/deployment-swtest.ru.md` или `docs/DEPLOYMENT_CHECKLIST.md`
+6. ⏳ Деплой через swtest.ru панель (ввод переменных вручную в UI)
+
+**⚠️ ВАЖНО:** Файл `.env` НЕ требуется для деплоя. Все переменные вводятся напрямую через Portainer UI при создании стека.
 
 ---
 

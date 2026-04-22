@@ -118,7 +118,9 @@
       "Bash(npm run type-check:*)",
       "Bash(npm run:*)",
       "Bash(DATABASE_URL=\"postgres://child_bot:dev_secret@localhost:5432/child_bot?sslmode=disable\" make migrate-up:*)",
-      "Bash(DATABASE_URL=\"postgres://child_bot:dev_secret@localhost:5432/child_bot?sslmode=disable\" LLM_PROXY_URL=\"http://138.124.55.145:8000\" timeout 5 go run:*)"
+      "Bash(DATABASE_URL=\"postgres://child_bot:dev_secret@localhost:5432/child_bot?sslmode=disable\" LLM_PROXY_URL=\"http://138.124.55.145:8000\" timeout 5 go run:*)",
+      "Bash(go version:*)",
+      "Bash(docker pull golang:1.24-alpine)"
     ]
   }
 }
