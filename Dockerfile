@@ -1,13 +1,22 @@
 ########################
 # Build stage
 ########################
-FROM golang:1.24-alpine AS build
+# Используем golang:1.23-alpine (более стабильная версия, чаще кешируется)
+FROM golang:1.23-alpine AS build
 WORKDIR /src
-RUN apk add --no-cache ca-certificates tzdata
+
+# Добавляем retry для apk (на случай сбоев сети)
+RUN for i in 1 2 3 4 5; do \
+      apk add --no-cache ca-certificates tzdata && break || sleep 5; \
+    done
 
 # Сначала зависимости — кэшируется отдельно
 COPY go.mod go.sum ./
-RUN go mod download
+
+# go mod download с retry
+RUN for i in 1 2 3; do \
+      go mod download && break || sleep 10; \
+    done
 
 # Код
 COPY api ./api
