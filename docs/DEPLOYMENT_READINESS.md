@@ -218,12 +218,13 @@ child_bot/
 
 ## 🚀 Следующие шаги
 
-1. ✅ Файлы готовы - коммит в Git и push
-2. ⏳ Сгенерировать пароли для PostgreSQL и Redis
-3. ⏳ Настроить VK Mini App и получить `VK_APP_SECRET`
-4. ⏳ Настроить Email провайдер (Mailtrap) и получить API ключ
-5. ⏳ Следовать инструкции из `docs/deployment-swtest.ru.md` или `docs/DEPLOYMENT_CHECKLIST.md`
-6. ⏳ Деплой через swtest.ru панель (ввод переменных вручную в UI)
+1. ✅ Файлы готовы - коммит в Git и push ✅ ВЫПОЛНЕНО
+2. ✅ Dockerfile обновлен с retry логикой для стабильности сети
+3. ⏳ Сгенерировать пароли для PostgreSQL и Redis
+4. ⏳ Настроить VK Mini App и получить `VK_APP_SECRET`
+5. ⏳ Настроить Email провайдер (Mailtrap) и получить API ключ
+6. ⏳ Следовать инструкции из `docs/deployment-swtest.ru.md` или `docs/DEPLOYMENT_CHECKLIST.md`
+7. ⏳ Повторить деплой через swtest.ru панель с обновленным Dockerfile
 
 **⚠️ ВАЖНО:** Файл `.env` НЕ требуется для деплоя. Все переменные вводятся напрямую через Portainer UI при создании стека.
 
@@ -233,8 +234,8 @@ child_bot/
 
 - **Инструкция по деплою:** `docs/deployment-swtest.ru.md`
 - **VK Admin:** https://vk.com/apps?act=manage
-- **SendGrid:** https://sendgrid.com/
-- **GitHub репозиторий:** https://github.com/knopka87/child_bot
+- **Mailtrap:** https://mailtrap.io/
+- **GitHub репозиторий:** https://github.com/knopka87/child_bot (ветка: prod-v1)
 
 ---
 
