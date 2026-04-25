@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -28,20 +30,29 @@ func Auth(next http.Handler) http.Handler {
 		platformID := strings.TrimSpace(r.Header.Get("X-Platform-ID"))
 		childProfileID := strings.TrimSpace(r.Header.Get("X-Child-Profile-ID"))
 
+		log.Printf("[Auth] Request: %s %s, Platform-ID: '%s', Child-Profile-ID: '%s'",
+			r.Method, r.URL.Path, platformID, childProfileID)
+		// Также выведем в stdout для docker logs
+		fmt.Printf("[Auth] Request: %s %s, Platform-ID: '%s', Child-Profile-ID: '%s'\n",
+			r.Method, r.URL.Path, platformID, childProfileID)
+
 		// Для некоторых endpoints (health, onboarding) auth не требуется
 		// Проверим, нужна ли аутентификация для этого пути
 		if !requiresAuth(r.URL.Path) {
+			log.Printf("[Auth] Skipping auth for path: %s", r.URL.Path)
 			next.ServeHTTP(w, r)
 			return
 		}
 
 		// Проверка platformID
 		if platformID == "" {
+			log.Printf("[Auth] Missing X-Platform-ID header for path: %s", r.URL.Path)
 			response.Unauthorized(w, "Missing X-Platform-ID header")
 			return
 		}
 
 		if !isValidPlatform(platformID) {
+			log.Printf("[Auth] Invalid platform ID: %s for path: %s", platformID, r.URL.Path)
 			response.BadRequest(w, "Invalid platform ID")
 			return
 		}

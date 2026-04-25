@@ -43,16 +43,21 @@ class APIClient {
         console.log('[APIClient] platformID from storage:', platformID);
 
         if (!platformID) {
-          // Fallback: определяем из URL или используем web
+          // Определяем платформу: VK Mini App или web
           const urlParams = new URLSearchParams(window.location.search);
-          platformID = urlParams.get('vk_platform') ? 'vk' : 'web';
-          console.log('[APIClient] Using fallback platformID:', platformID);
+          const hasVKParams = urlParams.has('vk_platform') || urlParams.has('vk_app_id') ||
+                             urlParams.has('vk_user_id') || urlParams.has('sign');
+
+          platformID = hasVKParams ? 'vk' : 'web';
+          console.log('[APIClient] Detected platformID:', platformID, 'from URL params:', hasVKParams);
+          console.log('[APIClient] URL search params:', window.location.search);
           localStorage.setItem('platform_id', platformID);
         }
 
-        // Dev режим локально - всегда устанавливаем платформу принудительно
-        if (import.meta.env.DEV) {
-          platformID = 'web';
+        // Force platform detection for VK Mini App
+        if (window.location.hostname.includes('vk.com') || window.location.search.includes('vk_')) {
+          platformID = 'vk';
+          console.log('[APIClient] Forced platformID to vk for VK Mini App');
         }
 
         if (requestConfig.headers) {
