@@ -17,9 +17,23 @@ import (
 )
 
 // VKAuthMiddleware проверяет валидность sign параметра от VK Mini Apps
-// Документация: https://dev.vk.com/ru/mini-apps/development/launch-params
+// Документация: https://dev.vk.com/ru/mini-apps/development/launch-parameters
 func VKAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Пропускаем валидацию для /analytics и других публичных эндпоинтов
+		publicPaths := []string{
+			"/analytics/",
+			"/health",
+			"/avatars",
+			"/legal/",
+		}
+		for _, pp := range publicPaths {
+			if strings.HasPrefix(r.URL.Path, pp) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
 		// Проверяем наличие VK параметров
 		query := r.URL.Query()
 		vkUserID := query.Get("vk_user_id")

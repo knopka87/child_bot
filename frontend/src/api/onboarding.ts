@@ -7,7 +7,7 @@ export const onboardingAPI = {
    * Получить список аватаров
    */
   async getAvatars(): Promise<Avatar[]> {
-    return apiClient.get<Avatar[]>('/avatars');
+    return apiClient.get<Avatar[]>('/api/avatars');
   },
 
   /**
@@ -20,7 +20,7 @@ export const onboardingAPI = {
     displayName: string;
     referralCode?: string;
   }): Promise<{ childProfileId: string }> {
-    return apiClient.post<{ childProfileId: string }>('/profiles/child', data);
+    return apiClient.post<{ childProfileId: string }>('/api/profiles/child', data);
   },
 
   /**
@@ -31,7 +31,7 @@ export const onboardingAPI = {
     parentUserId: string;
   }): Promise<{ message: string; expiresAt: string; devCode?: string }> {
     return apiClient.post<{ message: string; expiresAt: string; devCode?: string }>(
-      '/email/verify/send',
+      '/api/email/verify/send',
       data
     );
   },
@@ -44,7 +44,7 @@ export const onboardingAPI = {
     code: string;
   }): Promise<{ verified: boolean; message: string }> {
     return apiClient.post<{ verified: boolean; message: string }>(
-      '/email/verify/check',
+      '/api/email/verify/check',
       data
     );
   },
@@ -54,7 +54,7 @@ export const onboardingAPI = {
    */
   async checkEmailVerification(email: string): Promise<{ email: string; verified: boolean }> {
     return apiClient.get<{ email: string; verified: boolean }>(
-      `/email/verify/status?email=${encodeURIComponent(email)}`
+      `/api/email/verify/status?email=${encodeURIComponent(email)}`
     );
   },
 
@@ -67,7 +67,7 @@ export const onboardingAPI = {
     termsVersion: string;
     adultConsent: boolean;
   }): Promise<void> {
-    return apiClient.post<void>('/consent', data);
+    return apiClient.post<void>('/api/consent', data);
   },
 
   /**
@@ -77,6 +77,6 @@ export const onboardingAPI = {
     parentUserId: string;
     childProfileId: string;
   }): Promise<void> {
-    return apiClient.post<void>('/onboarding/complete', data);
+    return apiClient.post<void>('/api/onboarding/complete', data);
   },
 };

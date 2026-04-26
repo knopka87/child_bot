@@ -102,12 +102,18 @@ func GetVKUserID(ctx context.Context) string {
 func requiresAuth(path string) bool {
 	publicPaths := []string{
 		"/health",
+		"/api/health",
 		"/onboarding/start",
+		"/api/onboarding/start",
 		"/onboarding/complete",
-		"/avatars",          // Временно: для отладки VK Mini App
+		"/api/onboarding/complete",
+		"/avatars", // Временно: для отладки VK Mini App
+		"/api/avatars",
 		"/analytics/events", // Analytics events (могут отправляться без childProfileID)
-		"/legal/",           // Legal documents доступны всем
-		"/webhooks/",        // Webhooks (VK Pay, etc.) - используют собственную валидацию
+		"/api/analytics/events",
+		"/legal/", // Legal documents доступны всем
+		"/api/legal/",
+		"/webhooks/", // Webhooks (VK Pay, etc.) - используют собственную валидацию
 	}
 
 	for _, pp := range publicPaths {
@@ -124,10 +130,13 @@ func requiresChildProfile(path string) bool {
 	noProfilePaths := []string{
 		"/onboarding/",
 		"/avatars",
-		"/profiles/child",       // Создание профиля - не требует ID, так как он ещё не создан
+		"/profiles/child", // Создание профиля - не требует ID, так как он ещё не создан
+		"/api/profiles/child",
 		"/profiles/by-platform", // Получение профиля по platform credentials - используется для auth
-		"/consent",              // Сохранение согласия - часть onboarding
-		"/email/",               // Email verification - часть onboarding, до создания профиля
+		"/api/profiles/by-platform",
+		"/consent", // Сохранение согласия - часть onboarding
+		"/api/consent",
+		"/email/", // Email verification - часть onboarding, до создания профиля
 	}
 
 	for _, npp := range noProfilePaths {

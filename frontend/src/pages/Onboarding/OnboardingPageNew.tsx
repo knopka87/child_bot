@@ -114,6 +114,12 @@ export function OnboardingPageNew() {
       await vkStorage.setItem(storageKeys.PROFILE_ID, childProfileId);
       await vkStorage.setItem(storageKeys.ONBOARDING_COMPLETED, 'true');
 
+      // Важно: устанавливаем профиль в глобальное хранилище аутентификации
+      // Это позволяет всем последующим запросам использовать этот профиль
+      import('@/lib/auth').then(({ setCurrentChildProfileId }) => {
+        setCurrentChildProfileId(childProfileId);
+      });
+
       await onboardingAPI.saveConsent({
         parentUserId,
         privacyPolicyVersion: '1.0',
@@ -202,31 +208,29 @@ export function OnboardingPageNew() {
                 </div>
                 <span className="text-[13px] text-[#2D3436] leading-relaxed">
                   Я согласен с{' '}
-                  <button
-                    type="button"
+                  <span
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       analytics.trackEvent('privacy_policy_opened', {});
                       handleLegalLinkClick('privacy');
                     }}
-                    className="text-[#6C5CE7] underline"
+                    className="text-[#6C5CE7] underline cursor-pointer"
                   >
                     Политикой конфиденциальности
-                  </button>{' '}
+                  </span>{' '}
                   и{' '}
-                  <button
-                    type="button"
+                  <span
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       analytics.trackEvent('terms_opened', {});
                       handleLegalLinkClick('terms');
                     }}
-                    className="text-[#6C5CE7] underline"
+                    className="text-[#6C5CE7] underline cursor-pointer"
                   >
-                    Пользовательским соглашением
-                  </button>
+                    Условиями использования
+                  </span>
                 </span>
               </button>
             </div>

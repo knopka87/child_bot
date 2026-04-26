@@ -2,8 +2,8 @@
  * Утилиты для работы с аутентификацией и профилем пользователя через VK Mini Apps
  */
 
-import { getVKUserId, getVKParamsQueryString } from './platform/vk-auth';
-import { isDevMode } from './platform/bridge';
+import { getVKUserId, getVKParamsQueryString, getVKSign } from './platform/vk-auth';
+import { isDevMode, isRunningInsideVK } from './platform/bridge';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
 const STORAGE_KEY = 'child_profile_id';
@@ -29,7 +29,7 @@ export async function getCurrentChildProfileId(): Promise<string | null> {
     // Проверяем кэш в sessionStorage (безопаснее чем localStorage)
     const cachedProfileId = sessionStorage.getItem(STORAGE_KEY);
     if (cachedProfileId) {
-      console.log('[Auth] Using cached profile ID');
+      console.log('[Auth] Using cached profile ID:', cachedProfileId);
       return cachedProfileId;
     }
 
@@ -69,7 +69,7 @@ export async function getCurrentChildProfileId(): Promise<string | null> {
       console.log('[Auth] Profile not found, user needs onboarding');
       return null;
     } else {
-      console.error('[Auth] Failed to get profile:', response.status);
+      console.error('[Auth] Failed to get profile:', response.status, await response.text());
       return null;
     }
   } catch (error) {
@@ -144,4 +144,148 @@ export function isAuthenticatedSync(): boolean {
  */
 export function getVKAuthParams(): string {
   return getVKParamsQueryString();
+}
+
+/**
+ * Создает API клиент с автоматическим добавлением заголовков аутентификации
+ * Используется для защиты всех запросов от клиента
+ */
+export async function createAuthenticatedClient(): Promise<{
+  request: <T>(input: RequestInfo | URL, init?: RequestInit) => Promise<T>;
+  get: <T>(url: string, options?: Omit<RequestInit, 'method'>) => Promise<T>;
+  post: <T>(url: string, body?: any, options?: Omit<RequestInit, 'method' | 'body'>) => Promise<T>;
+  put: <T>(url: string, body?: any, options?: Omit<RequestInit, 'method' | 'body'>) => Promise<T>;
+  delete: <T>(url: string, options?: Omit<RequestInit, 'method'>) => Promise<T>;
+}> {
+  const client = createAPIClient();
+  return {
+    request: client.request,
+    get: client.get,
+    post: client.post,
+    put: client.put,
+    delete: client.delete,
+  };
+}
+
+/**
+ * Внутренняя функция для создания API клиента с автоматической аутентификацией
+ */
+function createAPIClient() {
+  /**
+   * Универсальный метод запроса с автоматическим добавлением заголовков
+   */
+  async function request<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+    const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+    const method = (init?.method || 'GET').toUpperCase();
+    
+    // Собираем заголовки
+    const headers = new Headers(init?.headers);
+    
+    // Добавляем Content-Type для методов с телом
+    if (method !== 'GET' && method !== 'HEAD') {
+      if (!headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
+      }
+    }
+    
+    // Добавляем заголовки аутентификации
+    const platformID = 'vk';
+    const childProfileId = sessionStorage.getItem(STORAGE_KEY);
+    const vkSign = getVKSign();
+    
+    headers.set('X-Platform-ID', platformID);
+    
+    if (childProfileId) {
+      headers.set('X-Child-Profile-ID', childProfileId);
+    }
+    
+    // Добавляем sign для валидации VK Mini Apps
+    if (isRunningInsideVK() && vkSign) {
+      headers.set('X-VK-Sign', vkSign);
+    }
+    
+    // Собираем параметры запроса
+    const requestInit: RequestInit = {
+      ...init,
+      method,
+      headers,
+      credentials: 'include', // Включаем cookies для CORS
+    };
+    
+    // Если есть тело, преобразуем его в JSON
+    if (init?.body && typeof init.body === 'object' && !headers.has('Content-Type')) {
+      requestInit.body = JSON.stringify(init.body);
+      headers.set('Content-Type', 'application/json');
+    }
+    
+    // Выполняем запрос
+    const response = await fetch(url, requestInit);
+    
+    // Проверяем статус ответа
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+    
+    // Парсим JSON ответ
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return response.json();
+    }
+    
+    // Возвращаем текст для не-JSON ответов
+    return response.text() as Promise<T>;
+  }
+  
+  /**
+   * GET запрос
+   */
+  async function get<T>(url: string, options?: Omit<RequestInit, 'method'>): Promise<T> {
+    return request<T>(url, { ...options, method: 'GET' });
+  }
+  
+  /**
+   * POST запрос
+   */
+  async function post<T>(url: string, body?: any, options?: Omit<RequestInit, 'method' | 'body'>): Promise<T> {
+    return request<T>(url, { ...options, method: 'POST', body });
+  }
+  
+  /**
+   * PUT запрос
+   */
+  async function put<T>(url: string, body?: any, options?: Omit<RequestInit, 'method' | 'body'>): Promise<T> {
+    return request<T>(url, { ...options, method: 'PUT', body });
+  }
+  
+  /**
+   * DELETE запрос
+   */
+  async function deleteReq<T>(url: string, options?: Omit<RequestInit, 'method'>): Promise<T> {
+    return request<T>(url, { ...options, method: 'DELETE' });
+  }
+  
+  return {
+    request,
+    get,
+    post: post,
+    put,
+    delete: deleteReq,
+  };
+}
+
+/**
+ * Проверяет, запущено ли приложение внутри VK
+ */
+export function isLaunchedFromVK(): boolean {
+  if (typeof window === 'undefined') return false;
+  const params = new URLSearchParams(window.location.search);
+  return !!(params.get('vk_user_id') && params.get('vk_app_id'));
+}
+
+/**
+ * Получить текущий childProfileId с fallback
+ */
+export function getCurrentProfileIdOrFallback(): string | null {
+  return getCurrentChildProfileIdSync() || (isDevMode() ? "1c84c913-19b3-40f7-b3ab-a94f90ce374f" : null);
 }

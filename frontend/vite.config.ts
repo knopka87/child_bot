@@ -34,6 +34,8 @@ export default defineConfig({
     // https отключен по умолчанию для локальной разработки (для production будет HTTPS через nginx)
     allowedHosts: [
       'localhost',
+      '127.0.0.1',
+      '77.222.60.149',
       '.ngrok-free.dev', // Разрешаем все ngrok домены
       '.ngrok.io',
       '.loca.lt', // localtunnel
