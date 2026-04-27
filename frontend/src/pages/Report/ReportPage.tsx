@@ -5,9 +5,10 @@ import { motion } from "framer-motion";
 import { getCurrentChildProfileId } from "@/lib/auth";
 import { ROUTES } from "@/config/routes";
 import { BottomNav } from "@/components/layout/BottomNav";
+import config from "@/config";
 
-// API configuration
-const API_BASE_URL = "http://localhost:8080";
+// API configuration - use empty string for relative paths in production
+const API_BASE_URL = config.isProduction ? '' : 'http://localhost:8080';
 const PLATFORM_ID = "web";
 
 interface ReportInfo {

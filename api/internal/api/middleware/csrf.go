@@ -99,7 +99,13 @@ func isSafeMethod(method string) bool {
 func isCSRFExempt(path string) bool {
 	exemptPaths := []string{
 		"/health",
-		"/api/v1/analytics/events", // Analytics может быть exempt
+		"/api/health",
+		"/api/analytics/events",     // Analytics events
+		"/api/profiles/child",       // Child profile creation (onboarding)
+		"/api/profiles/by-platform", // Profile lookup by platform credentials
+		"/api/onboarding/start",     // Onboarding start
+		"/api/onboarding/complete",  // Onboarding complete
+		"/api/consent",              // Consent saving
 	}
 
 	for _, exempt := range exemptPaths {
