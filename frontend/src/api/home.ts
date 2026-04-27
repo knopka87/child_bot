@@ -8,14 +8,14 @@ export const homeAPI = {
    * Получить все данные для главного экрана
    */
   async getHomeData(childProfileId: string): Promise<HomeData> {
-    return apiClient.get<HomeData>(`/home/${childProfileId}`);
+    return apiClient.get<HomeData>(`/api/home/${childProfileId}`);
   },
 
   /**
    * Получить незавершенную попытку
    */
   async getUnfinishedAttempt(childProfileId: string): Promise<Attempt | null> {
-    return apiClient.get<Attempt | null>(`/attempts/unfinished`, {
+    return apiClient.get<Attempt | null>(`/api/attempts/unfinished`, {
       params: { childProfileId },
     });
   },
@@ -27,7 +27,7 @@ export const homeAPI = {
     childProfileId: string,
     limit: number = 3
   ): Promise<RecentAttempt[]> {
-    return apiClient.get<RecentAttempt[]>(`/attempts/recent`, {
+    return apiClient.get<RecentAttempt[]>(`/api/attempts/recent`, {
       params: { childProfileId, limit },
     });
   },
@@ -36,6 +36,6 @@ export const homeAPI = {
    * Удалить незавершенную попытку
    */
   async deleteAttempt(attemptId: string): Promise<void> {
-    return apiClient.delete<void>(`/attempts/${attemptId}`);
+    return apiClient.delete<void>(`/api/attempts/${attemptId}`);
   },
 };

@@ -100,12 +100,13 @@ func isCSRFExempt(path string) bool {
 	exemptPaths := []string{
 		"/health",
 		"/api/health",
-		"/api/analytics/events",     // Analytics events
-		"/api/profiles/child",       // Child profile creation (onboarding)
-		"/api/profiles/by-platform", // Profile lookup by platform credentials
-		"/api/onboarding/start",     // Onboarding start
-		"/api/onboarding/complete",  // Onboarding complete
-		"/api/consent",              // Consent saving
+		"/api/analytics/events",         // Analytics events
+		"/api/profiles/child",           // Child profile creation (onboarding)
+		"/api/profiles/by-platform",     // Profile lookup by platform credentials
+		"/api/onboarding/start",         // Onboarding start
+		"/api/onboarding/complete",      // Onboarding complete
+		"/api/consent",                  // Consent saving
+		"/api/achievements/mark-viewed", // Mark achievements as viewed
 	}
 
 	for _, exempt := range exemptPaths {
