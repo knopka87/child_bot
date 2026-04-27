@@ -130,6 +130,7 @@ func requiresChildProfile(path string) bool {
 	noProfilePaths := []string{
 		"/onboarding/",
 		"/avatars",
+		"/api/analytics/events",
 		"/profiles/child", // Создание профиля - не требует ID, так как он ещё не создан
 		"/api/profiles/child",
 		"/profiles/by-platform", // Получение профиля по platform credentials - используется для auth
