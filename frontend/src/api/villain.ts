@@ -11,21 +11,21 @@ export const villainAPI = {
    * Получить активного злодея
    */
   async getActiveVillain(): Promise<Villain | null> {
-    return apiClient.get<Villain | null>('/api/villains/active');
+    return apiClient.get<Villain | null>('/villains/active');
   },
 
   /**
    * Получить детали битвы
    */
   async getBattleDetails(villainId: string): Promise<VillainBattle> {
-    return apiClient.get<VillainBattle>(`/api/villains/${villainId}/battle`);
+    return apiClient.get<VillainBattle>(`/villains/${villainId}/battle`);
   },
 
   /**
    * Получить детали победы
    */
   async getVictoryDetails(villainId: string): Promise<VillainVictory> {
-    return apiClient.get<VillainVictory>(`/api/villains/${villainId}/victory`);
+    return apiClient.get<VillainVictory>(`/villains/${villainId}/victory`);
   },
 
   /**

@@ -128,16 +128,13 @@ func requiresAuth(path string) bool {
 func requiresChildProfile(path string) bool {
 	// Paths, которые НЕ требуют childProfileID (например, onboarding)
 	noProfilePaths := []string{
-		"/onboarding/",
-		"/avatars",
+		"/api/avatars",
 		"/api/analytics/events",
-		"/profiles/child", // Создание профиля - не требует ID, так как он ещё не создан
-		"/api/profiles/child",
-		"/profiles/by-platform", // Получение профиля по platform credentials - используется для auth
-		"/api/profiles/by-platform",
-		"/consent", // Сохранение согласия - часть onboarding
-		"/api/consent",
-		"/email/", // Email verification - часть onboarding, до создания профиля
+		"/api/profiles/child",       // Создание профиля - не требует ID, так как он ещё не создан
+		"/api/profiles/by-platform", // Получение профиля по platform credentials - используется для auth
+		"/api/consent",              // Сохранение согласия - часть onboarding
+		"/api/email/",               // Email verification - часть onboarding, до создания профиля
+		"/api/onboarding/",          // Onboarding endpoints
 	}
 
 	for _, npp := range noProfilePaths {

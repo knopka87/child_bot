@@ -7,63 +7,63 @@
 export const API_ROUTES = {
   // Analytics
   analytics: {
-    events: '/api/analytics/events',
-    properties: '/api/analytics/properties',
+    events: '/analytics/events',
+    properties: '/analytics/properties',
   },
 
   // Tasks & Homework
   tasks: {
-    list: '/api/tasks',
-    byId: (id: string) => `/api/tasks/${id}`,
-    submit: (id: string) => `/api/tasks/${id}/submit`,
-    hints: (id: string) => `/api/tasks/${id}/hints`,
-    check: '/api/tasks/check',
+    list: '/tasks',
+    byId: (id: string) => `/tasks/${id}`,
+    submit: (id: string) => `/tasks/${id}/submit`,
+    hints: (id: string) => `/tasks/${id}/hints`,
+    check: '/tasks/check',
   },
 
   // Villains
   villains: {
-    list: '/api/villains',
-    active: '/api/villains/active',
-    byId: (id: string) => `/api/villains/${id}`,
-    victory: (id: string) => `/api/villains/${id}/victory`,
-    damage: (id: string) => `/api/villains/${id}/damage`,
+    list: '/villains',
+    active: '/villains/active',
+    byId: (id: string) => `/villains/${id}`,
+    victory: (id: string) => `/villains/${id}/victory`,
+    damage: (id: string) => `/villains/${id}/damage`,
   },
 
   // Profile
   profile: {
-    get: '/api/profile',
-    update: '/api/profile',
-    history: '/api/profile/history',
-    stats: '/api/profile/stats',
+    get: '/profile',
+    update: '/profile',
+    history: '/profile/history',
+    stats: '/profile/stats',
   },
 
   // Achievements
   achievements: {
-    list: '/api/achievements',
-    unlocked: '/api/achievements/unlocked',
-    byId: (id: string) => `/api/achievements/${id}`,
-    claim: (id: string) => `/api/achievements/${id}/claim`,
+    list: '/achievements',
+    unlocked: '/achievements/unlocked',
+    byId: (id: string) => `/achievements/${id}`,
+    claim: (id: string) => `/achievements/${id}/claim`,
   },
 
   // Friends & Referrals
   friends: {
-    list: '/api/friends',
-    invite: '/api/friends/invite',
-    referrals: '/api/friends/referrals',
-    leaderboard: '/api/friends/leaderboard',
+    list: '/friends',
+    invite: '/friends/invite',
+    referrals: '/friends/referrals',
+    leaderboard: '/friends/leaderboard',
   },
 
   // Subscription & Payments
   subscription: {
-    status: '/api/subscription/status',
-    plans: '/api/subscription/plans',
-    subscribe: '/api/subscription/subscribe',
-    cancel: '/api/subscription/cancel',
+    status: '/subscription/status',
+    plans: '/subscription/plans',
+    subscribe: '/subscription/subscribe',
+    cancel: '/subscription/cancel',
   },
 
   // Support
   support: {
-    send: '/api/support/message',
-    history: '/api/support/history',
+    send: '/support/message',
+    history: '/support/history',
   },
 } as const;
