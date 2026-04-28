@@ -164,14 +164,20 @@ func setCSRFCookie(w http.ResponseWriter, token string) {
 	env := os.Getenv("ENV")
 	isProduction := env == "production"
 
+	// Для работы в iframe (VK Mini App) нужен SameSite=None с Secure=true
+	sameSite := http.SameSiteLaxMode
+	if isProduction {
+		sameSite = http.SameSiteNoneMode // Разрешает cookie в cross-site iframe
+	}
+
 	cookie := &http.Cookie{
 		Name:     CSRFCookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   CSRFCookieMaxAge,
 		HttpOnly: false, // JavaScript должен иметь доступ для отправки в header
-		Secure:   isProduction,
-		SameSite: http.SameSiteStrictMode, // CSRF защита
+		Secure:   isProduction, // Обязательно для SameSite=None
+		SameSite: sameSite,
 	}
 
 	http.SetCookie(w, cookie)
