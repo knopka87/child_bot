@@ -31,6 +31,17 @@ class APIClient {
     this.setupInterceptors();
   }
 
+  /**
+   * Получить CSRF токен из cookie
+   */
+  private getCSRFToken(): string | null {
+    const name = 'csrf_token';
+    const matches = document.cookie.match(new RegExp(
+      '(?:^|; )' + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + '=([^;]*)'
+    ));
+    return matches ? decodeURIComponent(matches[1]) : null;
+  }
+
   private setupInterceptors() {
     // Request interceptor - добавляем Platform ID и Child Profile ID
     this.client.interceptors.request.use(
@@ -71,6 +82,18 @@ class APIClient {
           if (childProfileId) {
             requestConfig.headers['X-Child-Profile-ID'] = childProfileId;
             console.log('[APIClient] Set X-Child-Profile-ID header:', childProfileId);
+          }
+
+          // Добавляем CSRF токен для unsafe методов (POST, PUT, DELETE, PATCH)
+          const method = requestConfig.method?.toUpperCase();
+          if (method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            const csrfToken = this.getCSRFToken();
+            if (csrfToken) {
+              requestConfig.headers['X-CSRF-Token'] = csrfToken;
+              console.log('[APIClient] Set X-CSRF-Token header');
+            } else {
+              console.warn('[APIClient] CSRF token not found for', method, 'request');
+            }
           }
         }
 
