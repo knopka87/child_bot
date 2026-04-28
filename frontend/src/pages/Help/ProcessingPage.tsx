@@ -109,7 +109,7 @@ export default function ProcessingPage() {
 
   const handleSaveAndWait = async () => {
     try {
-      await helpAPI.saveAndWait(attemptId);
+      // Attempt уже сохранен в БД, просто переходим на главную
       navigate(ROUTES.HOME);
     } catch (error) {
       console.error('[ProcessingPage] Save and wait failed:', error);
