@@ -202,8 +202,7 @@ export default function CheckProcessingPage() {
         attempt_id: attemptId,
       });
 
-      await checkAPI.saveAndWait(attemptId);
-
+      // Attempt уже сохранен в БД, просто переходим на главную
       analytics.trackEvent('check_saved_for_later', {
         child_profile_id: childProfileId,
         attempt_id: attemptId,
