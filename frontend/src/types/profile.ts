@@ -60,30 +60,9 @@ export interface HistoryFilters {
 
 export interface ReportSettings {
   email: string;
-  emailVerified: boolean;
+  emailVerified?: boolean;
   weeklyReportEnabled: boolean;
-  archiveEnabled: boolean;
-}
-
-export interface WeeklyReport {
-  id: string;
-  periodStart: string;
-  periodEnd: string;
-  generatedAt: string;
-  downloadUrl?: string;
-  stats: {
-    totalAttempts: number;
-    successfulAttempts: number;
-    errorsFixed: number;
-    streakDays: number;
-  };
-}
-
-export interface ReportSettings {
-  email: string;
-  emailVerified: boolean;
-  weeklyReportEnabled: boolean;
-  archiveEnabled: boolean;
+  archiveEnabled?: boolean;
 }
 
 export interface WeeklyReport {

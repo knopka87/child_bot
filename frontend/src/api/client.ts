@@ -37,7 +37,7 @@ class APIClient {
   private getCSRFToken(): string | null {
     const name = 'csrf_token';
     const matches = document.cookie.match(new RegExp(
-      '(?:^|; )' + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + '=([^;]*)'
+      '(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\/+^])/g, '\\$1') + '=([^;]*)'
     ));
     return matches ? decodeURIComponent(matches[1]) : null;
   }
@@ -267,6 +267,14 @@ class APIClient {
    */
   async post<T>(url: string, data?: unknown, requestConfig: AxiosRequestConfig = {}): Promise<T> {
     const response = await this.client.post<T>(url, data, requestConfig);
+    return response.data;
+  }
+
+  /**
+   * PUT request
+   */
+  async put<T>(url: string, data?: unknown, requestConfig: AxiosRequestConfig = {}): Promise<T> {
+    const response = await this.client.put<T>(url, data, requestConfig);
     return response.data;
   }
 

@@ -5,11 +5,7 @@ import { motion } from "framer-motion";
 import { getCurrentChildProfileId } from "@/lib/auth";
 import { ROUTES } from "@/config/routes";
 import { BottomNav } from "@/components/layout/BottomNav";
-import config from "@/config";
-
-// API configuration
-const API_BASE_URL = config.api.baseURL;
-const PLATFORM_ID = "web";
+import { profileAPI } from "@/api/profile";
 
 interface ReportInfo {
   id: string;
@@ -35,37 +31,13 @@ export default function ReportPage() {
 
     try {
       // Load email settings from backend API
-      const settingsResponse = await fetch(
-        `${API_BASE_URL}/reports/${childProfileId}/settings`,
-        {
-          headers: {
-            "X-Platform-ID": PLATFORM_ID,
-            "X-Child-Profile-ID": childProfileId,
-          },
-        }
-      );
-
-      if (settingsResponse.ok) {
-        const settings = await settingsResponse.json();
-        setEmail(settings.email || "");
-        setWeeklyEnabled(settings.weeklyReportEnabled ?? true);
-      }
+      const settings = await profileAPI.getReportSettings(childProfileId);
+      setEmail(settings.email || "");
+      setWeeklyEnabled(settings.weeklyReportEnabled ?? true);
 
       // Load reports list
-      const listResponse = await fetch(
-        `${API_BASE_URL}/reports/${childProfileId}/list`,
-        {
-          headers: {
-            "X-Platform-ID": PLATFORM_ID,
-            "X-Child-Profile-ID": childProfileId,
-          },
-        }
-      );
-
-      if (listResponse.ok) {
-        const data = await listResponse.json();
-        setReportsList(data || []);
-      }
+      const data = await profileAPI.getReportsList(childProfileId);
+      setReportsList(data || []);
     } catch (error) {
       console.error("[ReportPage] Failed to load data:", error);
     }
@@ -80,18 +52,7 @@ export default function ReportPage() {
       if (!childProfileId) return;
 
       try {
-        await fetch(
-          `${API_BASE_URL}/reports/${childProfileId}/settings`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Platform-ID": PLATFORM_ID,
-              "X-Child-Profile-ID": childProfileId,
-            },
-            body: JSON.stringify({ email: newEmail }),
-          }
-        );
+        await profileAPI.updateReportSettings(childProfileId, { email: newEmail });
       } catch (error) {
         console.error("[ReportPage] Failed to save email:", error);
       }
@@ -106,18 +67,7 @@ export default function ReportPage() {
     if (!childProfileId) return;
 
     try {
-      await fetch(
-        `${API_BASE_URL}/reports/${childProfileId}/settings`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Platform-ID": PLATFORM_ID,
-            "X-Child-Profile-ID": childProfileId,
-          },
-          body: JSON.stringify({ weeklyReportEnabled: newValue }),
-        }
-      );
+      await profileAPI.updateReportSettings(childProfileId, { weeklyReportEnabled: newValue });
     } catch (error) {
       console.error("[ReportPage] Failed to save weekly setting:", error);
       // Откатываем изменение в случае ошибки
@@ -139,24 +89,8 @@ export default function ReportPage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/reports/${childProfileId}/send-test`,
-        {
-          method: "POST",
-          headers: {
-            "X-Platform-ID": PLATFORM_ID,
-            "X-Child-Profile-ID": childProfileId,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to send report");
-      }
-
-      const result = await response.json();
-      alert(`✅ ${result.message || "Тестовый отчёт отправлен на " + email}`);
+      await profileAPI.sendTestReport(childProfileId);
+      alert(`✅ Тестовый отчёт отправлен на ${email}`);
     } catch (error) {
       console.error("[ReportPage] Failed to send test report:", error);
       alert("⚠️ Не удалось отправить тестовый отчёт");
@@ -173,22 +107,10 @@ export default function ReportPage() {
     }
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/reports/${childProfileId}/${reportDate}/download`,
-        {
-          headers: {
-            "X-Platform-ID": PLATFORM_ID,
-            "X-Child-Profile-ID": childProfileId,
-          },
-        }
-      );
+      // Получаем blob через profileAPI
+      const blob = await profileAPI.downloadReport(childProfileId, reportDate);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      // Получаем blob и создаем ссылку для скачивания
-      const blob = await response.blob();
+      // Создаем ссылку для скачивания
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;

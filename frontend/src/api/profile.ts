@@ -1,12 +1,6 @@
 // src/api/profile.ts
-import { apiClient } from './client';
-import type {
-  ProfileData,
-  HistoryAttempt,
-  HistoryFilters,
-  ReportSettings,
-  WeeklyReport,
-} from '@/types/profile';
+import {apiClient} from './client';
+import type {HistoryAttempt, HistoryFilters, ProfileData, ReportSettings, WeeklyReport,} from '@/types/profile';
 
 // Тип ответа от бэкенда
 interface BackendProfileResponse {
@@ -173,7 +167,19 @@ export const profileAPI = {
     childProfileId: string,
     settings: Partial<ReportSettings>
   ): Promise<void> {
-    return apiClient.patch<void>(`/reports/${childProfileId}/settings`, settings);
+    return apiClient.put<void>(`/reports/${childProfileId}/settings`, settings);
+  },
+
+  /**
+   * Получить список отчётов
+   */
+  async getReportsList(childProfileId: string): Promise<Array<{
+    id: string;
+    reportDate: string;
+    sentAt?: string;
+    createdAt: string;
+  }>> {
+    return apiClient.get(`/reports/${childProfileId}/list`);
   },
 
   /**
@@ -188,13 +194,12 @@ export const profileAPI = {
    */
   async downloadReport(
     childProfileId: string,
-    reportId: string
+    reportDate: string
   ): Promise<Blob> {
-    const response = await apiClient.get<Blob>(
-      `/reports/${childProfileId}/${reportId}/download`,
-      { responseType: 'blob' }
+    return await apiClient.get<Blob>(
+        `/reports/${childProfileId}/${reportDate}/download`,
+        {responseType: 'blob'}
     );
-    return response;
   },
 
   /**
