@@ -357,7 +357,15 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 
 	// 3. Проверяем результат и обрабатываем правильный ответ
 	if checkResp.Decision == types.CheckDecisionCorrect {
-		// 3.1. Начисляем 5 монет за правильное решение
+		// 3.1. Инкрементируем счетчик правильно решённых задач
+		if s.profileService != nil {
+			err := s.profileService.IncrementTasksSolved(ctx, childProfileID, true)
+			if err != nil {
+				log.Printf("[AttemptService] Failed to increment tasks solved counter for child %s: %v", childProfileID, err)
+			}
+		}
+
+		// 3.2. Начисляем 5 монет за правильное решение
 		if s.profileService != nil {
 			err := s.profileService.AddCoins(ctx, childProfileID, 5)
 			if err != nil {
@@ -367,7 +375,7 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 			}
 		}
 
-		// 3.2. Наносим урон активному монстру
+		// 3.3. Наносим урон активному монстру
 		if s.villainService != nil {
 			defeated, villainCoins, err := s.villainService.DealDamageToVillain(ctx, childProfileID, id, "check")
 			if err != nil {
@@ -375,7 +383,7 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 			} else {
 				log.Printf("[AttemptService] Dealt damage to villain for child %s, defeated: %v", childProfileID, defeated)
 
-				// 3.3. Если монстр побеждён, начисляем дополнительные монеты за победу
+				// 3.4. Если монстр побеждён, начисляем дополнительные монеты за победу
 				if defeated && villainCoins > 0 && s.profileService != nil {
 					err := s.profileService.AddCoins(ctx, childProfileID, villainCoins)
 					if err != nil {
@@ -385,7 +393,7 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 					}
 				}
 
-				// 3.4. Если монстр побеждён, проверяем достижения за злодеев
+				// 3.5. Если монстр побеждён, проверяем достижения за злодеев
 				if defeated && s.achievementService != nil {
 					err := s.achievementService.CheckVillainAchievements(ctx, childProfileID)
 					if err != nil {
@@ -393,7 +401,7 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 					}
 				}
 
-				// 3.5. Если монстр побеждён, начисляем XP
+				// 3.6. Если монстр побеждён, начисляем XP
 				if defeated && s.profileService != nil {
 					err := s.profileService.AwardVillainDefeat(ctx, childProfileID)
 					if err != nil {
@@ -403,7 +411,7 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 			}
 		}
 
-		// 3.5. Проверяем достижения за правильно решённые задачи
+		// 3.7. Проверяем достижения за правильно решённые задачи
 		if s.achievementService != nil {
 			// Проверяем достижения за правильные задачи
 			err := s.achievementService.CheckTasksCorrectAchievements(ctx, childProfileID)
@@ -418,7 +426,7 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 			}
 		}
 
-		// 3.6. Начисляем XP за правильное решение
+		// 3.8. Начисляем XP за правильное решение
 		if s.profileService != nil {
 			err := s.profileService.AwardCorrectAnswer(ctx, childProfileID)
 			if err != nil {
@@ -426,7 +434,15 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 			}
 		}
 	} else {
-		// 3.7. Если решение неправильное (найдены ошибки), проверяем достижения за найденные ошибки
+		// 3.9. Инкрементируем счетчик решённых задач (неправильный ответ)
+		if s.profileService != nil {
+			err := s.profileService.IncrementTasksSolved(ctx, childProfileID, false)
+			if err != nil {
+				log.Printf("[AttemptService] Failed to increment tasks solved counter for child %s: %v", childProfileID, err)
+			}
+		}
+
+		// 3.10. Если решение неправильное (найдены ошибки), проверяем достижения за найденные ошибки
 		if s.achievementService != nil {
 			err := s.achievementService.CheckErrorsFoundAchievements(ctx, childProfileID)
 			if err != nil {
@@ -434,7 +450,7 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 			}
 		}
 
-		// 3.8. Начисляем XP за попытку исправления ошибок
+		// 3.11. Начисляем XP за попытку исправления ошибок
 		if s.profileService != nil {
 			err := s.profileService.AwardFixErrors(ctx, childProfileID)
 			if err != nil {

@@ -504,6 +504,45 @@ func (s *ProfileService) IncrementHintsUsed(ctx context.Context, childProfileID 
 	return nil
 }
 
+// IncrementTasksSolved увеличивает счётчики решённых задач в профиле
+func (s *ProfileService) IncrementTasksSolved(ctx context.Context, childProfileID string, isCorrect bool) error {
+	var query string
+	if isCorrect {
+		query = `
+			UPDATE child_profiles
+			SET tasks_solved_total = tasks_solved_total + 1,
+			    tasks_solved_correct = tasks_solved_correct + 1,
+			    updated_at = NOW()
+			WHERE id = $1
+		`
+	} else {
+		query = `
+			UPDATE child_profiles
+			SET tasks_solved_total = tasks_solved_total + 1,
+			    updated_at = NOW()
+			WHERE id = $1
+		`
+	}
+
+	result, err := s.store.DB.ExecContext(ctx, query, childProfileID)
+	if err != nil {
+		log.Printf("[IncrementTasksSolved] Error incrementing tasks_solved for %s: %v", childProfileID, err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return domain.ErrNotFound
+	}
+
+	if isCorrect {
+		log.Printf("[IncrementTasksSolved] Successfully incremented tasks_solved_total and tasks_solved_correct for child %s", childProfileID)
+	} else {
+		log.Printf("[IncrementTasksSolved] Successfully incremented tasks_solved_total for child %s", childProfileID)
+	}
+	return nil
+}
+
 // UpdateStreakAndActivity обновляет серию дней (streak) и last_activity_at
 // Вызывается ОДИН РАЗ В ДЕНЬ при первом действии пользователя
 func (s *ProfileService) UpdateStreakAndActivity(ctx context.Context, childProfileID string) error {

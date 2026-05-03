@@ -11,12 +11,18 @@ const XPForAchievement = 50
 
 // AchievementService бизнес-логика для достижений
 type AchievementService struct {
-	store *store.Store
+	store          *store.Store
+	profileService *ProfileService
 }
 
 // NewAchievementService создает новый AchievementService
 func NewAchievementService(store *store.Store) *AchievementService {
 	return &AchievementService{store: store}
+}
+
+// SetProfileService устанавливает ProfileService (для избежания циклических зависимостей)
+func (s *AchievementService) SetProfileService(profileService *ProfileService) {
+	s.profileService = profileService
 }
 
 // CheckStreakAchievements проверяет достижения за streak (дни подряд)
@@ -40,6 +46,11 @@ func (s *AchievementService) CheckStreakAchievements(ctx context.Context, childP
 		// Начисляем XP за каждое разблокированное достижение
 		for range unlockedIDs {
 			_, _, _ = s.store.AddXP(ctx, childProfileID, XPForAchievement, store.DefaultXPConfig)
+		}
+
+		// Начисляем награды (монеты)
+		if err := s.AwardAchievementRewards(ctx, childProfileID, unlockedIDs); err != nil {
+			log.Printf("[AchievementService] Failed to award rewards for streak achievements: %v", err)
 		}
 
 		// Стрик награждает стикерами, проверяем коллекционера
@@ -67,6 +78,11 @@ func (s *AchievementService) CheckVillainAchievements(ctx context.Context, child
 		log.Printf("[AchievementService] 🎉 Unlocked %d villain achievements for child %s: %v",
 			len(unlockedIDs), childProfileID, unlockedIDs)
 
+		// Начисляем награды (монеты)
+		if err := s.AwardAchievementRewards(ctx, childProfileID, unlockedIDs); err != nil {
+			log.Printf("[AchievementService] Failed to award rewards for villain achievements: %v", err)
+		}
+
 		// Злодеи награждают стикерами, проверяем коллекционера
 		s.checkCollectorAfterUnlock(ctx, childProfileID)
 	}
@@ -91,6 +107,11 @@ func (s *AchievementService) CheckTasksCorrectAchievements(ctx context.Context, 
 	if len(unlockedIDs) > 0 {
 		log.Printf("[AchievementService] 🎉 Unlocked %d tasks correct achievements for child %s: %v",
 			len(unlockedIDs), childProfileID, unlockedIDs)
+
+		// Начисляем награды (монеты)
+		if err := s.AwardAchievementRewards(ctx, childProfileID, unlockedIDs); err != nil {
+			log.Printf("[AchievementService] Failed to award rewards for tasks correct achievements: %v", err)
+		}
 	}
 
 	return nil
@@ -113,6 +134,11 @@ func (s *AchievementService) CheckTasksNoHintsAchievements(ctx context.Context, 
 	if len(unlockedIDs) > 0 {
 		log.Printf("[AchievementService] 🎉 Unlocked %d tasks no hints achievements for child %s: %v",
 			len(unlockedIDs), childProfileID, unlockedIDs)
+
+		// Начисляем награды (монеты)
+		if err := s.AwardAchievementRewards(ctx, childProfileID, unlockedIDs); err != nil {
+			log.Printf("[AchievementService] Failed to award rewards for tasks no hints achievements: %v", err)
+		}
 	}
 
 	return nil
@@ -135,6 +161,11 @@ func (s *AchievementService) CheckFriendsInvitedAchievements(ctx context.Context
 	if len(unlockedIDs) > 0 {
 		log.Printf("[AchievementService] 🎉 Unlocked %d friends invited achievements for child %s: %v",
 			len(unlockedIDs), childProfileID, unlockedIDs)
+
+		// Начисляем награды (монеты)
+		if err := s.AwardAchievementRewards(ctx, childProfileID, unlockedIDs); err != nil {
+			log.Printf("[AchievementService] Failed to award rewards for friends invited achievements: %v", err)
+		}
 
 		// Дружба награждает стикерами, проверяем коллекционера
 		s.checkCollectorAfterUnlock(ctx, childProfileID)
@@ -160,6 +191,11 @@ func (s *AchievementService) CheckHintsUsedAchievements(ctx context.Context, chi
 	if len(unlockedIDs) > 0 {
 		log.Printf("[AchievementService] 🦉 Unlocked hints used achievement for child %s: %v",
 			childProfileID, unlockedIDs)
+
+		// Начисляем награды (монеты)
+		if err := s.AwardAchievementRewards(ctx, childProfileID, unlockedIDs); err != nil {
+			log.Printf("[AchievementService] Failed to award rewards for hints used achievements: %v", err)
+		}
 	}
 
 	return nil
@@ -182,6 +218,11 @@ func (s *AchievementService) CheckStickersCollectedAchievements(ctx context.Cont
 	if len(unlockedIDs) > 0 {
 		log.Printf("[AchievementService] 🎨 Unlocked stickers collected achievement for child %s: %v",
 			childProfileID, unlockedIDs)
+
+		// Начисляем награды (монеты)
+		if err := s.AwardAchievementRewards(ctx, childProfileID, unlockedIDs); err != nil {
+			log.Printf("[AchievementService] Failed to award rewards for stickers collected achievements: %v", err)
+		}
 	}
 
 	return nil
@@ -216,6 +257,59 @@ func (s *AchievementService) CheckErrorsFoundAchievements(ctx context.Context, c
 
 		// Исправленные ошибки награждают стикерами, проверяем коллекционера
 		s.checkCollectorAfterUnlock(ctx, childProfileID)
+	}
+
+	return nil
+}
+
+// AwardAchievementRewards начисляет награды за разблокированные достижения (монеты, стикеры)
+func (s *AchievementService) AwardAchievementRewards(ctx context.Context, childProfileID string, achievementIDs []string) error {
+	if len(achievementIDs) == 0 {
+		return nil
+	}
+
+	// Получаем информацию о наградах для разблокированных достижений
+	query := `
+		SELECT id, reward_type, reward_amount
+		FROM achievements
+		WHERE id = ANY($1) AND reward_type = 'coins'
+	`
+
+	rows, err := s.store.DB.QueryContext(ctx, query, achievementIDs)
+	if err != nil {
+		log.Printf("[AwardAchievementRewards] Failed to get rewards for achievements: %v", err)
+		return err
+	}
+	defer rows.Close()
+
+	totalCoins := 0
+	var achievementsWithCoins []string
+
+	for rows.Next() {
+		var achievementID, rewardType string
+		var rewardAmount int
+
+		if err := rows.Scan(&achievementID, &rewardType, &rewardAmount); err != nil {
+			log.Printf("[AwardAchievementRewards] Failed to scan reward: %v", err)
+			continue
+		}
+
+		if rewardType == "coins" && rewardAmount > 0 {
+			totalCoins += rewardAmount
+			achievementsWithCoins = append(achievementsWithCoins, achievementID)
+		}
+	}
+
+	// Начисляем монеты если есть
+	if totalCoins > 0 && s.profileService != nil {
+		err := s.profileService.AddCoins(ctx, childProfileID, totalCoins)
+		if err != nil {
+			log.Printf("[AwardAchievementRewards] Failed to add %d coins for child %s: %v", totalCoins, childProfileID, err)
+			return err
+		}
+
+		log.Printf("[AwardAchievementRewards] 💰 Awarded %d coins for %d achievements to child %s: %v",
+			totalCoins, len(achievementsWithCoins), childProfileID, achievementsWithCoins)
 	}
 
 	return nil

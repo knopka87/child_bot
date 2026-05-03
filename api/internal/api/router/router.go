@@ -45,6 +45,7 @@ func New(deps *Dependencies) http.Handler {
 	attemptService.SetAchievementService(achievementService)
 	profileService.SetAchievementService(achievementService)
 	villainService.SetAchievementService(achievementService)
+	achievementService.SetProfileService(profileService)
 
 	homeService := service.NewHomeService(deps.Store, attemptService, profileService, villainService)
 	reportService := service.NewReportService(deps.Store)
