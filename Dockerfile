@@ -5,6 +5,10 @@
 FROM golang:1.25-bookworm AS build
 WORKDIR /src
 
+# Build arguments для target platform
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
 # Добавляем retry для apt (на случай сбоев сети)
 RUN for i in 1 2 3 4 5; do \
       apt-get update && \
@@ -24,8 +28,8 @@ RUN for i in 1 2 3; do \
 # Код
 COPY api ./api
 
-# Сборка REST API server (новый entrypoint)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+# Сборка REST API server с динамическим GOARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w" -o /out/server ./api/cmd/server
 
 # golang-migrate (postgres)
