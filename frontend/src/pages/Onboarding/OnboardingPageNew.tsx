@@ -66,29 +66,11 @@ export function OnboardingPageNew() {
 
         console.log('[Onboarding] VK user data loaded:', { firstName: user.firstName });
 
-        // КРИТИЧЕСКИ ВАЖНО: VK НЕ передает параметры через URL!
-        // VK передает параметры через VK Bridge Launch Params API
-        // Извлекаем реферальный код из VK Bridge
+        // КРИТИЧЕСКИ ВАЖНО: VK передает параметры через VK Bridge Launch Params API
+        // Fragment identifier (#ref=CODE) передается через vk_fragment параметр
         console.log('[Onboarding] Checking for referral code...');
 
         let refCode = await getVKRefCode();
-
-        // Fallback: проверяем URL параметры (на случай прямого доступа)
-        if (!refCode) {
-          refCode = searchParams.get('ref') || searchParams.get('vk_ref') || null;
-          if (refCode) {
-            console.log('[Onboarding] Referral code found in URL params:', refCode);
-          }
-        }
-
-        // Fallback: проверяем hash параметры
-        if (!refCode && window.location.hash) {
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          refCode = hashParams.get('ref') || hashParams.get('vk_ref') || null;
-          if (refCode) {
-            console.log('[Onboarding] Referral code found in hash:', refCode);
-          }
-        }
 
         if (refCode) {
           console.log('[Onboarding] ✅ Referral code detected:', refCode);
@@ -113,7 +95,7 @@ export function OnboardingPageNew() {
     };
 
     initOnboarding();
-  }, [searchParams, analytics]);
+  }, [analytics]); // searchParams убрали из зависимостей - не используем для логики
 
   const handleComplete = async () => {
     if (isSubmitting) return;

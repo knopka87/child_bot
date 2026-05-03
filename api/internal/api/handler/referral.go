@@ -135,11 +135,10 @@ func (h *ReferralHandler) GetReferralData(w http.ResponseWriter, r *http.Request
 	}
 
 	// Формируем реферальную ссылку для VK приложения
-	// ПРОБЛЕМА: VKWebAppShare обрезает hash часть URL при шаринге
-	// РЕШЕНИЕ: Используем специальный VK launch параметр vk_ref
-	// VK автоматически передаст его приложению при запуске
-	// Формат: https://vk.com/app54517931?vk_ref=CODE
-	referralLink := "https://vk.com/app54517931?vk_ref=" + refCode.Code
+	// ВАЖНО: Используем fragment identifier (#) для передачи параметра
+	// VK передает fragment в Launch Params, но НЕ модифицирует его (в отличие от vk_ref)
+	// Формат: https://vk.com/app54517931#ref=CODE
+	referralLink := "https://vk.com/app54517931#ref=" + refCode.Code
 
 	// Получаем информацию о текущем достижении "Дружба"
 	currentAchievement, err := h.getCurrentFriendshipAchievement(r.Context(), childProfileID, stats.ActiveInvited)
