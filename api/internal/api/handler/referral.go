@@ -135,8 +135,9 @@ func (h *ReferralHandler) GetReferralData(w http.ResponseWriter, r *http.Request
 	}
 
 	// Формируем реферальную ссылку для VK приложения
-	// Формат: https://vk.com/app54517931#ref=CODE
-	referralLink := "https://vk.com/app54517931#ref=" + refCode.Code
+	// ВАЖНО: Используем query параметр (?ref=), а не hash (#ref=)
+	// Hash не отправляется на сервер при открытии ссылки через VK
+	referralLink := "https://vk.com/app54517931?ref=" + refCode.Code
 
 	// Получаем информацию о текущем достижении "Дружба"
 	currentAchievement, err := h.getCurrentFriendshipAchievement(r.Context(), childProfileID, stats.ActiveInvited)
