@@ -26,14 +26,7 @@ export async function getCurrentChildProfileId(): Promise<string | null> {
   }
 
   try {
-    // Проверяем кэш в sessionStorage (безопаснее чем localStorage)
-    const cachedProfileId = sessionStorage.getItem(STORAGE_KEY);
-    if (cachedProfileId) {
-      console.log('[Auth] Using cached profile ID:', cachedProfileId);
-      return cachedProfileId;
-    }
-
-    // Получаем VK user ID через vk-auth
+    // Получаем VK user ID сначала
     const vkUserId = await getVKUserId();
     if (!vkUserId) {
       console.error('[Auth] Failed to get VK user ID');
@@ -42,7 +35,8 @@ export async function getCurrentChildProfileId(): Promise<string | null> {
 
     console.log('[Auth] VK user ID:', vkUserId);
 
-    // Запрашиваем child_profile_id у backend
+    // ВСЕГДА запрашиваем профиль у backend для валидации
+    // Не доверяем кэшу - профиль мог быть удалён или изменён
     const response = await fetch(
       `${API_BASE_URL}/profiles/by-platform?platform_id=vk&platform_user_id=${vkUserId}`,
       {
@@ -65,11 +59,16 @@ export async function getCurrentChildProfileId(): Promise<string | null> {
       console.log('[Auth] Profile found:', profileId);
       return profileId;
     } else if (response.status === 404) {
-      // Профиль не найден - пользователь должен пройти онбординг
-      console.log('[Auth] Profile not found, user needs onboarding');
+      // Профиль не найден - очищаем старый кэш и требуем онбординг
+      console.log('[Auth] Profile not found, clearing cache and requiring onboarding');
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(VK_USER_ID_KEY);
       return null;
     } else {
       console.error('[Auth] Failed to get profile:', response.status, await response.text());
+      // При ошибке тоже очищаем кэш на всякий случай
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(VK_USER_ID_KEY);
       return null;
     }
   } catch (error) {
