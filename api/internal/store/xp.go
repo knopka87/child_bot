@@ -19,8 +19,11 @@ var DefaultXPConfig = XPConfig{
 // AddXP добавляет XP пользователю и проверяет повышение уровня
 // Возвращает: (новый уровень, был ли повышен уровень, ошибка)
 func (s *Store) AddXP(ctx context.Context, childProfileID string, xpAmount int, config XPConfig) (int, bool, error) {
+	log.Printf("[Store.AddXP] 🎯 Starting to add %d XP to child %s", xpAmount, childProfileID)
+
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
+		log.Printf("[Store.AddXP] ❌ Failed to begin transaction: %v", err)
 		return 0, false, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
@@ -30,8 +33,11 @@ func (s *Store) AddXP(ctx context.Context, childProfileID string, xpAmount int, 
 	query := `SELECT COALESCE(xp_total, 0), COALESCE(level, 1) FROM child_profiles WHERE id = $1`
 	err = tx.QueryRowContext(ctx, query, childProfileID).Scan(&currentXP, &currentLevel)
 	if err != nil {
+		log.Printf("[Store.AddXP] ❌ Failed to get current XP and level for %s: %v", childProfileID, err)
 		return 0, false, fmt.Errorf("get current xp and level: %w", err)
 	}
+
+	log.Printf("[Store.AddXP] 📊 Current state: child=%s, XP=%d, level=%d", childProfileID, currentXP, currentLevel)
 
 	newXP := currentXP + xpAmount
 	newLevel := currentLevel

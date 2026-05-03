@@ -10,10 +10,15 @@ interface ImageCropModalProps {
   title?: string;
 }
 
+type DragMode = 'move' | 'resize-tl' | 'resize-tr' | 'resize-bl' | 'resize-br' | 'resize-t' | 'resize-b' | 'resize-l' | 'resize-r' | null;
+
 export function ImageCropModal({ image, onSave, onClose, title = 'Обрезать изображение' }: ImageCropModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [dragMode, setDragMode] = useState<DragMode>(null);
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+  const [initialCropArea, setInitialCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [imageLoaded, setImageLoaded] = useState(false);
 
@@ -105,12 +110,31 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
     ctx.fillRect(cropArea.x + cropArea.width - 3, cropArea.y + cropArea.height - cornerSize + 3, 6, cornerSize);
   }, [cropArea, imageLoaded]);
 
-  const handleTouchStart = () => {
-    setIsDragging(true);
+  // Определяет режим перетаскивания на основе позиции клика
+  const getDragMode = (x: number, y: number): DragMode => {
+    const handleSize = 30; // Размер зоны для захвата угла/стороны
+    const { x: cropX, y: cropY, width, height } = cropArea;
+
+    // Проверяем углы
+    if (Math.abs(x - cropX) < handleSize && Math.abs(y - cropY) < handleSize) return 'resize-tl';
+    if (Math.abs(x - (cropX + width)) < handleSize && Math.abs(y - cropY) < handleSize) return 'resize-tr';
+    if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + height)) < handleSize) return 'resize-bl';
+    if (Math.abs(x - (cropX + width)) < handleSize && Math.abs(y - (cropY + height)) < handleSize) return 'resize-br';
+
+    // Проверяем стороны
+    if (Math.abs(y - cropY) < handleSize && x > cropX && x < cropX + width) return 'resize-t';
+    if (Math.abs(y - (cropY + height)) < handleSize && x > cropX && x < cropX + width) return 'resize-b';
+    if (Math.abs(x - cropX) < handleSize && y > cropY && y < cropY + height) return 'resize-l';
+    if (Math.abs(x - (cropX + width)) < handleSize && y > cropY && y < cropY + height) return 'resize-r';
+
+    // Проверяем центр (перемещение)
+    if (x > cropX && x < cropX + width && y > cropY && y < cropY + height) return 'move';
+
+    return null;
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging || !canvasRef.current) return;
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!canvasRef.current) return;
 
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -118,19 +142,157 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
     const x = touch.clientX - rect.left;
     const y = touch.clientY - rect.top;
 
-    // Обновляем размер области обрезки
-    const newWidth = Math.max(100, Math.min(x - cropArea.x, canvas.width - cropArea.x));
-    const newHeight = Math.max(100, Math.min(y - cropArea.y, canvas.height - cropArea.y));
+    const mode = getDragMode(x, y);
+    if (mode) {
+      setIsDragging(true);
+      setDragMode(mode);
+      setDragStartPos({ x, y });
+      setInitialCropArea({ ...cropArea });
+    }
+  };
 
-    setCropArea(prev => ({
-      ...prev,
-      width: newWidth,
-      height: newHeight,
-    }));
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || !canvasRef.current || !dragMode) return;
+
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+
+    updateCropArea(x, y);
   };
 
   const handleTouchEnd = () => {
     setIsDragging(false);
+    setDragMode(null);
+  };
+
+  // Mouse events для поддержки на десктопе
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const mode = getDragMode(x, y);
+    if (mode) {
+      setIsDragging(true);
+      setDragMode(mode);
+      setDragStartPos({ x, y });
+      setInitialCropArea({ ...cropArea });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Изменяем курсор в зависимости от позиции
+    if (!isDragging) {
+      const mode = getDragMode(x, y);
+      canvas.style.cursor = getCursorForMode(mode);
+    }
+
+    if (!isDragging || !dragMode) return;
+    updateCropArea(x, y);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setDragMode(null);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+    setDragMode(null);
+  };
+
+  // Получает курсор для режима
+  const getCursorForMode = (mode: DragMode): string => {
+    switch (mode) {
+      case 'move': return 'move';
+      case 'resize-tl': case 'resize-br': return 'nwse-resize';
+      case 'resize-tr': case 'resize-bl': return 'nesw-resize';
+      case 'resize-t': case 'resize-b': return 'ns-resize';
+      case 'resize-l': case 'resize-r': return 'ew-resize';
+      default: return 'default';
+    }
+  };
+
+  // Обновляет область обрезки в зависимости от режима
+  const updateCropArea = (x: number, y: number) => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const dx = x - dragStartPos.x;
+    const dy = y - dragStartPos.y;
+    const minSize = 100;
+
+    let newCrop = { ...initialCropArea };
+
+    switch (dragMode) {
+      case 'move':
+        newCrop.x = Math.max(0, Math.min(canvas.width - initialCropArea.width, initialCropArea.x + dx));
+        newCrop.y = Math.max(0, Math.min(canvas.height - initialCropArea.height, initialCropArea.y + dy));
+        break;
+
+      case 'resize-tl':
+        newCrop.x = Math.min(initialCropArea.x + dx, initialCropArea.x + initialCropArea.width - minSize);
+        newCrop.y = Math.min(initialCropArea.y + dy, initialCropArea.y + initialCropArea.height - minSize);
+        newCrop.width = initialCropArea.width - (newCrop.x - initialCropArea.x);
+        newCrop.height = initialCropArea.height - (newCrop.y - initialCropArea.y);
+        newCrop.x = Math.max(0, newCrop.x);
+        newCrop.y = Math.max(0, newCrop.y);
+        break;
+
+      case 'resize-tr':
+        newCrop.y = Math.min(initialCropArea.y + dy, initialCropArea.y + initialCropArea.height - minSize);
+        newCrop.width = Math.max(minSize, Math.min(initialCropArea.width + dx, canvas.width - initialCropArea.x));
+        newCrop.height = initialCropArea.height - (newCrop.y - initialCropArea.y);
+        newCrop.y = Math.max(0, newCrop.y);
+        break;
+
+      case 'resize-bl':
+        newCrop.x = Math.min(initialCropArea.x + dx, initialCropArea.x + initialCropArea.width - minSize);
+        newCrop.width = initialCropArea.width - (newCrop.x - initialCropArea.x);
+        newCrop.height = Math.max(minSize, Math.min(initialCropArea.height + dy, canvas.height - initialCropArea.y));
+        newCrop.x = Math.max(0, newCrop.x);
+        break;
+
+      case 'resize-br':
+        newCrop.width = Math.max(minSize, Math.min(initialCropArea.width + dx, canvas.width - initialCropArea.x));
+        newCrop.height = Math.max(minSize, Math.min(initialCropArea.height + dy, canvas.height - initialCropArea.y));
+        break;
+
+      case 'resize-t':
+        newCrop.y = Math.min(initialCropArea.y + dy, initialCropArea.y + initialCropArea.height - minSize);
+        newCrop.height = initialCropArea.height - (newCrop.y - initialCropArea.y);
+        newCrop.y = Math.max(0, newCrop.y);
+        break;
+
+      case 'resize-b':
+        newCrop.height = Math.max(minSize, Math.min(initialCropArea.height + dy, canvas.height - initialCropArea.y));
+        break;
+
+      case 'resize-l':
+        newCrop.x = Math.min(initialCropArea.x + dx, initialCropArea.x + initialCropArea.width - minSize);
+        newCrop.width = initialCropArea.width - (newCrop.x - initialCropArea.x);
+        newCrop.x = Math.max(0, newCrop.x);
+        break;
+
+      case 'resize-r':
+        newCrop.width = Math.max(minSize, Math.min(initialCropArea.width + dx, canvas.width - initialCropArea.x));
+        break;
+    }
+
+    setCropArea(newCrop);
   };
 
   const handleSave = async () => {
@@ -189,6 +351,10 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
           />
         </div>
 

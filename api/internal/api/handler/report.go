@@ -431,7 +431,7 @@ func (h *ReportHandler) SendTestReport(w http.ResponseWriter, r *http.Request) {
 	weekStart := now.AddDate(0, 0, -int(weekday-1))
 	weekStart = time.Date(weekStart.Year(), weekStart.Month(), weekStart.Day(), 0, 0, 0, 0, now.Location())
 
-	htmlContent, err := h.reportService.GetWeeklyHTML(r.Context(), childProfileID, weekStart)
+	htmlContent, err := h.reportService.GetWeeklyHTML(r.Context(), profileUUID.String(), weekStart)
 	if err != nil {
 		log.Printf("[ReportHandler] Failed to generate report: %v", err)
 		response.InternalError(w, "Failed to generate report")

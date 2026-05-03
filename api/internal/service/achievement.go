@@ -45,11 +45,15 @@ func (s *AchievementService) CheckStreakAchievements(ctx context.Context, childP
 
 		// Начисляем XP за каждое разблокированное достижение
 		if s.profileService != nil {
-			for range unlockedIDs {
+			log.Printf("[AchievementService] 🎯 profileService is available, awarding XP for %d achievements", len(unlockedIDs))
+			for i, achievementID := range unlockedIDs {
+				log.Printf("[AchievementService] 🎯 Awarding XP for achievement %d/%d (id=%s)", i+1, len(unlockedIDs), achievementID)
 				if err := s.profileService.AwardAchievementUnlock(ctx, childProfileID); err != nil {
-					log.Printf("[AchievementService] Failed to award achievement XP: %v", err)
+					log.Printf("[AchievementService] ❌ Failed to award achievement XP for %s: %v", achievementID, err)
 				}
 			}
+		} else {
+			log.Printf("[AchievementService] ⚠️ profileService is NIL - cannot award XP for achievements")
 		}
 
 		// Начисляем награды (монеты)

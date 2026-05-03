@@ -637,10 +637,13 @@ func (s *ProfileService) UpdateStreakAndActivity(ctx context.Context, childProfi
 	}
 
 	// Начисляем XP за ежедневный вход
+	log.Printf("[UpdateStreakAndActivity] 🎯 New day detected, calling AwardDailyLogin for child %s", childProfileID)
 	err = s.AwardDailyLogin(ctx, childProfileID)
 	if err != nil {
-		log.Printf("[UpdateStreakAndActivity] Failed to award daily login XP: %v", err)
+		log.Printf("[UpdateStreakAndActivity] ❌ Failed to award daily login XP: %v", err)
 		// Не блокируем, продолжаем
+	} else {
+		log.Printf("[UpdateStreakAndActivity] ✅ Successfully called AwardDailyLogin for child %s", childProfileID)
 	}
 
 	return nil

@@ -33,12 +33,23 @@ export function ReferralLinkSection({
 
   const handleShare = async () => {
     try {
+      // Используем VKWebAppShare с правильными параметрами
+      // Для VK приложений ссылка автоматически обрабатывается
       await bridge.send('VKWebAppShare', {
         link: referralLink,
       });
       onShare('vk');
     } catch (error) {
-      console.error('[ReferralLinkSection] Failed to share:', error);
+      console.error('[ReferralLinkSection] Failed to share via VK, trying fallback:', error);
+      // Fallback: открываем диалог шаринга VK напрямую
+      try {
+        await bridge.send('VKWebAppShowWallPostBox', {
+          message: `Присоединяйся к Объяснятель! Помогу с домашкой 🦉\n${referralLink}`,
+        });
+        onShare('vk_wall');
+      } catch (fallbackError) {
+        console.error('[ReferralLinkSection] Fallback also failed:', fallbackError);
+      }
     }
   };
 

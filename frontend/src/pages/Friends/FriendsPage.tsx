@@ -8,6 +8,7 @@ import { useReferralData } from './hooks/useReferralData';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { referralAPI } from '@/api/referral';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
+import bridge from '@/lib/platform/bridge';
 import styles from './FriendsPage.module.css';
 
 export function FriendsPage() {
@@ -50,25 +51,48 @@ export function FriendsPage() {
   const handleShare = async () => {
     if (!data) return;
 
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Помощник ДЗ',
-          text: 'Присоединяйся!',
-          url: data.referralLink,
+    try {
+      // Сначала пробуем VK Bridge API (для VK приложений)
+      await bridge.send('VKWebAppShare', {
+        link: data.referralLink,
+      });
+
+      if (childProfileId) {
+        analytics.trackEvent('referral_link_shared', {
+          child_profile_id: childProfileId,
+          referral_code: data.referralCode,
+          share_channel: 'vk',
         });
 
-        if (childProfileId) {
-          analytics.trackEvent('referral_link_shared', {
-            child_profile_id: childProfileId,
-            referral_code: data.referralCode,
-            share_channel: 'native',
+        await referralAPI.trackInviteSent(childProfileId, 'vk');
+      }
+    } catch (vkError) {
+      console.log('[FriendsPage] VK share failed, trying fallback:', vkError);
+
+      // Fallback на native share API
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Помощник ДЗ',
+            text: 'Присоединяйся ко мне в Объяснятель! Помогу с домашкой 🦉',
+            url: data.referralLink,
           });
 
-          await referralAPI.trackInviteSent(childProfileId, 'native');
+          if (childProfileId) {
+            analytics.trackEvent('referral_link_shared', {
+              child_profile_id: childProfileId,
+              referral_code: data.referralCode,
+              share_channel: 'native',
+            });
+
+            await referralAPI.trackInviteSent(childProfileId, 'native');
+          }
+        } catch (err) {
+          console.log('[FriendsPage] Native share cancelled or failed:', err);
         }
-      } catch (err) {
-        // User cancelled share
+      } else {
+        // Если ничего не работает, копируем ссылку
+        handleCopy();
       }
     }
   };

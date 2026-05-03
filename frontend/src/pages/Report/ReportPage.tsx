@@ -43,19 +43,22 @@ export default function ReportPage() {
     }
   };
 
-  const handleEmailChange = async (newEmail: string) => {
+  const handleEmailChange = (newEmail: string) => {
     setEmail(newEmail);
+  };
 
-    // Save to backend API
-    if (newEmail.includes("@")) {
-      const childProfileId = await getCurrentChildProfileId();
-      if (!childProfileId) return;
+  const handleEmailBlur = async () => {
+    // Сохраняем email при потере фокуса
+    if (!email) return;
 
-      try {
-        await profileAPI.updateReportSettings(childProfileId, { email: newEmail });
-      } catch (error) {
-        console.error("[ReportPage] Failed to save email:", error);
-      }
+    const childProfileId = await getCurrentChildProfileId();
+    if (!childProfileId) return;
+
+    try {
+      await profileAPI.updateReportSettings(childProfileId, { email });
+      console.log("[ReportPage] Email saved:", email);
+    } catch (error) {
+      console.error("[ReportPage] Failed to save email:", error);
     }
   };
 
@@ -172,6 +175,7 @@ export default function ReportPage() {
               type="email"
               value={email}
               onChange={(e) => handleEmailChange(e.target.value)}
+              onBlur={handleEmailBlur}
               placeholder="Введите email родителя"
               className="flex-1 bg-muted/30 rounded-xl px-3 py-2 text-[14px] border border-border outline-none focus:border-primary"
             />

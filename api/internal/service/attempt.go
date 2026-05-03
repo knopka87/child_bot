@@ -403,10 +403,15 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 
 				// 3.6. Если монстр побеждён, начисляем XP
 				if defeated && s.profileService != nil {
+					log.Printf("[AttemptService] 🎯 Villain defeated! Calling AwardVillainDefeat for child %s", childProfileID)
 					err := s.profileService.AwardVillainDefeat(ctx, childProfileID)
 					if err != nil {
-						log.Printf("[AttemptService] Failed to award villain defeat XP for child %s: %v", childProfileID, err)
+						log.Printf("[AttemptService] ❌ Failed to award villain defeat XP for child %s: %v", childProfileID, err)
+					} else {
+						log.Printf("[AttemptService] ✅ Successfully called AwardVillainDefeat for child %s", childProfileID)
 					}
+				} else if defeated && s.profileService == nil {
+					log.Printf("[AttemptService] ⚠️ Villain defeated but profileService is NIL - cannot award XP")
 				}
 			}
 		}
@@ -428,10 +433,15 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 
 		// 3.8. Начисляем XP за правильное решение
 		if s.profileService != nil {
+			log.Printf("[AttemptService] 🎯 Answer is correct, calling AwardCorrectAnswer for child %s", childProfileID)
 			err := s.profileService.AwardCorrectAnswer(ctx, childProfileID)
 			if err != nil {
-				log.Printf("[AttemptService] Failed to award correct answer XP for %s: %v", childProfileID, err)
+				log.Printf("[AttemptService] ❌ Failed to award correct answer XP for %s: %v", childProfileID, err)
+			} else {
+				log.Printf("[AttemptService] ✅ Successfully called AwardCorrectAnswer for child %s", childProfileID)
 			}
+		} else {
+			log.Printf("[AttemptService] ⚠️ profileService is NIL - cannot award correct answer XP")
 		}
 	} else {
 		// 3.9. Инкрементируем счетчик решённых задач (неправильный ответ)
@@ -452,10 +462,15 @@ func (s *AttemptService) ProcessCheck(ctx context.Context, attemptID, childProfi
 
 		// 3.11. Начисляем XP за попытку исправления ошибок
 		if s.profileService != nil {
+			log.Printf("[AttemptService] 🎯 Answer is incorrect (errors found), calling AwardFixErrors for child %s", childProfileID)
 			err := s.profileService.AwardFixErrors(ctx, childProfileID)
 			if err != nil {
-				log.Printf("[AttemptService] Failed to award fix errors XP for %s: %v", childProfileID, err)
+				log.Printf("[AttemptService] ❌ Failed to award fix errors XP for %s: %v", childProfileID, err)
+			} else {
+				log.Printf("[AttemptService] ✅ Successfully called AwardFixErrors for child %s", childProfileID)
 			}
+		} else {
+			log.Printf("[AttemptService] ⚠️ profileService is NIL - cannot award fix errors XP")
 		}
 	}
 
