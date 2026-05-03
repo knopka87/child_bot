@@ -53,26 +53,45 @@ type SubscriptionData struct {
 	CancelledAt        *time.Time
 }
 
-// CreateChildProfile создает профиль ребенка или обновляет существующий (UPSERT)
-// Если профиль с таким platform_id + platform_user_id уже существует, обновляет его данные
+// CreateChildProfile создает профиль ребенка
+// ВАЖНО: Проверяет что профиль с таким platform_id + platform_user_id НЕ существует
+// Если существует - возвращает существующий ID (предотвращает создание дубликатов)
 func (s *ProfileService) CreateChildProfile(ctx context.Context, platformUserID, displayName, avatarID, platformID string, grade int) (string, error) {
+	// Валидация platform_user_id - не должен быть пустым или тестовым значением
+	if platformUserID == "" || platformUserID == "web-user" || platformUserID == "test" || platformUserID == "123" || platformUserID == "fulltest" {
+		return "", fmt.Errorf("invalid platform_user_id: must be a valid unique user identifier, got: %s", platformUserID)
+	}
+
+	// Проверяем что профиль с такими credentials не существует
+	var existingID string
+	checkQuery := `SELECT id FROM child_profiles WHERE platform_id = $1 AND platform_user_id = $2`
+	err := s.store.DB.QueryRowContext(ctx, checkQuery, platformID, platformUserID).Scan(&existingID)
+
+	if err == nil {
+		// Профиль уже существует - возвращаем его ID (это нормально для повторного onboarding)
+		log.Printf("[CreateChildProfile] Profile already exists for platform=%s user=%s, returning existing ID: %s",
+			platformID, platformUserID, existingID)
+		return existingID, nil
+	} else if err != sql.ErrNoRows {
+		// Ошибка при проверке
+		return "", fmt.Errorf("failed to check existing profile: %w", err)
+	}
+
+	// Профиль не существует - создаём новый
 	query := `
 		INSERT INTO child_profiles (display_name, avatar_id, grade, platform_id, platform_user_id)
 		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (platform_id, platform_user_id)
-		DO UPDATE SET
-			display_name = EXCLUDED.display_name,
-			avatar_id = EXCLUDED.avatar_id,
-			grade = EXCLUDED.grade,
-			updated_at = NOW()
 		RETURNING id
 	`
 
 	var childProfileID string
-	err := s.store.DB.QueryRowContext(ctx, query, displayName, avatarID, grade, platformID, platformUserID).Scan(&childProfileID)
+	err = s.store.DB.QueryRowContext(ctx, query, displayName, avatarID, grade, platformID, platformUserID).Scan(&childProfileID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create profile: %w", err)
 	}
+
+	log.Printf("[CreateChildProfile] Created new profile: id=%s, platform=%s, user=%s",
+		childProfileID, platformID, platformUserID)
 
 	return childProfileID, nil
 }

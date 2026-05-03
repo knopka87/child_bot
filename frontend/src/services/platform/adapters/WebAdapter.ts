@@ -35,8 +35,20 @@ export class WebAdapter {
   }
 
   async getUser(): Promise<PlatformUser> {
+    // Generate or retrieve unique user ID for web platform
+    // ВАЖНО: НЕ использовать константу 'web-user' - это создаёт коллизии!
+    const STORAGE_KEY = 'web_platform_user_id';
+
+    let userId = localStorage.getItem(STORAGE_KEY);
+    if (!userId) {
+      // Generate new unique ID
+      userId = `web-${crypto.randomUUID()}`;
+      localStorage.setItem(STORAGE_KEY, userId);
+      console.log('[WebAdapter] Generated new user ID:', userId);
+    }
+
     return {
-      id: 'web-user',
+      id: userId,
       firstName: 'Web',
       lastName: 'User',
     };

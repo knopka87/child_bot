@@ -37,10 +37,21 @@ export class PlatformBridge {
   private detectPlatform(): PlatformType {
     if (typeof window === 'undefined') return 'web';
 
-    // Check for VK Bridge
+    // Check for VK Bridge - проверяем несколько признаков
     const urlParams = new URLSearchParams(window.location.search);
     const vkPlatform = urlParams.get('vk_platform');
-    if (vkPlatform || (window as any).vkBridge) {
+    const vkUserId = urlParams.get('vk_user_id');
+    const vkAppId = urlParams.get('vk_app_id');
+    const hasVKBridge = typeof (window as any).vkBridge !== 'undefined' || typeof (window as any).VK !== 'undefined';
+
+    // Если есть ЛЮБОЙ признак VK - это VK платформа
+    if (vkPlatform || vkUserId || vkAppId || hasVKBridge) {
+      console.log('[PlatformBridge] Detected VK platform:', {
+        vkPlatform,
+        vkUserId: !!vkUserId,
+        vkAppId: !!vkAppId,
+        hasVKBridge,
+      });
       return 'vk';
     }
 
@@ -54,6 +65,7 @@ export class PlatformBridge {
       return 'telegram';
     }
 
+    console.log('[PlatformBridge] Detected web platform (fallback)');
     return 'web';
   }
 
