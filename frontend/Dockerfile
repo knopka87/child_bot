@@ -7,7 +7,7 @@ FROM node:20-bookworm AS build
 WORKDIR /app
 
 # Build arguments для Vite переменных окружения
-ARG VITE_API_BASE_URL=/api/v1
+ARG VITE_API_BASE_URL=/api
 ARG VITE_APP_VERSION=1.0.0
 ARG VITE_ANALYTICS_ENABLED=true
 ARG VITE_VK_APP_ID
