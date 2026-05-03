@@ -55,6 +55,15 @@ export class PlatformBridge {
       return 'vk';
     }
 
+    // КРИТИЧЕСКИ ВАЖНО: Если VK параметров нет в URL (например, после redirect),
+    // но platform_id уже сохранён в localStorage - используем его
+    // Это предотвращает потерю платформы при навигации внутри приложения
+    const savedPlatform = localStorage.getItem('platform_id') as PlatformType;
+    if (savedPlatform && (savedPlatform === 'vk' || savedPlatform === 'max' || savedPlatform === 'telegram')) {
+      console.log('[PlatformBridge] Using saved platform from storage:', savedPlatform);
+      return savedPlatform;
+    }
+
     // Check for MAX Bridge
     if ((window as any).MaxBridge || document.referrer.includes('max.ru')) {
       return 'max';
