@@ -8,6 +8,7 @@ import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { checkAPI } from '@/api/check';
 import imageCompression from 'browser-image-compression';
 import type { CheckScenario } from '@/types/check';
+import { ImageCropModal } from '@/components/ui/ImageCropModal';
 import styles from './CheckQualityTwoPage.module.css';
 
 interface StoredFileData {
@@ -25,6 +26,7 @@ export default function CheckQualitySinglePage() {
   const [file, setFile] = useState<File | null>(null);
   const [compressing, setCompressing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showCropModal, setShowCropModal] = useState(false);
 
   // Load file from sessionStorage on mount
   useEffect(() => {
@@ -133,6 +135,28 @@ export default function CheckQualitySinglePage() {
     navigate('/check/upload-images?scenario=single_photo');
   };
 
+  const handleCropSave = async (croppedFile: File) => {
+    // Создаём превью для обрезанного изображения
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setPreview(base64);
+      setFile(croppedFile);
+
+      // Обновляем в sessionStorage
+      const storedData = {
+        fileName: croppedFile.name,
+        fileType: croppedFile.type,
+        fileSize: croppedFile.size,
+        base64,
+      };
+      sessionStorage.setItem('check_single_photo_data', JSON.stringify(storedData));
+    };
+    reader.readAsDataURL(croppedFile);
+
+    setShowCropModal(false);
+  };
+
   const isLoading = compressing || uploading;
 
   const getLoadingText = () => {
@@ -171,7 +195,16 @@ export default function CheckQualitySinglePage() {
           animate={{ opacity: 1, scale: 1 }}
           className={styles.previewCard}
         >
-          <span className={styles.previewLabel}>Задание и ответ</span>
+          <div className={styles.previewHeader}>
+            <span className={styles.previewLabel}>Задание и ответ</span>
+            <button
+              onClick={() => setShowCropModal(true)}
+              className={styles.cropButton}
+              disabled={isLoading}
+            >
+              <Crop size={16} />
+            </button>
+          </div>
           <div className={styles.previewImageContainer}>
             <img
               src={preview}
@@ -184,16 +217,6 @@ export default function CheckQualitySinglePage() {
 
       {/* Действия */}
       <div className={styles.actions}>
-        {/* Обрезать — пока заглушка */}
-        <button
-          onClick={() => {}}
-          className={styles.actionButtonSecondary}
-          disabled={isLoading}
-        >
-          <Crop size={18} className={styles.actionButtonIcon} />
-          Обрезать
-        </button>
-
         {/* Всё видно, продолжить */}
         <button
           onClick={handleConfirm}
@@ -220,6 +243,16 @@ export default function CheckQualitySinglePage() {
           Переснять
         </button>
       </div>
+
+      {/* Модальное окно обрезки */}
+      {showCropModal && (
+        <ImageCropModal
+          image={preview!}
+          onSave={handleCropSave}
+          onClose={() => setShowCropModal(false)}
+          title="Обрезать изображение"
+        />
+      )}
     </div>
   );
 }

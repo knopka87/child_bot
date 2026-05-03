@@ -8,6 +8,7 @@ import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { checkAPI } from '@/api/check';
 import imageCompression from 'browser-image-compression';
 import type { CheckScenario } from '@/types/check';
+import { ImageCropModal } from '@/components/ui/ImageCropModal';
 import styles from './CheckQualityTwoPage.module.css';
 
 interface StoredFileData {
@@ -27,6 +28,8 @@ export default function CheckQualityTwoPage() {
   const [answerFile, setAnswerFile] = useState<File | null>(null);
   const [compressing, setCompressing] = useState<string | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [cropTarget, setCropTarget] = useState<'task' | 'answer' | null>(null);
+  const [showCropModal, setShowCropModal] = useState(false);
 
   // Load files from sessionStorage on mount
   useEffect(() => {
@@ -149,6 +152,56 @@ export default function CheckQualityTwoPage() {
     navigate('/check/upload-images?scenario=two_photo');
   };
 
+  const handleCropClick = (target: 'task' | 'answer') => {
+    setCropTarget(target);
+    setShowCropModal(true);
+  };
+
+  const handleCropSave = async (croppedFile: File) => {
+    if (!cropTarget) return;
+
+    // Создаём превью для обрезанного изображения
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+
+      if (cropTarget === 'task') {
+        setTaskPreview(base64);
+        setTaskFile(croppedFile);
+
+        // Обновляем в sessionStorage
+        const storedData = {
+          fileName: croppedFile.name,
+          fileType: croppedFile.type,
+          fileSize: croppedFile.size,
+          base64,
+        };
+        sessionStorage.setItem('check_task_photo', JSON.stringify(storedData));
+      } else {
+        setAnswerPreview(base64);
+        setAnswerFile(croppedFile);
+
+        // Обновляем в sessionStorage
+        const storedData = {
+          fileName: croppedFile.name,
+          fileType: croppedFile.type,
+          fileSize: croppedFile.size,
+          base64,
+        };
+        sessionStorage.setItem('check_answer_photo', JSON.stringify(storedData));
+      }
+    };
+    reader.readAsDataURL(croppedFile);
+
+    setShowCropModal(false);
+    setCropTarget(null);
+  };
+
+  const handleCropClose = () => {
+    setShowCropModal(false);
+    setCropTarget(null);
+  };
+
   const isLoading = compressing !== null || uploading !== null;
 
   const getLoadingText = () => {
@@ -190,7 +243,16 @@ export default function CheckQualityTwoPage() {
           animate={{ opacity: 1, scale: 1 }}
           className={styles.previewCard}
         >
-          <span className={styles.previewLabel}>Задание</span>
+          <div className={styles.previewHeader}>
+            <span className={styles.previewLabel}>Задание</span>
+            <button
+              onClick={() => handleCropClick('task')}
+              className={styles.cropButton}
+              disabled={isLoading}
+            >
+              <Crop size={16} />
+            </button>
+          </div>
           <div className={styles.previewImageContainer}>
             <img
               src={taskPreview}
@@ -207,7 +269,16 @@ export default function CheckQualityTwoPage() {
           transition={{ delay: 0.1 }}
           className={styles.previewCard}
         >
-          <span className={styles.previewLabel}>Ответ</span>
+          <div className={styles.previewHeader}>
+            <span className={styles.previewLabel}>Ответ</span>
+            <button
+              onClick={() => handleCropClick('answer')}
+              className={styles.cropButton}
+              disabled={isLoading}
+            >
+              <Crop size={16} />
+            </button>
+          </div>
           <div className={styles.previewImageContainer}>
             <img
               src={answerPreview}
@@ -220,16 +291,6 @@ export default function CheckQualityTwoPage() {
 
       {/* Действия */}
       <div className={styles.actions}>
-        {/* Обрезать — пока заглушка */}
-        <button
-          onClick={() => {}}
-          className={styles.actionButtonSecondary}
-          disabled={isLoading}
-        >
-          <Crop size={18} className={styles.actionButtonIcon} />
-          Обрезать
-        </button>
-
         {/* Всё видно, продолжить */}
         <button
           onClick={handleConfirm}
@@ -256,6 +317,16 @@ export default function CheckQualityTwoPage() {
           Переснять
         </button>
       </div>
+
+      {/* Модальное окно обрезки */}
+      {showCropModal && cropTarget && (
+        <ImageCropModal
+          image={cropTarget === 'task' ? taskPreview! : answerPreview!}
+          onSave={handleCropSave}
+          onClose={handleCropClose}
+          title={`Обрезать ${cropTarget === 'task' ? 'задание' : 'ответ'}`}
+        />
+      )}
     </div>
   );
 }
