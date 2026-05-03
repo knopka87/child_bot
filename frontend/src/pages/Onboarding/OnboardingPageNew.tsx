@@ -72,18 +72,22 @@ export function OnboardingPageNew() {
 
         let refCode = await getVKRefCode();
 
-        if (refCode) {
+        if (refCode && refCode !== 'other') {
           console.log('[Onboarding] ✅ Referral code detected:', refCode);
           setReferralCode(refCode);
           await vkStorage.setItem(storageKeys.REFERRAL_CODE, refCode);
         } else {
           // Проверяем сохраненный код из предыдущей сессии
           const savedCode = await vkStorage.getItem(storageKeys.REFERRAL_CODE);
-          if (savedCode) {
+          if (savedCode && savedCode !== 'other') {
             console.log('[Onboarding] Referral code loaded from storage:', savedCode);
             setReferralCode(savedCode);
           } else {
             console.log('[Onboarding] ⚠️ No referral code found');
+            // Очищаем storage если там был некорректный код "other"
+            if (savedCode === 'other') {
+              await vkStorage.removeItem(storageKeys.REFERRAL_CODE);
+            }
           }
         }
 
