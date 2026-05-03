@@ -60,7 +60,29 @@ export function OnboardingPageNew() {
         console.log('[Onboarding] VK user data loaded:', { firstName: user.firstName });
 
         // Извлекаем реферальный код из URL
-        const refCode = searchParams.get('ref');
+        // Поддерживаем несколько источников (приоритет сверху вниз):
+        // 1. Query параметр ?ref= (для web/прямых ссылок)
+        // 2. Hash параметр #ref= (для VK Mini App)
+        // 3. VK launch param vk_ref= (стандартный VK способ)
+        let refCode = searchParams.get('ref'); // Query: ?ref=ABC
+
+        if (!refCode && window.location.hash) {
+          // Hash: #ref=ABC
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          refCode = hashParams.get('ref');
+          if (refCode) {
+            console.log('[Onboarding] Referral code from hash:', refCode);
+          }
+        }
+
+        if (!refCode) {
+          // VK launch param: vk_ref=ABC
+          refCode = searchParams.get('vk_ref');
+          if (refCode) {
+            console.log('[Onboarding] Referral code from vk_ref:', refCode);
+          }
+        }
+
         if (refCode) {
           console.log('[Onboarding] Referral code detected:', refCode);
           setReferralCode(refCode);
