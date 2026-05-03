@@ -37,7 +37,9 @@ function AppInitializer() {
         // Определяем и сохраняем platform ID
         const platformBridge = new PlatformBridge();
         const platformType = platformBridge.getPlatformType();
-        await vkStorage.setItem('platform_id', platformType);
+        // КРИТИЧЕСКИ ВАЖНО: Используем синхронную запись, чтобы избежать race condition
+        // между async vkStorage.setItem и sync localStorage.getItem в PlatformBridge
+        localStorage.setItem('platform_id', platformType);
         console.log('[App] Platform:', platformType);
 
         // Проверяем текущий путь - legal pages доступны без авторизации
@@ -135,14 +137,9 @@ export default function App() {
         const platformBridge = new PlatformBridge();
         const apiPlatformId = platformBridge.getPlatformType();
 
-        try {
-          await vkStorage.setItem('platform_id', apiPlatformId);
-          console.log('[App] platform_id saved to storage:', apiPlatformId);
-        } catch (error) {
-          console.error('[App] Failed to save platform_id:', error);
-          // Fallback: сохраняем напрямую в localStorage
-          localStorage.setItem('platform_id', apiPlatformId);
-        }
+        // КРИТИЧЕСКИ ВАЖНО: Используем синхронную запись для избежания race condition
+        localStorage.setItem('platform_id', apiPlatformId);
+        console.log('[App] platform_id saved to storage:', apiPlatformId);
       })
       .catch((error) => {
         clearTimeout(platformDetectionTimeout);
