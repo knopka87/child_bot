@@ -115,6 +115,10 @@ func (h *ProfileHandler) CreateChild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Логируем полученные данные для отладки
+	log.Printf("[CreateChild] Request: ParentUserID=%s, Grade=%d, AvatarID=%s, DisplayName=%s, ReferralCode=%s",
+		req.ParentUserID, req.Grade, req.AvatarID, req.DisplayName, req.ReferralCode)
+
 	// Валидация
 	if req.ParentUserID == "" {
 		response.BadRequest(w, "parentUserId is required")
@@ -146,10 +150,15 @@ func (h *ProfileHandler) CreateChild(w http.ResponseWriter, r *http.Request) {
 
 	// Если указан реферальный код, создаём реферальную связь
 	if req.ReferralCode != "" {
+		log.Printf("[CreateChild] Processing referral code: %s for child: %s", req.ReferralCode, childProfileID)
 		if err := h.service.ProcessReferral(r.Context(), childProfileID, req.ReferralCode); err != nil {
 			// Логируем ошибку, но не блокируем создание профиля
-			log.Printf("Failed to process referral code %s for child %s: %v", req.ReferralCode, childProfileID, err)
+			log.Printf("[CreateChild] ❌ Failed to process referral code %s for child %s: %v", req.ReferralCode, childProfileID, err)
+		} else {
+			log.Printf("[CreateChild] ✅ Successfully processed referral code %s for child %s", req.ReferralCode, childProfileID)
 		}
+	} else {
+		log.Printf("[CreateChild] ⚠️ No referral code provided (ReferralCode is empty)")
 	}
 
 	response.Created(w, CreateChildProfileResponse{

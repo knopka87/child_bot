@@ -121,8 +121,16 @@ export function OnboardingPageNew() {
       const parentUserId = user.id;
 
       console.log('[Onboarding] User ID:', parentUserId, 'Platform:', platformType);
+      console.log('[Onboarding] Referral code:', referralCode || 'NONE');
       console.log('[Onboarding] Creating child profile...');
       const { childProfileId } = await onboardingAPI.createChildProfile({
+        parentUserId,
+        grade: grade!,
+        avatarId: avatarId!,
+        displayName: displayName!,
+        referralCode: referralCode || undefined,
+      });
+      console.log('[Onboarding] Request payload:', {
         parentUserId,
         grade: grade!,
         avatarId: avatarId!,
