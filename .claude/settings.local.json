@@ -55,14 +55,12 @@
       "Bash(tee:*)",
       "Bash(git -C /Users/a.yanover/Xsolla/llm_proxy status --short)",
       "Bash(git add:*)",
-      "Bash(git commit:*)",
       "Bash(git ls-files:*)",
       "Bash(git rm:*)",
       "Bash(textutil:*)",
       "Bash(go vet:*)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Bash(git push:*)",
       "Bash(git remote set-url:*)",
       "Bash(ssh-add:*)",
       "Bash(git reset:*)",
@@ -120,7 +118,19 @@
       "Bash(DATABASE_URL=\"postgres://child_bot:dev_secret@localhost:5432/child_bot?sslmode=disable\" make migrate-up:*)",
       "Bash(DATABASE_URL=\"postgres://child_bot:dev_secret@localhost:5432/child_bot?sslmode=disable\" LLM_PROXY_URL=\"http://138.124.55.145:8000\" timeout 5 go run:*)",
       "Bash(go version:*)",
-      "Bash(docker pull golang:1.24-alpine)"
+      "Bash(docker pull golang:1.24-alpine)",
+      "Bash(git ls-tree:*)",
+      "Bash(git fetch:*)",
+      "Bash(git mv:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(openssl rand:*)",
+      "Bash(VITE_API_BASE_URL=/api npm run build:*)",
+      "Bash(VITE_API_BASE_URL=/ npm run build:*)",
+      "Bash(for file in achievements.ts profile.ts onboarding.ts villain.ts referral.ts)",
+      "Bash(do sed -i '' \"s|''/api/|''/|g\" \"$file\")",
+      "Bash(for file in achievements.ts home.ts villain.ts)",
+      "Bash(do sed -i '' \"s|\\\\`/api/|\\\\`/|g\" \"$file\")"
     ]
   }
 }

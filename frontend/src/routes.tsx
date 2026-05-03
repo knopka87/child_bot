@@ -26,6 +26,7 @@ import { HistoryPage } from '@/pages/Profile/History/HistoryPage';
 import ReportPage from '@/pages/Report/ReportPage';
 import { VillainPage } from '@/pages/Villain/VillainPage';
 import { VictoryPage } from '@/pages/Villain/VictoryPage';
+import { TestParams } from '@/pages/TestParams';
 
 export function AppRoutes() {
   return (
@@ -60,6 +61,9 @@ export function AppRoutes() {
       {/* Legal */}
       <Route path={ROUTES.LEGAL_PRIVACY} element={<PrivacyPolicyPage />} />
       <Route path={ROUTES.LEGAL_TERMS} element={<TermsPage />} />
+
+      {/* Debug */}
+      <Route path="/test-params" element={<TestParams />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to={ROUTES.HOME} replace />} />

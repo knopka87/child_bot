@@ -48,6 +48,12 @@ export function OnboardingPageNew() {
 
     const initOnboarding = async () => {
       try {
+        // DEBUG: Выводим весь URL и все параметры
+        console.log('[Onboarding] Full URL:', window.location.href);
+        console.log('[Onboarding] window.location.search:', window.location.search);
+        console.log('[Onboarding] window.location.hash:', window.location.hash);
+        console.log('[Onboarding] searchParams entries:', Array.from(searchParams.entries()));
+
         // Загружаем данные от VK
         const platformBridge = new PlatformBridge();
         await platformBridge.init();
