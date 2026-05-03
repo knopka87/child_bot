@@ -91,10 +91,14 @@ export function OnboardingPageNew() {
       console.log('[Onboarding] Starting completion...');
 
       const platformBridge = new PlatformBridge();
+      const platformType = platformBridge.getPlatformType();
+      console.log('[Onboarding] Detected platform:', platformType);
+
       await platformBridge.init();
       const user = await platformBridge.getUser();
       const parentUserId = user.id;
 
+      console.log('[Onboarding] User ID:', parentUserId, 'Platform:', platformType);
       console.log('[Onboarding] Creating child profile...');
       const { childProfileId } = await onboardingAPI.createChildProfile({
         parentUserId,

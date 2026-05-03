@@ -48,28 +48,13 @@ class APIClient {
         async (requestConfig: InternalAxiosRequestConfig) => {
         console.log('[APIClient] Request interceptor START', { url: requestConfig.url });
 
-        // Добавляем X-Platform-ID (определяем платформу)
-        console.log('[APIClient] Getting platform_id from storage...');
-        let platformID = localStorage.getItem('platform_id');
-        console.log('[APIClient] platformID from storage:', platformID);
+        // КРИТИЧЕСКИ ВАЖНО: Используем PlatformBridge как единственный источник истины
+        // Избегаем рассинхронизации между определением платформы и user.id
+        const { PlatformBridge } = await import('@/services/platform/PlatformBridge');
+        const bridge = new PlatformBridge();
+        const platformID = bridge.getPlatformType();
 
-        if (!platformID) {
-          // Определяем платформу: VK Mini App или web
-          const urlParams = new URLSearchParams(window.location.search);
-          const hasVKParams = urlParams.has('vk_platform') || urlParams.has('vk_app_id') ||
-                             urlParams.has('vk_user_id') || urlParams.has('sign');
-
-          platformID = hasVKParams ? 'vk' : 'web';
-          console.log('[APIClient] Detected platformID:', platformID, 'from URL params:', hasVKParams);
-          console.log('[APIClient] URL search params:', window.location.search);
-          localStorage.setItem('platform_id', platformID);
-        }
-
-        // Force platform detection for VK Mini App
-        if (window.location.hostname.includes('vk.com') || window.location.search.includes('vk_')) {
-          platformID = 'vk';
-          console.log('[APIClient] Forced platformID to vk for VK Mini App');
-        }
+        console.log('[APIClient] Platform ID from PlatformBridge:', platformID);
 
         if (requestConfig.headers) {
           requestConfig.headers['X-Platform-ID'] = platformID;

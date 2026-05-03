@@ -49,13 +49,18 @@ export class VKAdapter {
           userId: this.userInfo.id,
         });
       } catch (error) {
-        logger.warn('Failed to get user info', { error });
+        logger.warn('Failed to get user info from VK Bridge during init', { error });
+        // Не критично - getUser() попробует снова или использует URL params fallback
       }
 
       logger.info('Initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize', { error });
-      throw error;
+      logger.error('Failed to initialize VK Bridge', { error });
+
+      // ВАЖНО: Даже если VKWebAppInit упал, помечаем как инициализированный
+      // чтобы getUser() мог использовать fallback на URL параметры
+      this.isInitialized = true;
+      logger.warn('Marked as initialized despite VK Bridge failure - will use URL params fallback');
     }
   }
 
@@ -97,8 +102,27 @@ export class VKAdapter {
       this.userInfo = user;
       return this.convertVKUser(user);
     } catch (error) {
-      logger.error('Failed to get user', { error });
-      throw error;
+      logger.error('Failed to get user from VK Bridge, trying URL params fallback', { error });
+
+      // КРИТИЧЕСКИЙ FALLBACK: Если VK Bridge не работает (например, не внутри VK iframe),
+      // но в URL есть VK параметры - используем их
+      const urlParams = new URLSearchParams(window.location.search);
+      const vkUserId = urlParams.get('vk_user_id');
+      const vkUserFirstName = urlParams.get('vk_user_first_name') || 'Пользователь';
+      const vkUserLastName = urlParams.get('vk_user_last_name') || 'VK';
+
+      if (vkUserId) {
+        logger.warn('Using VK user ID from URL params as fallback', { vkUserId });
+        return {
+          id: vkUserId,
+          firstName: vkUserFirstName,
+          lastName: vkUserLastName,
+        };
+      }
+
+      // Если и в URL нет параметров - бросаем ошибку
+      logger.error('No VK user data available - neither from Bridge nor URL params');
+      throw new Error('VK Bridge не работает и vk_user_id отсутствует в URL');
     }
   }
 
