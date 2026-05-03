@@ -139,3 +139,50 @@ export function isLaunchedFromVK(): boolean {
   const params = getVKLaunchParams();
   return !!(params.vk_user_id && params.vk_app_id);
 }
+
+/**
+ * Получить vk_ref параметр (реферальный код) из VK Launch Params
+ * VK передает параметры через Bridge API, а НЕ через URL
+ */
+export async function getVKRefCode(): Promise<string | null> {
+  try {
+    // Сначала проверяем URL (на всякий случай)
+    const urlParams = getVKLaunchParams();
+    if (urlParams.vk_ref) {
+      console.log('[VK Auth] vk_ref found in URL params:', urlParams.vk_ref);
+      return urlParams.vk_ref;
+    }
+
+    // Главный источник: VK Bridge Launch Params
+    if (!isVKBridgeReady()) {
+      await initVKBridge();
+    }
+
+    // В dev режиме возвращаем null
+    if (isDevMode()) {
+      console.log('[VK Auth] Dev mode: vk_ref not available');
+      return null;
+    }
+
+    const launchParams = await bridge.send('VKWebAppGetLaunchParams');
+    console.log('[VK Auth] VK Launch Params:', launchParams);
+
+    // vk_ref может быть в разных местах:
+    // 1. launchParams.vk_ref (прямо в объекте)
+    // 2. launchParams.vk_platform_params.vk_ref (в platform params)
+    const vkRef = (launchParams as any).vk_ref
+                  || (launchParams as any).vk_platform_params?.vk_ref
+                  || null;
+
+    if (vkRef) {
+      console.log('[VK Auth] vk_ref found in Launch Params:', vkRef);
+      return vkRef;
+    }
+
+    console.log('[VK Auth] vk_ref not found in Launch Params');
+    return null;
+  } catch (error) {
+    console.error('[VK Auth] Failed to get vk_ref from Launch Params:', error);
+    return null;
+  }
+}

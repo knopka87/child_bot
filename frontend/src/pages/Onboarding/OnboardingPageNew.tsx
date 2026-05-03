@@ -7,6 +7,7 @@ import { ROUTES } from '@/config/routes';
 import { onboardingAPI } from '@/api/onboarding';
 import { PlatformBridge } from '@/services/platform/PlatformBridge';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
+import { getVKRefCode } from '@/lib/platform/vk-auth';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { LegalDocumentModal } from '@/components/LegalDocumentModal';
 
@@ -65,39 +66,42 @@ export function OnboardingPageNew() {
 
         console.log('[Onboarding] VK user data loaded:', { firstName: user.firstName });
 
-        // Извлекаем реферальный код из URL
-        // Поддерживаем несколько источников (приоритет сверху вниз):
-        // 1. Query параметр ?ref= (для web/прямых ссылок)
-        // 2. Hash параметр #ref= (для VK Mini App)
-        // 3. VK launch param vk_ref= (стандартный VK способ)
-        let refCode = searchParams.get('ref'); // Query: ?ref=ABC
+        // КРИТИЧЕСКИ ВАЖНО: VK НЕ передает параметры через URL!
+        // VK передает параметры через VK Bridge Launch Params API
+        // Извлекаем реферальный код из VK Bridge
+        console.log('[Onboarding] Checking for referral code...');
 
-        if (!refCode && window.location.hash) {
-          // Hash: #ref=ABC
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          refCode = hashParams.get('ref');
+        let refCode = await getVKRefCode();
+
+        // Fallback: проверяем URL параметры (на случай прямого доступа)
+        if (!refCode) {
+          refCode = searchParams.get('ref') || searchParams.get('vk_ref') || null;
           if (refCode) {
-            console.log('[Onboarding] Referral code from hash:', refCode);
+            console.log('[Onboarding] Referral code found in URL params:', refCode);
           }
         }
 
-        if (!refCode) {
-          // VK launch param: vk_ref=ABC
-          refCode = searchParams.get('vk_ref');
+        // Fallback: проверяем hash параметры
+        if (!refCode && window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          refCode = hashParams.get('ref') || hashParams.get('vk_ref') || null;
           if (refCode) {
-            console.log('[Onboarding] Referral code from vk_ref:', refCode);
+            console.log('[Onboarding] Referral code found in hash:', refCode);
           }
         }
 
         if (refCode) {
-          console.log('[Onboarding] Referral code detected:', refCode);
+          console.log('[Onboarding] ✅ Referral code detected:', refCode);
           setReferralCode(refCode);
-          vkStorage.setItem(storageKeys.REFERRAL_CODE, refCode);
+          await vkStorage.setItem(storageKeys.REFERRAL_CODE, refCode);
         } else {
+          // Проверяем сохраненный код из предыдущей сессии
           const savedCode = await vkStorage.getItem(storageKeys.REFERRAL_CODE);
           if (savedCode) {
             console.log('[Onboarding] Referral code loaded from storage:', savedCode);
             setReferralCode(savedCode);
+          } else {
+            console.log('[Onboarding] ⚠️ No referral code found');
           }
         }
 
