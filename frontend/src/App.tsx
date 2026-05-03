@@ -16,6 +16,7 @@ import { AnalyticsProvider } from '@/contexts/AnalyticsContext';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { Spinner } from '@/components/ui/Spinner';
 import { PlatformBridge } from '@/services/platform/PlatformBridge';
+import { getCurrentChildProfileId } from '@/lib/auth';
 
 type Appearance = 'light' | 'dark';
 
@@ -49,18 +50,20 @@ function AppInitializer() {
           return;
         }
 
-        // Проверяем наличие профиля и завершения онбординга
-        const childProfileId = await vkStorage.getItem(storageKeys.PROFILE_ID);
+        // КРИТИЧЕСКИ ВАЖНО: Проверяем профиль через backend, а не доверяем кэшу!
+        // getCurrentChildProfileId() делает запрос к backend и валидирует профиль
+        // Если профиль удалён - автоматически очищает кэш и возвращает null
+        const childProfileId = await getCurrentChildProfileId();
         const onboardingCompleted = await vkStorage.getItem(storageKeys.ONBOARDING_COMPLETED);
 
-        console.log('[App] Child Profile ID:', childProfileId || 'missing');
+        console.log('[App] Child Profile ID (validated):', childProfileId || 'missing');
         console.log('[App] Onboarding:', onboardingCompleted || 'not completed');
 
         if (!childProfileId || !onboardingCompleted) {
           console.log('[App] Redirecting to onboarding...');
           navigate('/onboarding', { replace: true });
         } else {
-          console.log('[App] User authenticated, loading home...');
+          console.log('[App] User authenticated, profile exists in DB, loading home...');
         }
       } catch (error) {
         console.error('[App] Initialization error:', error);
