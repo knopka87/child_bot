@@ -142,10 +142,12 @@ export function isLaunchedFromVK(): boolean {
 
 /**
  * Получить реферальный код из VK Launch Params
- * VK передает параметры через Bridge API, а НЕ через URL
  *
- * ВАЖНО: Параметр vk_ref зарезервирован VK и может быть изменен платформой!
- * Используем кастомный параметр "ref" в query string
+ * VK Mini Apps механизм передачи данных:
+ * - URL: https://vk.com/app123#start_param=CODE
+ * - Launch Params содержат: vk_start_param = "CODE"
+ *
+ * Это ЕДИНСТВЕННЫЙ способ передать данные в VK Mini App!
  */
 export async function getVKRefCode(): Promise<string | null> {
   try {
@@ -162,38 +164,35 @@ export async function getVKRefCode(): Promise<string | null> {
 
     const launchParams = await bridge.send('VKWebAppGetLaunchParams');
 
-    // DEBUG: Выводим ВСЕ ключи Launch Params для отладки
+    // DEBUG: Выводим ВСЕ ключи Launch Params
     console.log('[VK Auth] Launch Params keys:', Object.keys(launchParams));
-    console.log('[VK Auth] Full Launch Params:', JSON.stringify(launchParams, null, 2));
 
-    // VK может передавать кастомные параметры напрямую в Launch Params
-    // Например: URL ?ref=ABC → launchParams.ref = "ABC"
-    const refCode = (launchParams as any).ref;
+    // ГЛАВНОЕ: vk_start_param содержит наш реферальный код
+    const startParam = (launchParams as any).vk_start_param;
 
-    if (refCode && refCode !== 'other') {
-      console.log('[VK Auth] ✅ Referral code found in Launch Params.ref:', refCode);
-      return refCode;
+    if (startParam) {
+      console.log('[VK Auth] ✅ Referral code found in vk_start_param:', startParam);
+      return startParam;
     }
 
-    // Fallback: проверяем window.location (на случай прямого доступа не через VK)
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlRef = urlParams.get('ref');
+    // Fallback: проверяем window.location.hash (для прямого доступа не через VK)
+    if (typeof window !== 'undefined' && window.location.hash) {
+      // Проверяем формат #start_param=CODE
+      const hash = window.location.hash.substring(1); // убираем #
 
-      if (urlRef) {
-        console.log('[VK Auth] Referral code found in window.location.search:', urlRef);
-        return urlRef;
+      if (hash.startsWith('start_param=')) {
+        const code = hash.substring('start_param='.length);
+        console.log('[VK Auth] Referral code found in window.location.hash:', code);
+        return code;
       }
 
-      // Проверяем hash
-      if (window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const hashRef = hashParams.get('ref');
+      // Или query-string формат в hash: #ref=CODE
+      const hashParams = new URLSearchParams(hash);
+      const hashRef = hashParams.get('ref') || hashParams.get('start_param');
 
-        if (hashRef) {
-          console.log('[VK Auth] Referral code found in window.location.hash:', hashRef);
-          return hashRef;
-        }
+      if (hashRef) {
+        console.log('[VK Auth] Referral code found in hash params:', hashRef);
+        return hashRef;
       }
     }
 

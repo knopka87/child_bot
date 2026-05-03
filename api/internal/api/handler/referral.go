@@ -135,10 +135,11 @@ func (h *ReferralHandler) GetReferralData(w http.ResponseWriter, r *http.Request
 	}
 
 	// Формируем реферальную ссылку для VK приложения
-	// ВАЖНО: Используем query параметр "ref" (не vk_ref который VK резервирует!)
-	// VK передает все query параметры через Launch Params без изменений
-	// Формат: https://vk.com/app54517931?ref=CODE
-	referralLink := "https://vk.com/app54517931?ref=" + refCode.Code
+	// КРИТИЧЕСКИ ВАЖНО: VK НЕ передает кастомные query параметры в iframe!
+	// Используем специальный VK механизм: fragment identifier с start_param
+	// VK передаст это через Launch Params API как vk_start_param
+	// Формат: https://vk.com/app54517931#start_param=CODE
+	referralLink := "https://vk.com/app54517931#start_param=" + refCode.Code
 
 	// Получаем информацию о текущем достижении "Дружба"
 	currentAchievement, err := h.getCurrentFriendshipAchievement(r.Context(), childProfileID, stats.ActiveInvited)
