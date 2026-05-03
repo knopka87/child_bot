@@ -106,7 +106,8 @@
 /* Preview */
 .previewContainer {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  min-height: 300px;
+  max-height: 500px;
   background: rgba(0, 0, 0, 0.03);
   border-radius: 12px;
   overflow: hidden;
@@ -118,7 +119,8 @@
 .previewImage {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  max-height: 500px;
+  object-fit: contain;
 }
 
 /* Upload area */

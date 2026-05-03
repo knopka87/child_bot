@@ -8,10 +8,13 @@ import {
   ArrowUpDown,
   RefreshCw,
   Camera,
+  Crop,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
+import { usePlatformDetection } from '@/lib/platform/platform-detection';
+import { ImageCropModal } from '@/components/ui/ImageCropModal';
 import styles from './CheckImageSetManager.module.css';
 
 interface ImageSlot {
@@ -35,6 +38,7 @@ export default function CheckImageSetManager() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const analytics = useAnalytics();
+  const platformInfo = usePlatformDetection();
   const fileInputRefs = useRef<{ task: HTMLInputElement | null; answer: HTMLInputElement | null }>({
     task: null,
     answer: null,
@@ -69,6 +73,9 @@ export default function CheckImageSetManager() {
   const fixErrorsMode = location.state?.mode === 'fix_errors' || !!existingTaskImage;
 
   // Инициализируем слоты в зависимости от сценария
+  const [cropTarget, setCropTarget] = useState<'task' | 'answer' | null>(null);
+  const [showCropModal, setShowCropModal] = useState(false);
+
   const [images, setImages] = useState<ImageSlot[]>(() => {
     if (isSinglePhoto) {
       // Для 1 фото в режиме "из помощи" предзаполняем задание
@@ -216,6 +223,38 @@ export default function CheckImageSetManager() {
     },
     [analytics, scenario]
   );
+
+  const handleCropClick = useCallback((slotId: 'task' | 'answer') => {
+    setCropTarget(slotId);
+    setShowCropModal(true);
+  }, []);
+
+  const handleCropSave = useCallback(async (croppedFile: File) => {
+    if (!cropTarget) return;
+
+    // Создаём превью для обрезанного изображения
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+
+      setImages((prev) =>
+        prev.map((img) =>
+          img.id === cropTarget
+            ? { ...img, file: croppedFile, preview: base64 }
+            : img
+        )
+      );
+    };
+    reader.readAsDataURL(croppedFile);
+
+    setShowCropModal(false);
+    setCropTarget(null);
+  }, [cropTarget]);
+
+  const handleCropClose = useCallback(() => {
+    setShowCropModal(false);
+    setCropTarget(null);
+  }, []);
 
   const handleReorder = useCallback(() => {
     setIsReordered((prev) => !prev);
@@ -388,6 +427,13 @@ export default function CheckImageSetManager() {
               {(img.file || (fixErrorsMode && img.id === 'task' && img.preview)) && (
                 <div className={styles.slotActions}>
                   <button
+                    onClick={() => handleCropClick(img.id)}
+                    className={`${styles.slotActionButton} ${styles.slotActionButtonCrop}`}
+                    title="Обрезать"
+                  >
+                    <Crop size={14} />
+                  </button>
+                  <button
                     onClick={() => handleReplace(img.id)}
                     className={`${styles.slotActionButton} ${styles.slotActionButtonReplace}`}
                   >
@@ -434,13 +480,15 @@ export default function CheckImageSetManager() {
                     <Plus size={20} />
                     <span>Выбрать</span>
                   </button>
-                  <button
-                    onClick={() => handleCameraCapture(img.id)}
-                    className={`${styles.uploadButton} ${styles.uploadButtonCamera}`}
-                  >
-                    <Camera size={16} />
-                    <span>Камера</span>
-                  </button>
+                  {platformInfo?.isMobile && (
+                    <button
+                      onClick={() => handleCameraCapture(img.id)}
+                      className={`${styles.uploadButton} ${styles.uploadButtonCamera}`}
+                    >
+                      <Camera size={16} />
+                      <span>Камера</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -469,6 +517,16 @@ export default function CheckImageSetManager() {
       >
         Продолжить
       </button>
+
+      {/* Модальное окно обрезки */}
+      {showCropModal && cropTarget && (
+        <ImageCropModal
+          image={images.find(img => img.id === cropTarget)?.preview || ''}
+          onSave={handleCropSave}
+          onClose={handleCropClose}
+          title={`Обрезать ${images.find(img => img.id === cropTarget)?.label.toLowerCase()}`}
+        />
+      )}
     </div>
   );
 }

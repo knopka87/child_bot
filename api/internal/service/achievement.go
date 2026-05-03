@@ -44,8 +44,12 @@ func (s *AchievementService) CheckStreakAchievements(ctx context.Context, childP
 			len(unlockedIDs), childProfileID, unlockedIDs)
 
 		// Начисляем XP за каждое разблокированное достижение
-		for range unlockedIDs {
-			_, _, _ = s.store.AddXP(ctx, childProfileID, XPForAchievement, store.DefaultXPConfig)
+		if s.profileService != nil {
+			for range unlockedIDs {
+				if err := s.profileService.AwardAchievementUnlock(ctx, childProfileID); err != nil {
+					log.Printf("[AchievementService] Failed to award achievement XP: %v", err)
+				}
+			}
 		}
 
 		// Начисляем награды (монеты)

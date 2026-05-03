@@ -6,12 +6,14 @@ import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { helpAPI } from '@/api/help';
 import { ROUTES } from '@/config/routes';
+import { usePlatformDetection } from '@/lib/platform/platform-detection';
 import styles from './HelpImageUploader.module.css';
 
 export default function HelpImageUploader() {
   const navigate = useNavigate();
   const analytics = useAnalytics();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const platformInfo = usePlatformDetection();
 
   const [image, setImage] = useState<{
     file: File | null;
@@ -192,14 +194,16 @@ export default function HelpImageUploader() {
                 <Plus size={20} />
                 <span>Выбрать</span>
               </button>
-              <button
-                onClick={handleCameraCapture}
-                className={`${styles.uploadButton} ${styles.uploadButtonCamera}`}
-                disabled={isUploading}
-              >
-                <Camera size={16} />
-                <span>Камера</span>
-              </button>
+              {platformInfo?.isMobile && (
+                <button
+                  onClick={handleCameraCapture}
+                  className={`${styles.uploadButton} ${styles.uploadButtonCamera}`}
+                  disabled={isUploading}
+                >
+                  <Camera size={16} />
+                  <span>Камера</span>
+                </button>
+              )}
             </div>
           </div>
         )}
