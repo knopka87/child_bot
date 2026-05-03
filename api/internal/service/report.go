@@ -106,7 +106,7 @@ func (s *ReportService) GetWeeklyReportData(ctx context.Context, childProfileID 
 
 	// Get profile data
 	var avatarID string
-	query := `SELECT display_name, avatar_id, grade, level, xp_total, coins_balance, streak_days FROM child_profiles WHERE id = $1`
+	query := `SELECT display_name, avatar_id, grade, level, experience_points, coins_balance, streak_days FROM child_profiles WHERE id = $1`
 	err = s.store.DB.QueryRowContext(ctx, query, profileUUID).Scan(
 		&data.ChildName, &avatarID, &data.Grade, &data.Level, &data.XPTotal, &data.CoinsBalance, &data.StreakDays,
 	)

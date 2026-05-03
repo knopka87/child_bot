@@ -30,7 +30,7 @@ func (s *Store) AddXP(ctx context.Context, childProfileID string, xpAmount int, 
 
 	// Получаем текущие XP и уровень
 	var currentXP, currentLevel int
-	query := `SELECT COALESCE(xp_total, 0), COALESCE(level, 1) FROM child_profiles WHERE id = $1`
+	query := `SELECT COALESCE(experience_points, 0), COALESCE(level, 1) FROM child_profiles WHERE id = $1`
 	err = tx.QueryRowContext(ctx, query, childProfileID).Scan(&currentXP, &currentLevel)
 	if err != nil {
 		log.Printf("[Store.AddXP] ❌ Failed to get current XP and level for %s: %v", childProfileID, err)
@@ -60,7 +60,7 @@ func (s *Store) AddXP(ctx context.Context, childProfileID string, xpAmount int, 
 	// Обновляем XP и уровень
 	updateQuery := `
 		UPDATE child_profiles
-		SET xp_total = $1,
+		SET experience_points = $1,
 		    level = $2,
 		    updated_at = NOW()
 		WHERE id = $3
@@ -106,7 +106,7 @@ func (s *Store) AddXP(ctx context.Context, childProfileID string, xpAmount int, 
 // GetXPAndLevel получает текущие XP и уровень пользователя
 func (s *Store) GetXPAndLevel(ctx context.Context, childProfileID string) (int, int, error) {
 	var xpTotal, level int
-	query := `SELECT COALESCE(xp_total, 0), COALESCE(level, 1) FROM child_profiles WHERE id = $1`
+	query := `SELECT COALESCE(experience_points, 0), COALESCE(level, 1) FROM child_profiles WHERE id = $1`
 	err := s.DB.QueryRowContext(ctx, query, childProfileID).Scan(&xpTotal, &level)
 	if err != nil {
 		return 0, 0, fmt.Errorf("get xp and level: %w", err)
