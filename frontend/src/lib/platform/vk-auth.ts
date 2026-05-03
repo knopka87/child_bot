@@ -144,10 +144,11 @@ export function isLaunchedFromVK(): boolean {
  * Получить реферальный код из VK Launch Params
  *
  * VK Mini Apps механизм передачи данных:
- * - URL: https://vk.com/app123#start_param=CODE
+ * - URL: https://vk.com/app123#start=CODE (формат без _param!)
  * - Launch Params содержат: vk_start_param = "CODE"
  *
  * Это ЕДИНСТВЕННЫЙ способ передать данные в VK Mini App!
+ * Документация: https://dev.vk.com/ru/mini-apps/development/launch-params
  */
 export async function getVKRefCode(): Promise<string | null> {
   try {
@@ -166,8 +167,10 @@ export async function getVKRefCode(): Promise<string | null> {
 
     // DEBUG: Выводим ВСЕ ключи Launch Params
     console.log('[VK Auth] Launch Params keys:', Object.keys(launchParams));
+    console.log('[VK Auth] Full Launch Params:', launchParams);
 
     // ГЛАВНОЕ: vk_start_param содержит наш реферальный код
+    // Формат URL: https://vk.com/app54517931#start=CODE
     const startParam = (launchParams as any).vk_start_param;
 
     if (startParam) {
@@ -177,18 +180,18 @@ export async function getVKRefCode(): Promise<string | null> {
 
     // Fallback: проверяем window.location.hash (для прямого доступа не через VK)
     if (typeof window !== 'undefined' && window.location.hash) {
-      // Проверяем формат #start_param=CODE
       const hash = window.location.hash.substring(1); // убираем #
 
-      if (hash.startsWith('start_param=')) {
-        const code = hash.substring('start_param='.length);
+      // Проверяем формат #start=CODE (официальный VK формат)
+      if (hash.startsWith('start=')) {
+        const code = hash.substring('start='.length);
         console.log('[VK Auth] Referral code found in window.location.hash:', code);
         return code;
       }
 
-      // Или query-string формат в hash: #ref=CODE
+      // Или query-string формат в hash
       const hashParams = new URLSearchParams(hash);
-      const hashRef = hashParams.get('ref') || hashParams.get('start_param');
+      const hashRef = hashParams.get('start') || hashParams.get('ref');
 
       if (hashRef) {
         console.log('[VK Auth] Referral code found in hash params:', hashRef);
