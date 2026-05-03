@@ -112,23 +112,40 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
 
   // Определяет режим перетаскивания на основе позиции клика
   const getDragMode = (x: number, y: number): DragMode => {
-    const handleSize = 30; // Размер зоны для захвата угла/стороны
+    const cornerSize = 30; // Размер зоны для захвата угла
+    const edgeSize = 20; // Размер зоны для захвата стороны
     const { x: cropX, y: cropY, width, height } = cropArea;
 
-    // Проверяем углы
-    if (Math.abs(x - cropX) < handleSize && Math.abs(y - cropY) < handleSize) return 'resize-tl';
-    if (Math.abs(x - (cropX + width)) < handleSize && Math.abs(y - cropY) < handleSize) return 'resize-tr';
-    if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + height)) < handleSize) return 'resize-bl';
-    if (Math.abs(x - (cropX + width)) < handleSize && Math.abs(y - (cropY + height)) < handleSize) return 'resize-br';
+    const nearLeft = Math.abs(x - cropX) < cornerSize;
+    const nearRight = Math.abs(x - (cropX + width)) < cornerSize;
+    const nearTop = Math.abs(y - cropY) < cornerSize;
+    const nearBottom = Math.abs(y - (cropY + height)) < cornerSize;
 
-    // Проверяем стороны
-    if (Math.abs(y - cropY) < handleSize && x > cropX && x < cropX + width) return 'resize-t';
-    if (Math.abs(y - (cropY + height)) < handleSize && x > cropX && x < cropX + width) return 'resize-b';
-    if (Math.abs(x - cropX) < handleSize && y > cropY && y < cropY + height) return 'resize-l';
-    if (Math.abs(x - (cropX + width)) < handleSize && y > cropY && y < cropY + height) return 'resize-r';
+    const onLeft = Math.abs(x - cropX) < edgeSize;
+    const onRight = Math.abs(x - (cropX + width)) < edgeSize;
+    const onTop = Math.abs(y - cropY) < edgeSize;
+    const onBottom = Math.abs(y - (cropY + height)) < edgeSize;
+
+    const insideX = x > cropX + edgeSize && x < cropX + width - edgeSize;
+    const insideY = y > cropY + edgeSize && y < cropY + height - edgeSize;
+
+    // Проверяем углы (приоритет выше чем стороны)
+    if (nearLeft && nearTop) return 'resize-tl';
+    if (nearRight && nearTop) return 'resize-tr';
+    if (nearLeft && nearBottom) return 'resize-bl';
+    if (nearRight && nearBottom) return 'resize-br';
+
+    // Проверяем стороны (только если не в углах)
+    if (onTop && insideX) return 'resize-t';
+    if (onBottom && insideX) return 'resize-b';
+    if (onLeft && insideY) return 'resize-l';
+    if (onRight && insideY) return 'resize-r';
 
     // Проверяем центр (перемещение)
-    if (x > cropX && x < cropX + width && y > cropY && y < cropY + height) return 'move';
+    if (x > cropX + edgeSize && x < cropX + width - edgeSize &&
+        y > cropY + edgeSize && y < cropY + height - edgeSize) {
+      return 'move';
+    }
 
     return null;
   };

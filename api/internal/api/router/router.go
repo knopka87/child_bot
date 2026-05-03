@@ -33,6 +33,15 @@ func New(deps *Dependencies) http.Handler {
 		response.OK(w, map[string]string{"status": "ok"})
 	})
 
+	// Version check (public) - для отладки
+	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
+		response.OK(w, map[string]string{
+			"version": "2026-05-03-xp-debug",
+			"commit": "24d741a",
+			"features": "xp-logging,referral-vk,image-crop-enhanced,report-email-fix",
+		})
+	})
+
 	// Инициализируем services
 	attemptService := service.NewAttemptService(deps.Store, deps.LLMClient, deps.DefaultLLM)
 	profileService := service.NewProfileService(deps.Store)

@@ -104,6 +104,37 @@ curl -X GET "http://localhost:8080/api/profile" \
 
 ## Типичные проблемы и решения
 
+### Проблема 0: Backend не задеплоен с новыми изменениями
+
+**Симптомы:**
+- XP не начисляется
+- В логах нет новых сообщений с эмодзи (🎯, ✅, ❌)
+
+**Как проверить:**
+```bash
+# Проверить версию API
+curl https://your-api-url.com/api/version
+
+# Должен вернуть:
+{
+  "version": "2026-05-03-xp-debug",
+  "commit": "24d741a",
+  "features": "xp-logging,referral-vk,image-crop-enhanced,report-email-fix"
+}
+```
+
+**Решение:**
+1. Если версия старая или endpoint не найден:
+   ```bash
+   git push origin prod-v1
+   ```
+2. Дождитесь завершения GitHub Actions
+3. Проверьте что новый образ задеплоен:
+   ```bash
+   docker ps | grep child-bot-api
+   docker logs child-bot-api-1 --tail 20
+   ```
+
 ### Проблема 1: XP не начисляется вообще
 
 **Симптомы:**
