@@ -21,11 +21,19 @@ export default function HelpImageUploader() {
   const [isUploading, setIsUploading] = useState(false);
 
   const handleFileSelect = useCallback(() => {
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      // Убираем capture для выбора из галереи
+      fileInputRef.current.removeAttribute('capture');
+      fileInputRef.current.click();
+    }
   }, []);
 
   const handleCameraCapture = useCallback(() => {
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      // Добавляем capture для открытия камеры
+      fileInputRef.current.setAttribute('capture', 'environment');
+      fileInputRef.current.click();
+    }
   }, []);
 
   const handleFileChange = useCallback(

@@ -131,16 +131,24 @@ export default function CheckImageSetManager() {
 
   const handleFileSelect = useCallback(
     (slotId: 'task' | 'answer') => {
-      fileInputRefs.current[slotId]?.click();
+      const input = fileInputRefs.current[slotId];
+      if (input) {
+        // Убираем capture для выбора из галереи
+        input.removeAttribute('capture');
+        input.click();
+      }
     },
     []
   );
 
   const handleCameraCapture = useCallback(
     (slotId: 'task' | 'answer') => {
-      // Для мобильных — можно открыть getUserMedia
-      // Пока используем тот же input с capture
-      fileInputRefs.current[slotId]?.click();
+      const input = fileInputRefs.current[slotId];
+      if (input) {
+        // Добавляем capture для открытия камеры
+        input.setAttribute('capture', 'environment');
+        input.click();
+      }
     },
     []
   );
