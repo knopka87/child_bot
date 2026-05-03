@@ -141,18 +141,14 @@ export function isLaunchedFromVK(): boolean {
 }
 
 /**
- * Получить vk_ref параметр (реферальный код) из VK Launch Params
+ * Получить реферальный код из VK Launch Params
  * VK передает параметры через Bridge API, а НЕ через URL
+ *
+ * ВАЖНО: Параметр vk_ref зарезервирован VK и может быть изменен платформой!
+ * Используем fragment identifier (#ref=CODE) который VK передает через vk_fragment
  */
 export async function getVKRefCode(): Promise<string | null> {
   try {
-    // Сначала проверяем URL (на всякий случай)
-    const urlParams = getVKLaunchParams();
-    if (urlParams.vk_ref) {
-      console.log('[VK Auth] vk_ref found in URL params:', urlParams.vk_ref);
-      return urlParams.vk_ref;
-    }
-
     // Главный источник: VK Bridge Launch Params
     if (!isVKBridgeReady()) {
       await initVKBridge();
@@ -160,29 +156,51 @@ export async function getVKRefCode(): Promise<string | null> {
 
     // В dev режиме возвращаем null
     if (isDevMode()) {
-      console.log('[VK Auth] Dev mode: vk_ref not available');
+      console.log('[VK Auth] Dev mode: referral code not available');
       return null;
     }
 
     const launchParams = await bridge.send('VKWebAppGetLaunchParams');
     console.log('[VK Auth] VK Launch Params:', launchParams);
 
-    // vk_ref может быть в разных местах:
-    // 1. launchParams.vk_ref (прямо в объекте)
-    // 2. launchParams.vk_platform_params.vk_ref (в platform params)
-    const vkRef = (launchParams as any).vk_ref
-                  || (launchParams as any).vk_platform_params?.vk_ref
-                  || null;
+    // VK передает fragment через vk_fragment параметр
+    // Например: https://vk.com/app123#ref=ABC → vk_fragment="ref=ABC"
+    const fragment = (launchParams as any).vk_fragment;
 
-    if (vkRef) {
-      console.log('[VK Auth] vk_ref found in Launch Params:', vkRef);
-      return vkRef;
+    if (fragment) {
+      console.log('[VK Auth] vk_fragment:', fragment);
+
+      // Парсим fragment как query string
+      const fragmentParams = new URLSearchParams(fragment);
+      const refCode = fragmentParams.get('ref');
+
+      if (refCode) {
+        console.log('[VK Auth] ✅ Referral code found in fragment:', refCode);
+        return refCode;
+      }
     }
 
-    console.log('[VK Auth] vk_ref not found in Launch Params');
+    // Fallback 1: проверяем URL параметры (на случай прямого доступа)
+    const urlParams = getVKLaunchParams();
+    if (urlParams.vk_ref && urlParams.vk_ref !== 'other') {
+      console.log('[VK Auth] Referral code found in URL params:', urlParams.vk_ref);
+      return urlParams.vk_ref;
+    }
+
+    // Fallback 2: проверяем window.location.hash (на случай если VK не передал через API)
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const refCode = hashParams.get('ref');
+      if (refCode) {
+        console.log('[VK Auth] Referral code found in window.location.hash:', refCode);
+        return refCode;
+      }
+    }
+
+    console.log('[VK Auth] ⚠️ Referral code not found');
     return null;
   } catch (error) {
-    console.error('[VK Auth] Failed to get vk_ref from Launch Params:', error);
+    console.error('[VK Auth] Failed to get referral code from Launch Params:', error);
     return null;
   }
 }
