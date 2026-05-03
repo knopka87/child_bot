@@ -1,8 +1,7 @@
 ########################
 # Build stage
 ########################
-# Используем стабильный Debian-based образ (лучше кешируется)
-FROM node:20-bookworm AS build
+FROM node:20-bookworm-slim AS build
 
 WORKDIR /app
 
@@ -14,18 +13,16 @@ ARG VITE_VK_APP_ID
 ARG VITE_MAX_APP_ID
 ARG VITE_TELEGRAM_BOT_USERNAME
 
-# Копируем package files
+# Копируем package files для кеширования слоя зависимостей
 COPY package*.json ./
 
-# Устанавливаем ВСЕ зависимости с retry логикой
-RUN for i in 1 2 3; do \
-      npm ci && break || { echo "npm ci failed, retrying..."; sleep 10; }; \
-    done
+# Устанавливаем зависимости с использованием npm ci (чище и быстрее)
+RUN npm ci --prefer-offline --no-audit
 
 # Копируем исходники
 COPY . .
 
-# Сборка production build с переменными окружения
+# Сборка production build
 ENV NODE_ENV=production
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_APP_VERSION=${VITE_APP_VERSION}
@@ -33,13 +30,13 @@ ENV VITE_ANALYTICS_ENABLED=${VITE_ANALYTICS_ENABLED}
 ENV VITE_VK_APP_ID=${VITE_VK_APP_ID}
 ENV VITE_MAX_APP_ID=${VITE_MAX_APP_ID}
 ENV VITE_TELEGRAM_BOT_USERNAME=${VITE_TELEGRAM_BOT_USERNAME}
+
 RUN npm run build
 
 ########################
 # Production stage with nginx
 ########################
-# Используем Debian-based nginx (лучше кешируется)
-FROM nginx:1.25-bookworm
+FROM nginx:1.25-alpine
 
 # Копируем собранные файлы
 COPY --from=build /app/dist /usr/share/nginx/html
@@ -47,7 +44,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # Копируем nginx конфигурацию
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Добавляем healthcheck
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost:80/ || exit 1
 
