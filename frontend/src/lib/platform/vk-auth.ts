@@ -61,10 +61,29 @@ export async function getVKUserInfo(): Promise<VKUserInfo | null> {
 
 /**
  * Получить VK user ID текущего пользователя
+ * С fallback на URL параметр vk_user_id если VK Bridge не работает
  */
 export async function getVKUserId(): Promise<number | null> {
+  // Пробуем получить через VK Bridge
   const userInfo = await getVKUserInfo();
-  return userInfo?.id ?? null;
+  if (userInfo?.id) {
+    return userInfo.id;
+  }
+
+  // FALLBACK: Читаем vk_user_id из URL параметров
+  // Это работает когда приложение открывается по ссылке с VK параметрами,
+  // но VK Bridge ещё не инициализирован или не работает (не в VK iframe)
+  const params = getVKLaunchParams();
+  if (params.vk_user_id) {
+    const userId = parseInt(params.vk_user_id, 10);
+    if (!isNaN(userId)) {
+      console.log('[VK Auth] Using vk_user_id from URL params:', userId);
+      return userId;
+    }
+  }
+
+  console.warn('[VK Auth] Failed to get VK user ID - neither from Bridge nor URL params');
+  return null;
 }
 
 /**
