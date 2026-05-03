@@ -57,9 +57,15 @@ type SubscriptionData struct {
 // ВАЖНО: Проверяет что профиль с таким platform_id + platform_user_id НЕ существует
 // Если существует - возвращает существующий ID (предотвращает создание дубликатов)
 func (s *ProfileService) CreateChildProfile(ctx context.Context, platformUserID, displayName, avatarID, platformID string, grade int) (string, error) {
-	// Валидация platform_user_id - не должен быть пустым или тестовым значением
-	if platformUserID == "" || platformUserID == "web-user" || platformUserID == "test" || platformUserID == "123" || platformUserID == "fulltest" {
-		return "", fmt.Errorf("invalid platform_user_id: must be a valid unique user identifier, got: %s", platformUserID)
+	// Валидация platform_user_id - не должен быть пустым
+	if platformUserID == "" {
+		return "", fmt.Errorf("invalid platform_user_id: cannot be empty")
+	}
+
+	// ВРЕМЕННО: разрешаем тестовые значения для обратной совместимости
+	// TODO: После миграции всех пользователей - включить строгую валидацию
+	if platformUserID == "test" || platformUserID == "123" || platformUserID == "fulltest" {
+		log.Printf("[CreateChildProfile] WARNING: Using test platform_user_id: %s", platformUserID)
 	}
 
 	// Проверяем что профиль с такими credentials не существует
