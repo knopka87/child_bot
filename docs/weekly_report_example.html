@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Еженедельный отчёт</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; color: #333; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 8px; margin-bottom: 20px; }
+        .section { background-color: white; margin-bottom: 20px; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .profile { display: flex; align-items: center; }
+        .profile img { width: 80px; height: 80px; border-radius: 50%; margin-right: 20px; }
+        .stats { display: flex; justify-content: space-around; margin-top: 20px; }
+        .stat { text-align: center; padding: 10px; background-color: #e8f5e8; border-radius: 8px; }
+        .achievements { list-style: none; padding: 0; }
+        .achievements li { padding: 10px; background-color: #fff3cd; margin-bottom: 5px; border-radius: 4px; }
+        .progress-bar { background-color: #ddd; border-radius: 20px; height: 20px; margin: 10px 0; }
+        .progress-fill { background-color: #4CAF50; height: 100%; border-radius: 20px; }
+        .comparison { display: flex; justify-content: space-between; }
+        .positive { color: green; }
+        .negative { color: red; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Еженедельный отчёт</h1>
+        <p>Для Алексея Иванова | Неделя с 12.04.2026 по 18.04.2026</p>
+    </div>
+
+    <div class="section">
+        <h2>Профиль ребёнка</h2>
+        <div class="profile">
+            <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iNDAiIGN5PSI0MCIgcj0iNDAiIGZpbGw9IiM0Q0FGNTAiLz4KPHN2ZyB4PSIyMCIgeT0iMjAiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJ3aGl0ZSI+CjxwYXRoIGQ9Ik0xMiA5YzEuMSAwIDIgLjkgMiAyczEuMSAyIDIgMi0uOSAyLTIgMi0yIDItMi0yLTEuMS0yLTItLjktMi0yLTIgMC0yIDItLjktMiAyLTJ6TTkgMTNoNnYxSDl2LTEiLz4KPC9zdmc+Cjwvc3ZnPg==" alt="Аватар">
+            <div>
+                <p><strong>Имя:</strong> Алексей Иванов</p>
+                <p><strong>Класс:</strong> 2</p>
+                <p><strong>Уровень:</strong> 5</p>
+                <p><strong>XP:</strong> 1250/1500 (83% прогресс)</p>
+                <div class="progress-bar"><div class="progress-fill" style="width: 83%;"></div></div>
+                <p><strong>Монеты:</strong> 500 🪙</p>
+                <p><strong>Стрик дней:</strong> 7 🔥</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Активность за неделю</h2>
+        <div class="stats">
+            <div class="stat"><strong>Попыток:</strong><br>25</div>
+            <div class="stat"><strong>Успешных:</strong><br>20 (80%)</div>
+            <div class="stat"><strong>Подсказки:</strong><br>3</div>
+            <div class="stat"><strong>Среднее время:</strong><br>5 мин</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Новые достижения</h2>
+        <ul class="achievements">
+            <li>🏆 <strong>Математик</strong> - Решил 10 задач без ошибок (разблокировано 15.04.2026)</li>
+            <li>🦸 <strong>Супер-герой</strong> - Победил первого villain'а (разблокировано 17.04.2026)</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Битвы с villain'ами</h2>
+        <p><strong>Текущий villain:</strong> Дракон</p>
+        <p><strong>HP:</strong> 70%</p>
+        <div class="progress-bar"><div class="progress-fill" style="width: 70%; background-color: #ff9800;"></div></div>
+        <p><strong>Общий урон:</strong> 150</p>
+        <p><strong>Заработано монет:</strong> 100 🪙</p>
+    </div>
+
+    <div class="section">
+        <h2>Сравнение с прошлой неделей</h2>
+        <div class="comparison">
+            <div><strong>Попытки:</strong> <span class="positive">+5</span></div>
+            <div><strong>Точность:</strong> <span class="positive">+10%</span></div>
+            <div><strong>Время:</strong> <span class="negative">-2 мин</span></div>
+        </div>
+    </div>
+</body>
+</html></content>
+<parameter name="filePath">docs/weekly_report_example.html

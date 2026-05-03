@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make *)",
+      "Bash(docker compose *)",
+      "Bash(docker ps *)",
+      "Bash(npx *)",
+      "Bash(npm run *)",
+      "Bash(docker-compose *)",
+      "Bash(docker logs *)",
+      "Bash(curl *)",
+      "Bash(kill *)",
+      "Bash(go *)",
+      "Bash(date *)",
+      "Bash(python3 *)",
+      "Bash(mkdir *)",
+      "Bash(sed *)",
+      "Bash(lsof *)",
+      "Bash(sleep *)",
+      "Bash(docker exec *)",
+      "Bash(rm *)",
+      "Bash(cat)",
+      "Bash(github.com/jung-kurt/gofpdf *)",
+      "Bash(eof)",
+      "Bash(head *)",
+      "Bash(echo *)"
+    ]
+  },
+  "$version": 3
+}
