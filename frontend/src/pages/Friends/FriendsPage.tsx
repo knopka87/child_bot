@@ -52,46 +52,52 @@ export function FriendsPage() {
     if (!data) return;
 
     try {
-      // Сначала пробуем VK Bridge API (для VK приложений)
-      await bridge.send('VKWebAppShare', {
-        link: data.referralLink,
+      // Используем официальный VK механизм приглашений
+      // Документация: https://dev.vk.com/ru/games/promotion/game-mechanics/invites
+      // requestKey передаётся приглашённому как vk_request_key в Launch Params
+      const result = await bridge.send('VKWebAppShowInviteBox', {
+        requestKey: data.referralCode, // Наш реферальный код
       });
 
+      console.log('[FriendsPage] Invite result:', result);
+
       if (childProfileId) {
-        analytics.trackEvent('referral_link_shared', {
+        analytics.trackEvent('referral_invite_sent', {
           child_profile_id: childProfileId,
           referral_code: data.referralCode,
-          share_channel: 'vk',
+          share_channel: 'vk_invite_box',
         });
 
         await referralAPI.trackInviteSent(childProfileId, 'vk');
       }
-    } catch (vkError) {
-      console.log('[FriendsPage] VK share failed, trying fallback:', vkError);
+    } catch (vkError: any) {
+      console.log('[FriendsPage] VK invite failed:', vkError);
 
-      // Fallback на native share API
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: 'Помощник ДЗ',
-            text: 'Присоединяйся ко мне в Объяснятель! Помогу с домашкой 🦉',
-            url: data.referralLink,
+      // Если пользователь отменил приглашение
+      if (vkError?.error_data?.error_code === 4 && vkError?.error_data?.error_reason === 'User denied') {
+        console.log('[FriendsPage] User cancelled invite dialog');
+        return;
+      }
+
+      // Fallback: если VKWebAppShowInviteBox не поддерживается, используем VKWebAppShare
+      try {
+        await bridge.send('VKWebAppShare', {
+          link: data.referralLink,
+        });
+
+        if (childProfileId) {
+          analytics.trackEvent('referral_link_shared', {
+            child_profile_id: childProfileId,
+            referral_code: data.referralCode,
+            share_channel: 'vk_share_fallback',
           });
 
-          if (childProfileId) {
-            analytics.trackEvent('referral_link_shared', {
-              child_profile_id: childProfileId,
-              referral_code: data.referralCode,
-              share_channel: 'native',
-            });
-
-            await referralAPI.trackInviteSent(childProfileId, 'native');
-          }
-        } catch (err) {
-          console.log('[FriendsPage] Native share cancelled or failed:', err);
+          await referralAPI.trackInviteSent(childProfileId, 'vk');
         }
-      } else {
-        // Если ничего не работает, копируем ссылку
+      } catch (shareError) {
+        console.log('[FriendsPage] VKWebAppShare also failed:', shareError);
+
+        // Последний fallback - копируем ссылку
         handleCopy();
       }
     }

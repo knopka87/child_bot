@@ -143,12 +143,12 @@ export function isLaunchedFromVK(): boolean {
 /**
  * Получить реферальный код из VK Launch Params
  *
- * VK Mini Apps механизм передачи данных:
- * - URL: https://vk.com/app123#start=CODE (формат без _param!)
- * - Launch Params содержат: vk_start_param = "CODE"
+ * VK приглашения работают через официальный механизм VKWebAppShowInviteBox:
+ * 1. Отправитель вызывает: VKWebAppShowInviteBox({ requestKey: 'CODE' })
+ * 2. Получатель запускает приложение по приглашению
+ * 3. VK передаёт параметр vk_request_key = "CODE" в Launch Params
  *
- * Это ЕДИНСТВЕННЫЙ способ передать данные в VK Mini App!
- * Документация: https://dev.vk.com/ru/mini-apps/development/launch-params
+ * Документация: https://dev.vk.com/ru/games/promotion/game-mechanics/invites
  */
 export async function getVKRefCode(): Promise<string | null> {
   try {
@@ -167,39 +167,16 @@ export async function getVKRefCode(): Promise<string | null> {
 
     // DEBUG: Выводим ВСЕ ключи Launch Params
     console.log('[VK Auth] Launch Params keys:', Object.keys(launchParams));
-    console.log('[VK Auth] Full Launch Params:', launchParams);
 
-    // ГЛАВНОЕ: vk_start_param содержит наш реферальный код
-    // Формат URL: https://vk.com/app54517931#start=CODE
-    const startParam = (launchParams as any).vk_start_param;
+    // ГЛАВНОЕ: vk_request_key содержит наш реферальный код (requestKey из VKWebAppShowInviteBox)
+    const requestKey = (launchParams as any).vk_request_key;
 
-    if (startParam) {
-      console.log('[VK Auth] ✅ Referral code found in vk_start_param:', startParam);
-      return startParam;
+    if (requestKey) {
+      console.log('[VK Auth] ✅ Referral code found in vk_request_key:', requestKey);
+      return requestKey;
     }
 
-    // Fallback: проверяем window.location.hash (для прямого доступа не через VK)
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hash = window.location.hash.substring(1); // убираем #
-
-      // Проверяем формат #start=CODE (официальный VK формат)
-      if (hash.startsWith('start=')) {
-        const code = hash.substring('start='.length);
-        console.log('[VK Auth] Referral code found in window.location.hash:', code);
-        return code;
-      }
-
-      // Или query-string формат в hash
-      const hashParams = new URLSearchParams(hash);
-      const hashRef = hashParams.get('start') || hashParams.get('ref');
-
-      if (hashRef) {
-        console.log('[VK Auth] Referral code found in hash params:', hashRef);
-        return hashRef;
-      }
-    }
-
-    console.log('[VK Auth] ⚠️ Referral code not found');
+    console.log('[VK Auth] ⚠️ Referral code not found (no vk_request_key in Launch Params)');
     return null;
   } catch (error) {
     console.error('[VK Auth] Failed to get referral code:', error);
