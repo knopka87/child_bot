@@ -18,7 +18,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@vkontakte/vk-bridge": "^2.14.2",
+    "@vkontakte/vk-bridge": "^3.0.1",
     "@vkontakte/vk-bridge-mock": "^2.2.0",
     "@vkontakte/vkui": "^8.1.0",
     "axios": "^1.15.1",

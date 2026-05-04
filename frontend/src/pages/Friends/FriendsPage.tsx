@@ -53,11 +53,11 @@ export function FriendsPage() {
 
     try {
       // Используем официальный VK механизм приглашений
-      // Документация: https://dev.vk.com/ru/games/promotion/game-mechanics/invites
+      // Документация: https://dev.vk.com/ru/bridge/VKWebAppShowInviteBox
       // requestKey передаётся приглашённому как vk_request_key в Launch Params
       const result = await bridge.send('VKWebAppShowInviteBox', {
-        requestKey: data.referralCode, // Наш реферальный код
-      });
+        requestKey: data.referralCode,
+      } as any);
 
       console.log('[FriendsPage] Invite result:', result);
 
