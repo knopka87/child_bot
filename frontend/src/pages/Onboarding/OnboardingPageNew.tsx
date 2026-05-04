@@ -117,22 +117,26 @@ export function OnboardingPageNew() {
       const parentUserId = user.id;
 
       console.log('[Onboarding] User ID:', parentUserId, 'Platform:', platformType);
-      console.log('[Onboarding] Referral code:', referralCode || 'NONE');
-      console.log('[Onboarding] Creating child profile...');
-      const { childProfileId } = await onboardingAPI.createChildProfile({
+      console.log('[Onboarding] ===== REFERRAL CODE DEBUG =====');
+      console.log('[Onboarding] Referral code from state:', referralCode);
+      console.log('[Onboarding] Referral code type:', typeof referralCode);
+      console.log('[Onboarding] Referral code is null?', referralCode === null);
+      console.log('[Onboarding] Referral code is undefined?', referralCode === undefined);
+      console.log('[Onboarding] Referral code is empty string?', referralCode === '');
+      console.log('[Onboarding] Referral code value being sent:', referralCode || 'NONE');
+      console.log('[Onboarding] ================================');
+
+      const requestPayload = {
         parentUserId,
         grade: grade!,
         avatarId: avatarId!,
         displayName: displayName!,
         referralCode: referralCode || undefined,
-      });
-      console.log('[Onboarding] Request payload:', {
-        parentUserId,
-        grade: grade!,
-        avatarId: avatarId!,
-        displayName: displayName!,
-        referralCode: referralCode || undefined,
-      });
+      };
+
+      console.log('[Onboarding] Creating child profile with payload:', JSON.stringify(requestPayload, null, 2));
+
+      const { childProfileId } = await onboardingAPI.createChildProfile(requestPayload);
 
       console.log('[Onboarding] Child profile created:', childProfileId);
 
@@ -351,6 +355,26 @@ export function OnboardingPageNew() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Referral code input (optional) */}
+      <div className="mb-5">
+        <label className="text-[14px] text-[#636e72] mb-1.5 block">
+          Реферальный код друга (необязательно)
+        </label>
+        <input
+          type="text"
+          value={referralCode || ''}
+          onChange={(e) => {
+            const code = e.target.value.trim().toUpperCase();
+            setReferralCode(code || null);
+          }}
+          placeholder="Введи код, если тебя пригласил друг"
+          className="w-full bg-white rounded-xl px-4 py-3 border border-[#DFE6E9] focus:ring-2 focus:ring-[#6C5CE7]/30 focus:border-[#6C5CE7] outline-none transition-all text-[#2D3436] text-[14px]"
+        />
+        {referralCode && (
+          <p className="text-[12px] text-[#00B894] mt-1.5">✓ Код будет применён при регистрации</p>
+        )}
       </div>
 
       <div className="mt-auto">

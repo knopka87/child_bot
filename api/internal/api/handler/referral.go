@@ -134,18 +134,16 @@ func (h *ReferralHandler) GetReferralData(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	// Формируем реферальную ссылку
-	// ВАЖНО: Прямые ссылки НЕ работают для VK Mini Apps (параметры не передаются в iframe)!
+	// Формируем реферальную ссылку для VK Mini Apps
+	// ВАЖНО: Query параметры НЕ пробрасываются в iframe VK Mini Apps!
 	//
-	// Основной механизм приглашений в VK:
+	// Правильный способ передачи реферального кода:
 	// 1. Frontend вызывает: VKWebAppShowInviteBox({ requestKey: refCode.Code })
-	// 2. Приглашённый получает vk_request_key в Launch Params
-	// Документация: https://dev.vk.com/ru/games/promotion/game-mechanics/invites
+	// 2. VK передаёт приглашение другу
+	// 3. Друг получает vk_request_key в Launch Params при открытии приложения
 	//
-	// referralLink используется только как fallback для:
-	// - Кнопки "Скопировать ссылку" (для ручной отправки вне VK)
-	// - Других платформ (Telegram, Web)
-	referralLink := "https://vk.com/app54517931#ref=" + refCode.Code
+	// referralLink используется только для отображения, не для работы механизма
+	referralLink := "https://vk.com/app54517931"
 
 	// Получаем информацию о текущем достижении "Дружба"
 	currentAchievement, err := h.getCurrentFriendshipAchievement(r.Context(), childProfileID, stats.ActiveInvited)

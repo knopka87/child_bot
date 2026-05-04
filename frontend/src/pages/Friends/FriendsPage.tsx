@@ -43,27 +43,27 @@ export function FriendsPage() {
 
     try {
       console.log('[FriendsPage] Starting invite with code:', data.referralCode);
-      console.log('[FriendsPage] Using link:', `https://vk.com/app54517931#start=${data.referralCode}`);
 
-      // Используем VKWebAppShare для отправки приглашения
-      // Для Mini Apps это основной способ пригласить друзей
-      const result = await bridge.send('VKWebAppShare', {
-        link: `https://vk.com/app54517931#start=${data.referralCode}`,
-      });
+      // ПРАВИЛЬНЫЙ способ для VK Mini Apps - использовать VKWebAppShowInviteBox
+      // Это единственный способ передать данные в iframe приложение!
+      // requestKey передаётся как vk_request_key в Launch Params
+      const result = await bridge.send('VKWebAppShowInviteBox', {
+        requestKey: data.referralCode,
+      } as any);
 
-      console.log('[FriendsPage] Share result:', result);
+      console.log('[FriendsPage] Invite result:', result);
 
       if (childProfileId) {
         analytics.trackEvent('referral_invite_sent', {
           child_profile_id: childProfileId,
           referral_code: data.referralCode,
-          share_channel: 'vk_share',
+          share_channel: 'vk_invite_box',
         });
 
         await referralAPI.trackInviteSent(childProfileId, 'vk');
       }
     } catch (error: any) {
-      console.error('[FriendsPage] Share failed:', {
+      console.error('[FriendsPage] VKWebAppShowInviteBox failed:', {
         error,
         errorType: error?.error_type,
         errorCode: error?.error_data?.error_code,
@@ -72,13 +72,14 @@ export function FriendsPage() {
       });
 
       // Если пользователь отменил диалог
-      if (error?.error_data?.error_code === 4) {
-        console.log('[FriendsPage] User cancelled share dialog');
+      if (error?.error_data?.error_code === 4 && error?.error_data?.error_reason === 'User denied') {
+        console.log('[FriendsPage] User cancelled invite dialog');
         return;
       }
 
-      // Показываем fallback с возможностью скопировать ссылку
-      console.log('[FriendsPage] Showing copy fallback');
+      // Fallback: VKWebAppShowInviteBox не поддерживается или не работает
+      // Показываем кнопку для копирования ссылки
+      console.log('[FriendsPage] Showing copy fallback (VKWebAppShowInviteBox not supported)');
       setShowCopyFallback(true);
     }
   };
@@ -86,10 +87,13 @@ export function FriendsPage() {
   const handleCopyLink = () => {
     if (!data) return;
 
-    const link = `https://vk.com/app54517931#start=${data.referralCode}`;
-    navigator.clipboard?.writeText(link)
+    // Для ручного копирования даём ссылку на приложение + код для ручного ввода
+    const link = `https://vk.com/app54517931`;
+    const message = `Привет! Попробуй это приложение: ${link}\nТвой реферальный код: ${data.referralCode}`;
+
+    navigator.clipboard?.writeText(message)
       .then(() => {
-        alert('Ссылка скопирована! Отправь её другу в ВК');
+        alert('Сообщение скопировано! Отправь его другу в ВК.\n\nДруг должен будет ввести код при регистрации.');
 
         if (childProfileId) {
           analytics.trackEvent('referral_link_copied', {

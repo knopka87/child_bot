@@ -84,7 +84,9 @@ class APIClient {
 
         console.log('[APIClient] Request interceptor COMPLETE', {
           url: requestConfig.url,
+          method: requestConfig.method,
           headers: requestConfig.headers,
+          data: requestConfig.data, // Логируем тело запроса
         });
 
         logger.debug('API Request', {
@@ -92,6 +94,7 @@ class APIClient {
           url: requestConfig.url,
           platformID,
           hasProfileID: !!requestConfig.headers?.['X-Child-Profile-ID'],
+          data: requestConfig.data,
         });
 
         return requestConfig;
