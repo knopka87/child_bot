@@ -52,20 +52,21 @@ function AppInitializer() {
           return;
         }
 
-        // КРИТИЧЕСКИ ВАЖНО: Проверяем профиль через backend, а не доверяем кэшу!
-        // getCurrentChildProfileId() делает запрос к backend и валидирует профиль
-        // Если профиль удалён - автоматически очищает кэш и возвращает null
+        // КРИТИЧЕСКИ ВАЖНО: Проверяем профиль через backend по VK user ID
+        // getCurrentChildProfileId() делает запрос: GET /profiles/by-platform?platform_id=vk&platform_user_id=XXX
+        // Если профиль найден в БД - значит онбординг пройден
+        // Если профиль не найден (404) - требуем онбординг
         const childProfileId = await getCurrentChildProfileId();
-        const onboardingCompleted = await vkStorage.getItem(storageKeys.ONBOARDING_COMPLETED);
 
-        console.log('[App] Child Profile ID (validated):', childProfileId || 'missing');
-        console.log('[App] Onboarding:', onboardingCompleted || 'not completed');
+        console.log('[App] Child Profile ID (validated from DB):', childProfileId || 'not found');
 
-        if (!childProfileId || !onboardingCompleted) {
-          console.log('[App] Redirecting to onboarding...');
+        if (!childProfileId) {
+          console.log('[App] Profile not found in DB, redirecting to onboarding...');
           navigate('/onboarding', { replace: true });
         } else {
-          console.log('[App] User authenticated, profile exists in DB, loading home...');
+          console.log('[App] Profile found in DB, loading home...');
+          // Обновляем флаг в локальном хранилище для совместимости
+          await vkStorage.setItem(storageKeys.ONBOARDING_COMPLETED, 'true');
         }
       } catch (error) {
         console.error('[App] Initialization error:', error);

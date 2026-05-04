@@ -168,15 +168,21 @@ export async function getVKRefCode(): Promise<string | null> {
     // DEBUG: Выводим ВСЕ ключи Launch Params
     console.log('[VK Auth] Launch Params keys:', Object.keys(launchParams));
 
-    // ГЛАВНОЕ: vk_request_key содержит наш реферальный код (requestKey из VKWebAppShowInviteBox)
+    // Проверяем vk_request_key (от VKWebAppShowInviteBox)
     const requestKey = (launchParams as any).vk_request_key;
-
     if (requestKey) {
       console.log('[VK Auth] ✅ Referral code found in vk_request_key:', requestKey);
       return requestKey;
     }
 
-    console.log('[VK Auth] ⚠️ Referral code not found (no vk_request_key in Launch Params)');
+    // Проверяем vk_start (от прямой ссылки с #start=CODE)
+    const startParam = (launchParams as any).vk_start;
+    if (startParam) {
+      console.log('[VK Auth] ✅ Referral code found in vk_start:', startParam);
+      return startParam;
+    }
+
+    console.log('[VK Auth] ⚠️ Referral code not found (no vk_request_key or vk_start in Launch Params)');
     return null;
   } catch (error) {
     console.error('[VK Auth] Failed to get referral code:', error);

@@ -24,9 +24,21 @@ export const vkStorage = {
       );
 
       const data = await Promise.race([storagePromise, timeoutPromise]);
-      return data.keys[0]?.value || null;
+      const vkValue = data.keys[0]?.value || null;
+
+      // КРИТИЧЕСКИ ВАЖНО: Если VK Storage пустой, проверяем localStorage
+      // VK может не сохранять данные на некоторых устройствах
+      if (!vkValue) {
+        const localValue = localStorage.getItem(key);
+        if (localValue) {
+          console.log('[VKStorage] Using localStorage fallback for key:', key);
+          return localValue;
+        }
+      }
+
+      return vkValue;
     } catch (error) {
-      console.warn('[VKStorage] Fallback to localStorage:', error);
+      console.warn('[VKStorage] Error reading from VK Storage, using localStorage:', error);
       return localStorage.getItem(key);
     }
   },
@@ -102,14 +114,28 @@ export const vkStorage = {
 
       const data = await Promise.race([getPromise, timeoutPromise]);
       const result: Record<string, string> = {};
+
+      // Сначала собираем данные из VK Storage
       for (const item of data.keys) {
         if (item.value) {
           result[item.key] = item.value;
         }
       }
+
+      // Дополняем недостающие данные из localStorage (fallback)
+      for (const key of keys) {
+        if (!result[key]) {
+          const localValue = localStorage.getItem(key);
+          if (localValue) {
+            console.log('[VKStorage] Using localStorage fallback for key:', key);
+            result[key] = localValue;
+          }
+        }
+      }
+
       return result;
     } catch (error) {
-      console.warn('[VKStorage] Fallback to localStorage:', error);
+      console.warn('[VKStorage] Error reading from VK Storage, using localStorage:', error);
       const result: Record<string, string> = {};
       for (const key of keys) {
         const value = localStorage.getItem(key);
