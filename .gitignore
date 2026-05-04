@@ -8,3 +8,4 @@
 /api/test/e2e/testdata/tasks/*.jpg
 /api/test/e2e/results/*.json
 /tools/textbook_parser/output
+.env.production
