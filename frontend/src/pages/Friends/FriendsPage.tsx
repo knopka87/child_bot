@@ -1,6 +1,6 @@
 // src/pages/Friends/FriendsPage.tsx
 import { useEffect, useState } from 'react';
-import { Copy, Send, Users, CheckCircle, Gift } from 'lucide-react';
+import { Send, Users, Gift } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { ListPageSkeleton } from '@/components/ui/skeleton';
@@ -14,7 +14,6 @@ import styles from './FriendsPage.module.css';
 export function FriendsPage() {
   const analytics = useAnalytics();
   const { data, isLoading, error } = useReferralData();
-  const [copied, setCopied] = useState(false);
   const [childProfileId, setChildProfileId] = useState<string | null>(null);
 
   // Загружаем child_profile_id для аналитики
@@ -33,22 +32,7 @@ export function FriendsPage() {
     loadProfileId();
   }, [analytics]);
 
-  const handleCopy = () => {
-    if (!data) return;
-
-    navigator.clipboard?.writeText(data.referralLink).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-
-    if (childProfileId) {
-      analytics.trackEvent('referral_link_copied', {
-        child_profile_id: childProfileId,
-        referral_code: data.referralCode,
-      });
-    }
-  };
-
-  const handleShare = async () => {
+  const handleInvite = async () => {
     if (!data) return;
 
     try {
@@ -96,9 +80,7 @@ export function FriendsPage() {
         }
       } catch (shareError) {
         console.log('[FriendsPage] VKWebAppShare also failed:', shareError);
-
-        // Последний fallback - копируем ссылку
-        handleCopy();
+        // Ничего не делаем - пользователь может попробовать ещё раз
       }
     }
   };
@@ -178,21 +160,13 @@ export function FriendsPage() {
 
         <h3 className={styles.inviteTitle}>Пригласи друга</h3>
         <p className={styles.inviteDescription}>
-          Отправь ссылку другу и получите оба бонусные стикеры!
+          Нажми кнопку ниже, выбери друзей из списка и получите оба бонусные стикеры!
         </p>
 
-        <div className={styles.linkContainer}>{data.referralLink}</div>
-
-        <div className={styles.buttonsRow}>
-          <button onClick={handleCopy} className={`${styles.button} ${styles.buttonPrimary} ${copied ? styles.buttonSuccess : ''}`}>
-            {copied ? <CheckCircle size={18} /> : <Copy size={18} />}
-            {copied ? 'Скопировано' : 'Скопировать'}
-          </button>
-          <button onClick={handleShare} className={`${styles.button} ${styles.buttonOutline}`}>
-            <Send size={18} />
-            Отправить
-          </button>
-        </div>
+        <button onClick={handleInvite} className={styles.inviteButton}>
+          <Send size={20} />
+          <span>Пригласить друга</span>
+        </button>
       </motion.div>
 
       {/* Статистика */}
