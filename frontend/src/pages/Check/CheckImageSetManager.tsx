@@ -47,11 +47,17 @@ export default function CheckImageSetManager() {
   const scenario = searchParams.get('scenario') || 'two_photo';
   const isSinglePhoto = scenario === 'single_photo';
 
+  // Получаем данные для режима "из помощи" - переход с страницы подсказок
+  const fromHelpMode = location.state?.mode === 'from_help';
+  let helpTaskImage = location.state?.taskImage as string | null;
+
   // Получаем данные для режима исправления ошибок
+  const explicitFixErrorsMode = location.state?.mode === 'fix_errors';
   let existingTaskImage = location.state?.existingTaskImage as string | null;
 
-  // Если нет в state, пробуем получить из sessionStorage
-  if (!existingTaskImage) {
+  // Если пришли в режиме исправления ошибок, но нет изображения в state,
+  // пробуем получить из sessionStorage
+  if (explicitFixErrorsMode && !existingTaskImage) {
     const lastTaskImageStr = sessionStorage.getItem('check_last_task_image');
     if (lastTaskImageStr) {
       try {
@@ -66,11 +72,12 @@ export default function CheckImageSetManager() {
     }
   }
 
-  // Получаем данные для режима "из помощи" - переход с страницы подсказок
-  const fromHelpMode = location.state?.mode === 'from_help';
-  let helpTaskImage = location.state?.taskImage as string | null;
+  // Если НЕ пришли из помощи или исправления ошибок, очищаем старое фото
+  if (!fromHelpMode && !explicitFixErrorsMode) {
+    sessionStorage.removeItem('check_last_task_image');
+  }
 
-  const fixErrorsMode = location.state?.mode === 'fix_errors' || !!existingTaskImage;
+  const fixErrorsMode = explicitFixErrorsMode || !!existingTaskImage;
 
   // Инициализируем слоты в зависимости от сценария
   const [cropTarget, setCropTarget] = useState<'task' | 'answer' | null>(null);

@@ -1,6 +1,6 @@
 // src/pages/Check/ScenarioSelection.tsx
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Image, Images } from 'lucide-react';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
@@ -25,6 +25,7 @@ const scenarios = [
 
 export default function ScenarioSelection() {
   const navigate = useNavigate();
+  const location = useLocation();
   const analytics = useAnalytics();
 
   useEffect(() => {
@@ -35,7 +36,15 @@ export default function ScenarioSelection() {
       });
     };
     trackOpen();
-  }, [analytics]);
+
+    // Очищаем старое фото задания, если не пришли из помощи или истории
+    const fromHelp = location.state?.mode === 'from_help';
+    const fromHistory = location.state?.mode === 'fix_errors';
+
+    if (!fromHelp && !fromHistory) {
+      sessionStorage.removeItem('check_last_task_image');
+    }
+  }, [analytics, location.state]);
 
   const handleScenarioSelect = async (scenario: CheckScenario) => {
     const childProfileId = await vkStorage.getItem(storageKeys.PROFILE_ID);

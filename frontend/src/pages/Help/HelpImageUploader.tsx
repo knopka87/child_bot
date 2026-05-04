@@ -1,12 +1,13 @@
 // src/pages/Help/HelpImageUploader.tsx
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, RefreshCw, Trash2, Camera } from 'lucide-react';
+import { ArrowLeft, Plus, RefreshCw, Trash2, Camera, Crop } from 'lucide-react';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { helpAPI } from '@/api/help';
 import { ROUTES } from '@/config/routes';
 import { usePlatformDetection } from '@/lib/platform/platform-detection';
+import { ImageCropModal } from '@/components/ui/ImageCropModal';
 import styles from './HelpImageUploader.module.css';
 
 export default function HelpImageUploader() {
@@ -21,6 +22,7 @@ export default function HelpImageUploader() {
   }>({ file: null, preview: null });
 
   const [isUploading, setIsUploading] = useState(false);
+  const [showCropModal, setShowCropModal] = useState(false);
 
   const handleFileSelect = useCallback(() => {
     if (fileInputRef.current) {
@@ -76,6 +78,26 @@ export default function HelpImageUploader() {
 
   const handleDelete = useCallback(() => {
     setImage({ file: null, preview: null });
+  }, []);
+
+  const handleCropClick = useCallback(() => {
+    setShowCropModal(true);
+  }, []);
+
+  const handleCropSave = useCallback(async (croppedFile: File) => {
+    // Создаём превью для обрезанного изображения
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setImage({ file: croppedFile, preview: base64 });
+    };
+    reader.readAsDataURL(croppedFile);
+
+    setShowCropModal(false);
+  }, []);
+
+  const handleCropClose = useCallback(() => {
+    setShowCropModal(false);
   }, []);
 
   const handleContinue = useCallback(async () => {
@@ -157,6 +179,14 @@ export default function HelpImageUploader() {
           {isUploaded && (
             <div className={styles.slotActions}>
               <button
+                onClick={handleCropClick}
+                className={`${styles.slotActionButton} ${styles.slotActionButtonCrop}`}
+                title="Обрезать"
+                disabled={isUploading}
+              >
+                <Crop size={14} />
+              </button>
+              <button
                 onClick={handleReplace}
                 className={`${styles.slotActionButton} ${styles.slotActionButtonReplace}`}
                 disabled={isUploading}
@@ -219,6 +249,16 @@ export default function HelpImageUploader() {
       >
         {isUploading ? 'Загрузка...' : 'Продолжить'}
       </button>
+
+      {/* Модальное окно обрезки */}
+      {showCropModal && image.preview && (
+        <ImageCropModal
+          image={image.preview}
+          onSave={handleCropSave}
+          onClose={handleCropClose}
+          title="Обрезать задание"
+        />
+      )}
     </div>
   );
 }

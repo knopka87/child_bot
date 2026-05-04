@@ -126,20 +126,17 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
     const onTop = Math.abs(y - cropY) < edgeSize;
     const onBottom = Math.abs(y - (cropY + height)) < edgeSize;
 
-    const insideX = x > cropX + edgeSize && x < cropX + width - edgeSize;
-    const insideY = y > cropY + edgeSize && y < cropY + height - edgeSize;
-
     // Проверяем углы (приоритет выше чем стороны)
     if (nearLeft && nearTop) return 'resize-tl';
     if (nearRight && nearTop) return 'resize-tr';
     if (nearLeft && nearBottom) return 'resize-bl';
     if (nearRight && nearBottom) return 'resize-br';
 
-    // Проверяем стороны (только если не в углах)
-    if (onTop && insideX) return 'resize-t';
-    if (onBottom && insideX) return 'resize-b';
-    if (onLeft && insideY) return 'resize-l';
-    if (onRight && insideY) return 'resize-r';
+    // Проверяем стороны (только если НЕ в зонах углов)
+    if (onTop && !nearLeft && !nearRight) return 'resize-t';
+    if (onBottom && !nearLeft && !nearRight) return 'resize-b';
+    if (onLeft && !nearTop && !nearBottom) return 'resize-l';
+    if (onRight && !nearTop && !nearBottom) return 'resize-r';
 
     // Проверяем центр (перемещение)
     if (x > cropX + edgeSize && x < cropX + width - edgeSize &&
