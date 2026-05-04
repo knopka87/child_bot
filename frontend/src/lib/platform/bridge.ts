@@ -11,7 +11,8 @@ const isDev = import.meta.env.DEV;
 const isInsideVK = typeof window !== 'undefined' && window.location.search.includes('vk_');
 
 // Выбираем bridge
-let bridge: typeof VKBridgeDefault;
+// Используем any чтобы избежать конфликта типов между vk-bridge и vk-bridge-mock
+let bridge: any;
 
 if (isDev && !isInsideVK) {
   // Используем mock для локальной разработки
@@ -82,4 +83,5 @@ initVKBridge().catch(err => {
   console.error('[VK Bridge] Auto-initialization failed:', err);
 });
 
-export default bridge;
+// Экспортируем с типом VKBridge для корректной типизации
+export default bridge as typeof VKBridgeDefault;
