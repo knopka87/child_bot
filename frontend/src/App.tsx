@@ -184,18 +184,26 @@ export default function App() {
 
         // Сохраняем platform_id в storage для APIClient
         // Используем PlatformBridge для получения правильного API platform_id
-        const platformBridge = new PlatformBridge();
-        const apiPlatformId = platformBridge.getPlatformType();
+        try {
+          const platformBridge = new PlatformBridge();
+          const apiPlatformId = platformBridge.getPlatformType();
 
-        // КРИТИЧЕСКИ ВАЖНО: Используем синхронную запись для избежания race condition
-        localStorage.setItem('platform_id', apiPlatformId);
-        console.log('[App] platform_id saved to storage:', apiPlatformId);
+          // КРИТИЧЕСКИ ВАЖНО: Используем синхронную запись для избежания race condition
+          localStorage.setItem('platform_id', apiPlatformId);
+          console.log('[App] platform_id saved to storage:', apiPlatformId);
+        } catch (error) {
+          // Если PlatformBridge выбросил ошибку (например, VK_ONLY_ACCESS)
+          // Используем fallback - платформу определённую по user agent
+          console.warn('[App] PlatformBridge failed, using fallback platform');
+          // Не сохраняем platform_id - AppInitializer обработает VK_ONLY_ACCESS ошибку
+        }
       })
       .catch((error) => {
         clearTimeout(platformDetectionTimeout);
         console.error('[App] Platform detection failed:', error);
-        // Продолжаем с дефолтной платформой, сохраняем 'web' в storage
-        localStorage.setItem('platform_id', 'web');
+        // Продолжаем с дефолтной платформой
+        // Не сохраняем 'web' - это может быть VK_ONLY_ACCESS ситуация
+        console.warn('[App] Platform detection error, AppInitializer will handle it');
       })
       .finally(() => {
         setIsLoading(false);
