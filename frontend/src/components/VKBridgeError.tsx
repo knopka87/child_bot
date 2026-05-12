@@ -24,19 +24,29 @@ export function VKBridgeError({ error }: VKBridgeErrorProps) {
 
           {isVPNRelated ? (
             <>
+              <div className="bg-red-50 border-2 border-red-400 rounded-xl p-4 mb-4 w-full">
+                <p className="text-red-700 text-base font-bold mb-2">
+                  🚫 VPN заблокирован VK
+                </p>
+                <p className="text-red-600 text-sm leading-relaxed">
+                  VK Mini Apps не работают с включённым VPN или прокси-сервером.
+                  Это сделано для защиты от мошенничества.
+                </p>
+              </div>
+
               <p className="text-[#636e72] text-sm mb-6 leading-relaxed">
-                VK Mini Apps не работают с включённым VPN или прокси-сервером.
-                Это сделано для защиты от мошенничества.
+                Приложение не может загрузиться, пока активен VPN.
+                Пожалуйста, отключите его и попробуйте снова.
               </p>
 
-              <div className="bg-[#FFF3CD] border border-[#FFE69C] rounded-xl p-4 mb-6 w-full">
+              <div className="bg-[#FFF3CD] border-2 border-[#FFE69C] rounded-xl p-4 mb-6 w-full">
                 <p className="text-[#856404] text-sm font-medium mb-2">
                   💡 Что делать:
                 </p>
-                <ol className="text-[#856404] text-sm text-left space-y-1.5">
-                  <li>1. Отключите VPN или прокси</li>
-                  <li>2. Перезапустите приложение VK</li>
-                  <li>3. Попробуйте снова</li>
+                <ol className="text-[#856404] text-sm text-left space-y-2 font-medium">
+                  <li>1. <strong>Отключите VPN или прокси</strong></li>
+                  <li>2. Закройте и снова откройте приложение VK</li>
+                  <li>3. Нажмите «Попробовать снова»</li>
                 </ol>
               </div>
             </>

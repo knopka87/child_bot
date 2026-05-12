@@ -1,8 +1,32 @@
 // src/components/VKOnlyAccess.tsx
 import { Shield, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
 export function VKOnlyAccess() {
   const vkAppUrl = 'https://vk.com/app54517931';
+  const [countdown, setCountdown] = useState(5);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+
+  useEffect(() => {
+    // Автоматический редирект через 5 секунд
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          setIsRedirecting(true);
+          window.location.href = vkAppUrl;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [vkAppUrl]);
+
+  const handleManualRedirect = () => {
+    setIsRedirecting(true);
+    window.location.href = vkAppUrl;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#F0F4FF] to-[#E8E4FF] flex items-center justify-center p-6">
@@ -21,6 +45,14 @@ export function VKOnlyAccess() {
             Это необходимо для вашей безопасности и защиты данных.
           </p>
 
+          {!isRedirecting && countdown > 0 && (
+            <div className="bg-[#6C5CE7]/10 border-2 border-[#6C5CE7] rounded-xl p-4 mb-6 w-full">
+              <p className="text-[#6C5CE7] text-base font-semibold">
+                🔄 Автоматический переход через {countdown} сек...
+              </p>
+            </div>
+          )}
+
           <div className="bg-[#E3F2FD] border border-[#90CAF9] rounded-xl p-4 mb-6 w-full">
             <p className="text-[#1565C0] text-sm font-medium mb-2">
               💡 Как открыть приложение:
@@ -33,15 +65,14 @@ export function VKOnlyAccess() {
             </ol>
           </div>
 
-          <a
-            href={vkAppUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-4 bg-[#6C5CE7] text-white rounded-2xl font-medium shadow-lg shadow-[#6C5CE7]/30 active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+          <button
+            onClick={handleManualRedirect}
+            disabled={isRedirecting}
+            className="w-full py-4 bg-[#6C5CE7] text-white rounded-2xl font-medium shadow-lg shadow-[#6C5CE7]/30 active:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Открыть в VK
-            <ExternalLink size={18} />
-          </a>
+            {isRedirecting ? 'Переход...' : 'Открыть в VK сейчас'}
+            {!isRedirecting && <ExternalLink size={18} />}
+          </button>
 
           <div className="mt-6 p-4 bg-[#FFF3CD] border border-[#FFE69C] rounded-xl w-full">
             <p className="text-[#856404] text-xs leading-relaxed">

@@ -80,9 +80,17 @@ function AppInitializer() {
 
         // Проверяем тип ошибки
         if (error instanceof Error) {
+          console.log('[App] Error details:', {
+            message: error.message,
+            isVKOnlyAccess: error.message.includes('VK_ONLY_ACCESS'),
+            isVKBridgeError: error.message.includes('VK Bridge') ||
+                            error.message.includes('timeout') ||
+                            error.message.includes('VKWebApp'),
+          });
+
           // Проверка на ошибку "Доступ только через VK"
           if (error.message.includes('VK_ONLY_ACCESS')) {
-            console.error('[App] ❌ Application opened outside VK');
+            console.error('[App] ❌ Application opened outside VK - redirecting to VK Mini App');
             setRequiresVKAccess(true);
             setIsInitialized(true);
             return;
@@ -96,6 +104,7 @@ function AppInitializer() {
 
           if (isVKBridgeError && !isLegalPage) {
             // Показываем ошибку VK Bridge (возможно VPN)
+            console.error('[App] ❌ VK Bridge error (possible VPN) - showing error screen');
             setVKBridgeError(error);
             setIsInitialized(true);
             return;
