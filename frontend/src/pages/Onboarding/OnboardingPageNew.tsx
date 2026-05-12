@@ -70,22 +70,32 @@ export function OnboardingPageNew() {
         // Fragment identifier (#ref=CODE) передается через vk_fragment параметр
         console.log('[Onboarding] Checking for referral code...');
 
+        // Служебные значения VK, которые нужно игнорировать
+        const SERVICE_VALUES = ['other', 'recs', 'recommendations'];
+        const isServiceValue = (code: string | null) =>
+          !code || SERVICE_VALUES.includes(code.toLowerCase().trim());
+
         let refCode = await getVKRefCode();
 
-        if (refCode && refCode !== 'other') {
+        if (refCode && !isServiceValue(refCode)) {
           console.log('[Onboarding] ✅ Referral code detected:', refCode);
           setReferralCode(refCode);
           await vkStorage.setItem(storageKeys.REFERRAL_CODE, refCode);
         } else {
+          if (refCode && isServiceValue(refCode)) {
+            console.log('[Onboarding] ⚠️ Service value ignored from VK params:', refCode);
+          }
+
           // Проверяем сохраненный код из предыдущей сессии
           const savedCode = await vkStorage.getItem(storageKeys.REFERRAL_CODE);
-          if (savedCode && savedCode !== 'other') {
+          if (savedCode && !isServiceValue(savedCode)) {
             console.log('[Onboarding] Referral code loaded from storage:', savedCode);
             setReferralCode(savedCode);
           } else {
             console.log('[Onboarding] ⚠️ No referral code found');
-            // Очищаем storage если там был некорректный код "other"
-            if (savedCode === 'other') {
+            // Очищаем storage если там было служебное значение
+            if (savedCode && isServiceValue(savedCode)) {
+              console.log('[Onboarding] Cleaning service value from storage:', savedCode);
               await vkStorage.removeItem(storageKeys.REFERRAL_CODE);
             }
           }
@@ -367,7 +377,14 @@ export function OnboardingPageNew() {
           value={referralCode || ''}
           onChange={(e) => {
             const code = e.target.value.trim().toUpperCase();
-            setReferralCode(code || null);
+            // Фильтруем служебные значения
+            const SERVICE_VALUES = ['OTHER', 'RECS', 'RECOMMENDATIONS'];
+            if (code && SERVICE_VALUES.includes(code)) {
+              console.log('[Onboarding] Service value blocked from input:', code);
+              setReferralCode(null);
+            } else {
+              setReferralCode(code || null);
+            }
           }}
           placeholder="Введи код, если тебя пригласил друг"
           className="w-full bg-white rounded-xl px-4 py-3 border border-[#DFE6E9] focus:ring-2 focus:ring-[#6C5CE7]/30 focus:border-[#6C5CE7] outline-none transition-all text-[#2D3436] text-[14px]"

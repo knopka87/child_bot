@@ -42,16 +42,20 @@ export function FriendsPage() {
     }
 
     try {
-      console.log('[FriendsPage] Starting invite with code:', data.referralCode);
+      console.log('[FriendsPage] ===== INVITE DEBUG =====');
+      console.log('[FriendsPage] Referral code:', data.referralCode);
+      console.log('[FriendsPage] Platform:', navigator.platform);
+      console.log('[FriendsPage] User Agent:', navigator.userAgent);
+      console.log('[FriendsPage] VK Bridge ready:', typeof bridge !== 'undefined');
+      console.log('[FriendsPage] ========================');
 
-      // ПРАВИЛЬНЫЙ способ для VK Mini Apps - использовать VKWebAppShowInviteBox
-      // Это единственный способ передать данные в iframe приложение!
+      // Пробуем VKWebAppShowInviteBox - работает на мобильных приложениях VK
       // requestKey передаётся как vk_request_key в Launch Params
       const result = await bridge.send('VKWebAppShowInviteBox', {
         requestKey: data.referralCode,
       } as any);
 
-      console.log('[FriendsPage] Invite result:', result);
+      console.log('[FriendsPage] ✅ Invite success:', result);
 
       if (childProfileId) {
         analytics.trackEvent('referral_invite_sent', {
@@ -63,12 +67,13 @@ export function FriendsPage() {
         await referralAPI.trackInviteSent(childProfileId, 'vk');
       }
     } catch (error: any) {
-      console.error('[FriendsPage] VKWebAppShowInviteBox failed:', {
+      console.error('[FriendsPage] ❌ VKWebAppShowInviteBox failed:', {
         error,
         errorType: error?.error_type,
         errorCode: error?.error_data?.error_code,
         errorReason: error?.error_data?.error_reason,
         errorMessage: error?.message,
+        fullError: JSON.stringify(error, null, 2),
       });
 
       // Если пользователь отменил диалог
@@ -77,34 +82,65 @@ export function FriendsPage() {
         return;
       }
 
-      // Fallback: VKWebAppShowInviteBox не поддерживается или не работает
-      // Показываем кнопку для копирования ссылки
-      console.log('[FriendsPage] Showing copy fallback (VKWebAppShowInviteBox not supported)');
+      // Fallback: Показываем UI с реферальным кодом для ручной отправки
+      console.log('[FriendsPage] Showing manual code sharing UI');
       setShowCopyFallback(true);
     }
   };
 
-  const handleCopyLink = () => {
+  const handleCopyCode = async () => {
     if (!data) return;
 
-    // Для ручного копирования даём ссылку на приложение + код для ручного ввода
-    const link = `https://vk.com/app54517931`;
-    const message = `Привет! Попробуй это приложение: ${link}\nТвой реферальный код: ${data.referralCode}`;
+    const code = data.referralCode;
 
-    navigator.clipboard?.writeText(message)
-      .then(() => {
-        alert('Сообщение скопировано! Отправь его другу в ВК.\n\nДруг должен будет ввести код при регистрации.');
+    // Пробуем современный Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(code);
+        alert('Код скопирован! Отправь его другу в ВК.\n\nДруг должен будет ввести код при регистрации.');
 
         if (childProfileId) {
-          analytics.trackEvent('referral_link_copied', {
+          analytics.trackEvent('referral_code_copied', {
             child_profile_id: childProfileId,
-            referral_code: data.referralCode,
+            referral_code: code,
           });
         }
-      })
-      .catch(() => {
-        alert('Не удалось скопировать. Попробуй ещё раз.');
-      });
+        return;
+      } catch (err) {
+        console.warn('[FriendsPage] Clipboard API failed, trying fallback:', err);
+      }
+    }
+
+    // Fallback: Старый метод через document.execCommand
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+
+      if (successful) {
+        alert('Код скопирован! Отправь его другу в ВК.\n\nДруг должен будет ввести код при регистрации.');
+
+        if (childProfileId) {
+          analytics.trackEvent('referral_code_copied', {
+            child_profile_id: childProfileId,
+            referral_code: code,
+          });
+        }
+      } else {
+        alert('Не удалось скопировать автоматически.\n\nТвой реферальный код: ' + code + '\n\nСкопируй его вручную.');
+      }
+    } catch (err) {
+      console.error('[FriendsPage] All copy methods failed:', err);
+      alert('Не удалось скопировать автоматически.\n\nТвой реферальный код: ' + code + '\n\nСкопируй его вручную.');
+    }
   };
 
   if (isLoading) {
@@ -183,7 +219,7 @@ export function FriendsPage() {
         <h3 className={styles.inviteTitle}>Пригласи друга</h3>
         <p className={styles.inviteDescription}>
           {showCopyFallback
-            ? 'Скопируй ссылку и отправь её другу в ВК!'
+            ? 'Скопируй код и отправь другу в ВК. Друг должен ввести его при регистрации.'
             : 'Нажми кнопку ниже, выбери друзей из списка и получите оба бонусные стикеры!'}
         </p>
 
@@ -193,10 +229,16 @@ export function FriendsPage() {
             <span>Пригласить друга</span>
           </button>
         ) : (
-          <button onClick={handleCopyLink} className={styles.inviteButton}>
-            <Send size={20} />
-            <span>Скопировать ссылку</span>
-          </button>
+          <>
+            <div className={styles.codeDisplay}>
+              <span className={styles.codeLabel}>Твой реферальный код:</span>
+              <div className={styles.codeValue}>{data.referralCode}</div>
+            </div>
+            <button onClick={handleCopyCode} className={styles.inviteButton}>
+              <Send size={20} />
+              <span>Скопировать код</span>
+            </button>
+          </>
         )}
       </motion.div>
 

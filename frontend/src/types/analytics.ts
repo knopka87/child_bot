@@ -192,6 +192,9 @@ interface AchievementRewardClaimedParams extends BaseEventParams {
 // Friends Events
 interface FriendsOpenedParams extends BaseEventParams {}
 interface ReferralLinkCopiedParams extends BaseEventParams {}
+interface ReferralCodeCopiedParams extends BaseEventParams {
+  referral_code: string;
+}
 interface ReferralLinkSharedParams extends BaseEventParams {
   platform?: string;
 }
@@ -354,6 +357,7 @@ export type AnalyticsEvent =
   // Friends
   | { name: 'friends_opened'; params: FriendsOpenedParams }
   | { name: 'referral_link_copied'; params: ReferralLinkCopiedParams }
+  | { name: 'referral_code_copied'; params: ReferralCodeCopiedParams }
   | { name: 'referral_link_shared'; params: ReferralLinkSharedParams }
   | { name: 'referral_share_sent'; params: ReferralShareSentParams }
   | { name: 'referral_invite_sent'; params: ReferralInviteSentParams }

@@ -84,16 +84,16 @@ export default function HelpImageUploader() {
     setShowCropModal(true);
   }, []);
 
-  const handleCropSave = useCallback(async (croppedFile: File) => {
+  const handleCropSave = useCallback((croppedFile: File) => {
     // Создаём превью для обрезанного изображения
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = reader.result as string;
       setImage({ file: croppedFile, preview: base64 });
+      // Закрываем модал только после того как превью создано
+      setShowCropModal(false);
     };
     reader.readAsDataURL(croppedFile);
-
-    setShowCropModal(false);
   }, []);
 
   const handleCropClose = useCallback(() => {

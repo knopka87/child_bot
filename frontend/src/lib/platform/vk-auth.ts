@@ -62,11 +62,26 @@ export async function getVKUserInfo(): Promise<VKUserInfo | null> {
 /**
  * Получить VK user ID текущего пользователя
  * С fallback на URL параметр vk_user_id если VK Bridge не работает
+ * С кэшированием для избежания повторных запросов
  */
 export async function getVKUserId(): Promise<number | null> {
+  const VK_USER_ID_CACHE_KEY = 'vk_user_id_cache';
+
+  // ВАЖНО: Сначала проверяем кэш
+  const cachedUserId = sessionStorage.getItem(VK_USER_ID_CACHE_KEY);
+  if (cachedUserId) {
+    const userId = parseInt(cachedUserId, 10);
+    if (!isNaN(userId)) {
+      console.log('[VK Auth] Using cached VK user ID:', userId);
+      return userId;
+    }
+  }
+
   // Пробуем получить через VK Bridge
   const userInfo = await getVKUserInfo();
   if (userInfo?.id) {
+    // Кэшируем для будущих вызовов
+    sessionStorage.setItem(VK_USER_ID_CACHE_KEY, userInfo.id.toString());
     return userInfo.id;
   }
 
@@ -78,11 +93,13 @@ export async function getVKUserId(): Promise<number | null> {
     const userId = parseInt(params.vk_user_id, 10);
     if (!isNaN(userId)) {
       console.log('[VK Auth] Using vk_user_id from URL params:', userId);
+      // Кэшируем для будущих вызовов
+      sessionStorage.setItem(VK_USER_ID_CACHE_KEY, userId.toString());
       return userId;
     }
   }
 
-  console.warn('[VK Auth] Failed to get VK user ID - neither from Bridge nor URL params');
+  console.warn('[VK Auth] Failed to get VK user ID - neither from cache, Bridge nor URL params');
   return null;
 }
 
@@ -150,6 +167,21 @@ export function isLaunchedFromVK(): boolean {
  *
  * Документация: https://dev.vk.com/ru/games/promotion/game-mechanics/invites
  */
+/**
+ * Служебные значения VK, которые не являются реферальными кодами
+ * Эти значения могут приходить в Launch Params, но их нужно игнорировать
+ */
+const VK_SERVICE_VALUES = ['other', 'recs', 'recommendations', 'null', 'undefined', ''];
+
+/**
+ * Проверяет, является ли значение валидным реферальным кодом
+ */
+function isValidReferralCode(code: string | null | undefined): boolean {
+  if (!code) return false;
+  const normalized = code.toLowerCase().trim();
+  return !VK_SERVICE_VALUES.includes(normalized);
+}
+
 export async function getVKRefCode(): Promise<string | null> {
   try {
     // Главный источник: VK Bridge Launch Params
@@ -179,14 +211,14 @@ export async function getVKRefCode(): Promise<string | null> {
     // Это ЕДИНСТВЕННЫЙ способ передать данные в VK Mini Apps (iframe)!
     // Документация: https://dev.vk.com/ru/bridge/VKWebAppShowInviteBox
     const requestKey = (launchParams as any).vk_request_key;
-    if (requestKey && requestKey !== 'null' && requestKey !== 'undefined' && requestKey !== '') {
+    if (isValidReferralCode(requestKey)) {
       console.log('[VK Auth] ✅ Referral code found in vk_request_key:', requestKey);
       return requestKey;
     }
 
     // ПРИОРИТЕТ 2: vk_ref - НЕ работает в iframe, но может работать в других случаях
     const refParam = (launchParams as any).vk_ref;
-    if (refParam && refParam !== 'null' && refParam !== 'undefined' && refParam !== '') {
+    if (isValidReferralCode(refParam)) {
       console.log('[VK Auth] ✅ Referral code found in vk_ref:', refParam);
       return refParam;
     }
@@ -197,24 +229,27 @@ export async function getVKRefCode(): Promise<string | null> {
       console.log('[VK Auth] Found vk_fragment:', fragmentParam);
 
       // Парсим fragment: может быть "start=CODE" или просто "CODE"
+      let extractedCode: string | null = null;
       if (fragmentParam.startsWith('start=')) {
-        const code = fragmentParam.substring(6); // Убираем "start="
-        console.log('[VK Auth] ✅ Referral code extracted from vk_fragment:', code);
-        return code;
+        extractedCode = fragmentParam.substring(6); // Убираем "start="
       } else if (fragmentParam.startsWith('ref=')) {
-        const code = fragmentParam.substring(4); // Убираем "ref="
-        console.log('[VK Auth] ✅ Referral code extracted from vk_fragment (ref=):', code);
-        return code;
+        extractedCode = fragmentParam.substring(4); // Убираем "ref="
       } else {
         // Если fragment не содержит =, считаем что это сам код
-        console.log('[VK Auth] ✅ Referral code from vk_fragment (raw):', fragmentParam);
-        return fragmentParam;
+        extractedCode = fragmentParam;
+      }
+
+      if (isValidReferralCode(extractedCode)) {
+        console.log('[VK Auth] ✅ Referral code extracted from vk_fragment:', extractedCode);
+        return extractedCode;
+      } else {
+        console.log('[VK Auth] ⚠️ Service value ignored from vk_fragment:', extractedCode);
       }
     }
 
     // ПРИОРИТЕТ 4: vk_start (альтернативный способ)
     const startParam = (launchParams as any).vk_start;
-    if (startParam && startParam !== 'null' && startParam !== 'undefined') {
+    if (isValidReferralCode(startParam)) {
       console.log('[VK Auth] ✅ Referral code found in vk_start:', startParam);
       return startParam;
     }

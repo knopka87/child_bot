@@ -108,6 +108,11 @@
   background: rgba(0, 0, 0, 0.03);
 }
 
+.cancelButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .saveButton {
   flex: 1;
   padding: 14px;
@@ -129,4 +134,11 @@
 .saveButton:active {
   transform: scale(0.98);
   box-shadow: 0 2px 8px rgba(108, 92, 231, 0.2);
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }

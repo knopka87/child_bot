@@ -135,7 +135,7 @@ export default function CheckQualitySinglePage() {
     navigate('/check/upload-images?scenario=single_photo');
   };
 
-  const handleCropSave = async (croppedFile: File) => {
+  const handleCropSave = (croppedFile: File) => {
     // Создаём превью для обрезанного изображения
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -151,10 +151,11 @@ export default function CheckQualitySinglePage() {
         base64,
       };
       sessionStorage.setItem('check_single_photo_data', JSON.stringify(storedData));
+
+      // Закрываем модал только после того как превью создано
+      setShowCropModal(false);
     };
     reader.readAsDataURL(croppedFile);
-
-    setShowCropModal(false);
   };
 
   const isLoading = compressing || uploading;

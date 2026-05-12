@@ -21,6 +21,7 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
   const [initialCropArea, setInitialCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [cropArea, setCropArea] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const img = new Image();
@@ -112,8 +113,9 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
 
   // Определяет режим перетаскивания на основе позиции клика
   const getDragMode = (x: number, y: number): DragMode => {
-    const cornerSize = 30; // Размер зоны для захвата угла
-    const edgeSize = 20; // Размер зоны для захвата стороны
+    // Увеличенные зоны для touch на мобильных устройствах (iPhone)
+    const cornerSize = 50; // Размер зоны для захвата угла (было 30)
+    const edgeSize = 40; // Размер зоны для захвата стороны (было 20)
     const { x: cropX, y: cropY, width, height } = cropArea;
 
     const nearLeft = Math.abs(x - cropX) < cornerSize;
@@ -158,6 +160,7 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
 
     const mode = getDragMode(x, y);
     if (mode) {
+      e.preventDefault(); // Предотвращаем скроллинг на iPhone
       setIsDragging(true);
       setDragMode(mode);
       setDragStartPos({ x, y });
@@ -168,6 +171,7 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging || !canvasRef.current || !dragMode) return;
 
+    e.preventDefault(); // Предотвращаем скроллинг на iPhone
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const touch = e.touches[0];
@@ -310,7 +314,9 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
   };
 
   const handleSave = async () => {
-    if (!canvasRef.current || !loadedImage) return;
+    if (!canvasRef.current || !loadedImage || isSaving) return;
+
+    setIsSaving(true);
 
     const canvas = canvasRef.current;
     const img = loadedImage;
@@ -318,7 +324,10 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
     // Создаём новый canvas для обрезанного изображения
     const croppedCanvas = document.createElement('canvas');
     const ctx = croppedCanvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      setIsSaving(false);
+      return;
+    }
 
     // Вычисляем соотношение между оригинальным изображением и canvas
     const scaleX = img.width / canvas.width;
@@ -342,9 +351,13 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
 
     // Конвертируем в Blob и затем в File
     croppedCanvas.toBlob((blob) => {
-      if (!blob) return;
+      if (!blob) {
+        setIsSaving(false);
+        return;
+      }
       const file = new File([blob], 'cropped-image.jpg', { type: 'image/jpeg' });
       onSave(file);
+      // Не сбрасываем isSaving здесь, т.к. родитель закроет модал
     }, 'image/jpeg', 0.9);
   };
 
@@ -377,12 +390,12 @@ export function ImageCropModal({ image, onSave, onClose, title = 'Обрезат
         </p>
 
         <div className={styles.actions}>
-          <button onClick={onClose} className={styles.cancelButton}>
+          <button onClick={onClose} className={styles.cancelButton} disabled={isSaving}>
             Отмена
           </button>
-          <button onClick={handleSave} className={styles.saveButton}>
+          <button onClick={handleSave} className={styles.saveButton} disabled={isSaving}>
             <Check size={18} />
-            Применить
+            {isSaving ? 'Обработка...' : 'Применить'}
           </button>
         </div>
       </div>

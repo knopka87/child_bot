@@ -157,7 +157,7 @@ export default function CheckQualityTwoPage() {
     setShowCropModal(true);
   };
 
-  const handleCropSave = async (croppedFile: File) => {
+  const handleCropSave = (croppedFile: File) => {
     if (!cropTarget) return;
 
     // Создаём превью для обрезанного изображения
@@ -190,11 +190,12 @@ export default function CheckQualityTwoPage() {
         };
         sessionStorage.setItem('check_answer_photo', JSON.stringify(storedData));
       }
+
+      // Закрываем модал только после того как превью создано
+      setShowCropModal(false);
+      setCropTarget(null);
     };
     reader.readAsDataURL(croppedFile);
-
-    setShowCropModal(false);
-    setCropTarget(null);
   };
 
   const handleCropClose = () => {

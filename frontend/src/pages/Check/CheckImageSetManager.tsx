@@ -236,7 +236,7 @@ export default function CheckImageSetManager() {
     setShowCropModal(true);
   }, []);
 
-  const handleCropSave = useCallback(async (croppedFile: File) => {
+  const handleCropSave = useCallback((croppedFile: File) => {
     if (!cropTarget) return;
 
     // Создаём превью для обрезанного изображения
@@ -251,11 +251,12 @@ export default function CheckImageSetManager() {
             : img
         )
       );
+
+      // Закрываем модал только после того как превью создано
+      setShowCropModal(false);
+      setCropTarget(null);
     };
     reader.readAsDataURL(croppedFile);
-
-    setShowCropModal(false);
-    setCropTarget(null);
   }, [cropTarget]);
 
   const handleCropClose = useCallback(() => {
