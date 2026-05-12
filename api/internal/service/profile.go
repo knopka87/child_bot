@@ -590,18 +590,34 @@ func (s *ProfileService) UpdateStreakAndActivity(ctx context.Context, childProfi
 	now := time.Now().UTC()
 	newStreak := currentStreak
 
+	// Московская timezone для правильного подсчёта дней
+	moscowLocation, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		log.Printf("[UpdateStreakAndActivity] Error loading Moscow timezone: %v, using UTC", err)
+		moscowLocation = time.UTC
+	}
+
 	// Если last_activity_at пустой (первый заход), устанавливаем streak = 1
 	if lastActivityAt == nil {
 		newStreak = 1
 		log.Printf("[UpdateStreakAndActivity] First login for %s, setting streak = 1", childProfileID)
 	} else {
-		// Вычисляем разницу в днях (только дата, без времени)
-		lastDate := lastActivityAt.Truncate(24 * time.Hour)
-		currentDate := now.Truncate(24 * time.Hour)
+		// КРИТИЧЕСКИ ВАЖНО: Вычисляем разницу в днях по МОСКОВСКОМУ времени
+		// Конвертируем оба времени в московскую зону и получаем только дату
+		lastDateMoscow := lastActivityAt.In(moscowLocation)
+		nowMoscow := now.In(moscowLocation)
+
+		// Сравниваем только даты (год, месяц, день)
+		lastYear, lastMonth, lastDay := lastDateMoscow.Date()
+		nowYear, nowMonth, nowDay := nowMoscow.Date()
+
+		lastDate := time.Date(lastYear, lastMonth, lastDay, 0, 0, 0, 0, moscowLocation)
+		currentDate := time.Date(nowYear, nowMonth, nowDay, 0, 0, 0, 0, moscowLocation)
+
 		daysDiff := int(currentDate.Sub(lastDate).Hours() / 24)
 
-		log.Printf("[UpdateStreakAndActivity] Profile %s: last_activity=%s, now=%s, days_diff=%d",
-			childProfileID, lastActivityAt.Format("2006-01-02 15:04"), now.Format("2006-01-02 15:04"), daysDiff)
+		log.Printf("[UpdateStreakAndActivity] Profile %s: last_activity=%s MSK, now=%s MSK, days_diff=%d",
+			childProfileID, lastDateMoscow.Format("2006-01-02 15:04"), nowMoscow.Format("2006-01-02 15:04"), daysDiff)
 
 		if daysDiff == 0 {
 			// Тот же день - ничего не делаем со streak, только обновляем time
