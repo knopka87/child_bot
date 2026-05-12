@@ -50,9 +50,17 @@ class APIClient {
 
         // КРИТИЧЕСКИ ВАЖНО: Используем PlatformBridge как единственный источник истины
         // Избегаем рассинхронизации между определением платформы и user.id
-        const { PlatformBridge } = await import('@/services/platform/PlatformBridge');
-        const bridge = new PlatformBridge();
-        const platformID = bridge.getPlatformType();
+        let platformID: string;
+        try {
+          const { PlatformBridge } = await import('@/services/platform/PlatformBridge');
+          const bridge = new PlatformBridge();
+          platformID = bridge.getPlatformType();
+        } catch (error) {
+          // Если PlatformBridge выбросил ошибку (например, VK_ONLY_ACCESS)
+          // используем fallback из localStorage
+          console.warn('[APIClient] PlatformBridge failed, using localStorage fallback:', error);
+          platformID = localStorage.getItem('platform_id') || 'vk';
+        }
 
         console.log('[APIClient] Platform ID from PlatformBridge:', platformID);
 

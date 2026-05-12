@@ -4,6 +4,7 @@ import { AnalyticsService } from '@/services/analytics/AnalyticsService';
 import { PlatformBridge } from '@/services/platform/PlatformBridge';
 import config from '@/config';
 import type { AnalyticsConfig } from '@/types/analytics';
+import type { PlatformType } from '@/types/platform';
 
 const defaultConfig: AnalyticsConfig = {
   enabled: config.analytics.enabled,
@@ -30,8 +31,23 @@ export function AnalyticsProvider({
 
   useEffect(() => {
     // Получаем тип платформы
-    const platformBridge = new PlatformBridge();
-    const platformType = platformBridge.getPlatformType();
+    let platformType: PlatformType;
+    try {
+      const platformBridge = new PlatformBridge();
+      platformType = platformBridge.getPlatformType();
+    } catch (error) {
+      // Если PlatformBridge выбросил ошибку (например, VK_ONLY_ACCESS)
+      // используем fallback платформу и не инициализируем аналитику
+      if (error instanceof Error && error.message.includes('VK_ONLY_ACCESS')) {
+        console.log('[AnalyticsContext] VK_ONLY_ACCESS detected, skipping analytics initialization');
+        // Не инициализируем аналитику для экрана редиректа
+        return;
+      }
+
+      // Для других ошибок используем fallback
+      console.error('[AnalyticsContext] PlatformBridge failed, using fallback:', error);
+      platformType = 'vk';
+    }
 
     const mergedConfig = { ...defaultConfig, ...config };
     const analyticsService = new AnalyticsService(mergedConfig, platformType);
