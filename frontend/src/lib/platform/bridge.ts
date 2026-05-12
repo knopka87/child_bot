@@ -45,11 +45,32 @@ export async function initVKBridge(): Promise<void> {
   initPromise = (async () => {
     try {
       console.log('[VK Bridge] Initializing...');
-      await bridge.send('VKWebAppInit');
+
+      // Добавляем timeout для VKWebAppInit (5 секунд)
+      const initTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('VK Bridge initialization timeout')), 5000)
+      );
+
+      await Promise.race([
+        bridge.send('VKWebAppInit'),
+        initTimeout
+      ]);
+
       isInitialized = true;
       console.log('[VK Bridge] Initialized successfully');
     } catch (error) {
       console.error('[VK Bridge] Initialization failed:', error);
+
+      // Проверяем возможные причины
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          console.error('[VK Bridge] ❌ VK Bridge не отвечает. Возможные причины:\n' +
+            '1. Включён VPN/прокси (VK блокирует VPN)\n' +
+            '2. Проблемы с сетью\n' +
+            '3. Приложение открыто не через VK');
+        }
+      }
+
       throw error;
     }
   })();

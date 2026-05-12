@@ -35,7 +35,9 @@ export class PlatformBridge {
   }
 
   private detectPlatform(): PlatformType {
-    if (typeof window === 'undefined') return 'web';
+    if (typeof window === 'undefined') {
+      throw new Error('VK_ONLY_ACCESS: Application must be opened through VK');
+    }
 
     // Check for VK Bridge - проверяем несколько признаков
     const urlParams = new URLSearchParams(window.location.search);
@@ -46,7 +48,7 @@ export class PlatformBridge {
 
     // Если есть ЛЮБОЙ признак VK - это VK платформа
     if (vkPlatform || vkUserId || vkAppId || hasVKBridge) {
-      console.log('[PlatformBridge] Detected VK platform:', {
+      console.log('[PlatformBridge] ✅ Detected VK platform:', {
         vkPlatform,
         vkUserId: !!vkUserId,
         vkAppId: !!vkAppId,
@@ -59,23 +61,17 @@ export class PlatformBridge {
     // но platform_id уже сохранён в localStorage - используем его
     // Это предотвращает потерю платформы при навигации внутри приложения
     const savedPlatform = localStorage.getItem('platform_id') as PlatformType;
-    if (savedPlatform && (savedPlatform === 'vk' || savedPlatform === 'max' || savedPlatform === 'telegram')) {
-      console.log('[PlatformBridge] Using saved platform from storage:', savedPlatform);
-      return savedPlatform;
+    if (savedPlatform === 'vk') {
+      console.log('[PlatformBridge] ✅ Using saved VK platform from storage');
+      return 'vk';
     }
 
-    // Check for MAX Bridge
-    if ((window as any).MaxBridge || document.referrer.includes('max.ru')) {
-      return 'max';
-    }
+    // ❌ НОВОЕ: Web, Telegram, MAX больше не поддерживаются
+    // Приложение работает только через VK
+    console.error('[PlatformBridge] ❌ Application opened outside VK - access denied');
+    console.error('[PlatformBridge] Please open the app through VK: https://vk.com/app54517931');
 
-    // Check for Telegram WebApp
-    if ((window as any).Telegram?.WebApp) {
-      return 'telegram';
-    }
-
-    console.log('[PlatformBridge] Detected web platform (fallback)');
-    return 'web';
+    throw new Error('VK_ONLY_ACCESS: Application must be opened through VK Mini Apps');
   }
 
   private createAdapter(type: PlatformType): IPlatformAdapter {

@@ -93,8 +93,10 @@ func ValidateAttemptType(attemptType string) error {
 }
 
 // ValidatePlatformID проверяет валидность platformID
+// Примечание: 'web' платформа больше не поддерживается с 12 мая 2026
+// Приложение доступно только через VK Mini Apps
 func ValidatePlatformID(platformID string) error {
-	return ValidateEnum(platformID, "platform_id", []string{"vk", "telegram", "max", "web"})
+	return ValidateEnum(platformID, "platform_id", []string{"vk"})
 }
 
 // ValidateBase64Image проверяет, что строка начинается с префикса base64

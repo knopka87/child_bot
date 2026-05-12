@@ -17,12 +17,16 @@ import { vkStorage, storageKeys } from '@/lib/platform/vk-storage';
 import { Spinner } from '@/components/ui/Spinner';
 import { PlatformBridge } from '@/services/platform/PlatformBridge';
 import { getCurrentChildProfileId } from '@/lib/auth';
+import { VKBridgeError } from '@/components/VKBridgeError';
+import { VKOnlyAccess } from '@/components/VKOnlyAccess';
 
 type Appearance = 'light' | 'dark';
 
 function AppInitializer() {
   const navigate = useNavigate();
   const [isInitialized, setIsInitialized] = useState(false);
+  const [vkBridgeError, setVKBridgeError] = useState<Error | null>(null);
+  const [requiresVKAccess, setRequiresVKAccess] = useState(false);
   const hasCheckedRef = useRef(false);
 
   useEffect(() => {
@@ -70,8 +74,34 @@ function AppInitializer() {
         }
       } catch (error) {
         console.error('[App] Initialization error:', error);
+
         // Проверяем не legal ли это страница
         const isLegalPage = window.location.pathname.startsWith('/legal/');
+
+        // Проверяем тип ошибки
+        if (error instanceof Error) {
+          // Проверка на ошибку "Доступ только через VK"
+          if (error.message.includes('VK_ONLY_ACCESS')) {
+            console.error('[App] ❌ Application opened outside VK');
+            setRequiresVKAccess(true);
+            setIsInitialized(true);
+            return;
+          }
+
+          // Проверка на ошибку VK Bridge (VPN, сеть)
+          const isVKBridgeError =
+            error.message.includes('VK Bridge') ||
+            error.message.includes('timeout') ||
+            error.message.includes('VKWebApp');
+
+          if (isVKBridgeError && !isLegalPage) {
+            // Показываем ошибку VK Bridge (возможно VPN)
+            setVKBridgeError(error);
+            setIsInitialized(true);
+            return;
+          }
+        }
+
         if (!isLegalPage) {
           navigate('/onboarding', { replace: true });
         }
@@ -94,6 +124,16 @@ function AppInitializer() {
 
     return () => clearTimeout(timeout);
   }, [navigate]);
+
+  // Показываем сообщение "Доступ только через VK"
+  if (requiresVKAccess) {
+    return <VKOnlyAccess />;
+  }
+
+  // Показываем ошибку VK Bridge (VPN или другие проблемы)
+  if (vkBridgeError) {
+    return <VKBridgeError error={vkBridgeError} />;
+  }
 
   if (!isInitialized) {
     return (

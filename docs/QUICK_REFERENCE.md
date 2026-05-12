@@ -133,6 +133,21 @@ X-Child-Profile-ID: <uuid>
 - `GET /api/profiles/by-platform` - Получение профиля по platform credentials
 - `GET /api/achievements` - Достижения
 
+## Платформы
+
+**Поддерживается только VK Mini Apps** (с 12 мая 2026)
+
+Backend валидация:
+- `platform_id` должен быть `"vk"`
+- Web, Telegram, MAX больше не поддерживаются
+- При попытке использовать другую платформу: HTTP 400
+
+Frontend:
+- Если открыто не через VK → показывается VKOnlyAccess компонент
+- VK параметры: `vk_user_id`, `vk_app_id`, `vk_platform`, `sign`
+
+См. подробности: `docs/VK_ONLY_ACCESS.md`
+
 ## Middleware Auth
 
 **Public paths (auth not required):**
@@ -142,7 +157,7 @@ X-Child-Profile-ID: <uuid>
 - `/analytics/events`, `/api/analytics/events`
 - `/legal/*`, `/api/legal/*`
 
-**Requires Platform-ID:** Все остальные эндпоинты
+**Requires Platform-ID:** Все остальные эндпоинты (только `vk`)
 
 **Requires Child-Profile-ID:** Все эндпоинты кроме:
 - `/api/profiles/child` (создание)
@@ -175,6 +190,23 @@ X-Child-Profile-ID: <uuid>
 - Блокировка ручного ввода служебных значений
 
 См. подробности: `docs/REFERRAL_CODE_FILTER.md`
+
+### Приложение не работает с VPN
+**Симптом:** Белый экран, spinner бесконечно крутится, ошибка "Не удалось подключиться к VK".
+
+**Причина:** VK блокирует VPN и прокси для защиты от мошенничества. VK Bridge не может инициализироваться.
+
+**Решение:**
+1. Отключить VPN/прокси
+2. Перезапустить приложение VK
+3. Попробовать снова
+
+**Техническая информация:**
+- VK проверяет подпись запросов (sign parameter) на основе IP
+- VPN меняет IP → подпись становится невалидной → запросы отклоняются
+- Это ограничение платформы VK, обойти невозможно
+
+См. подробности: `docs/VPN_LIMITATION.md`
 
 ### 401 Unauthorized
 Проверить заголовки:
